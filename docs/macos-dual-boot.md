@@ -53,6 +53,10 @@ official release SHA-256:
 Write it to a *second* USB stick of at least 8 GB. Do not turn the verified
 Seagate backup disk into boot media.
 
+The machine's second USB is a 32 GB SanDisk Cruzer Fit, serial
+`4C530010630724110334`. `tools/system-backup/flash-recovery-usb.sh` is pinned to
+that identity and verifies every written ISO byte before reporting success.
+
 ## Planned disk change
 
 Target approximately 120 GiB of unallocated space for macOS. The safe order,
