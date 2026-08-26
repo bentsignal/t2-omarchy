@@ -1,7 +1,35 @@
-# MacBookPro16,1 T2 Linux audio recovery
+# MacBookPro16,1 T2 Linux setup notes
 
-Reproduces the tuned internal-speaker setup from Shawn's 2019 16-inch Intel
+Practical, tested notes and recovery tools for Shawn's 2019 16-inch Intel
 MacBook Pro (`MacBookPro16,1`) running Omarchy/Arch Linux with `linux-t2`.
+
+The repository began as a reproducible internal-speaker setup. It now also
+records model-specific power-management findings, including how to choose
+between AMD performance mode and an Intel-only battery mode at boot.
+
+## Guides
+
+- [Power management and dual boot modes](docs/power-management.md)
+- [Audio recovery](#audio-recovery)
+
+## Power-management summary
+
+The reliable solution on this model is two boot entries:
+
+- **AMD/default:** full Radeon performance for games and GPU-heavy work, with
+  substantially higher idle draw.
+- **Intel battery:** boot with `apple_gmux.force_igd=1`, then power off the AMD
+  GPU with `vgaswitcheroo`. This machine measured about **16 W** at a controlled
+  screen-on baseline versus roughly **33--37 W** before the change.
+
+Live switching without rebooting is not recommended on this hardware. The
+internal panel changes ownership through Apple's gmux, the current AMD driver
+reports that runtime PM is unavailable, and applications may retain DRM
+clients. A reboot into the desired entry is slower but predictable and leaves
+the normal AMD entry available as recovery if Intel display initialization
+fails.
+
+## Audio recovery
 
 This profile provides measured six-speaker FIR correction, virtual bass,
 gentle compression, peak limiting, and pause/resume zero-ramping. It also hides
@@ -52,4 +80,3 @@ The installer downloads FIRs and the force-unmute helper from
 [lemmyg/t2-apple-audio-dsp](https://github.com/lemmyg/t2-apple-audio-dsp),
 pinned to commit `b5c5a1368f4eed5e1339a913a5c2d813374dd1c1`. Those upstream
 assets are not duplicated in this repository.
-
