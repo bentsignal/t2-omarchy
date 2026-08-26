@@ -41,11 +41,43 @@ sudo journalctl -k -n 30 --no-pager
 sudo rmmod t2sep_probe
 ```
 
+Apple's control endpoint provides a NOP command. This is the first bounded
+request/response test: it sends one NOP with tag 1, waits up to five seconds,
+and consumes at most one 128-bit response. It requires the recovered transport
+enable sequence and two MSI vectors:
+
+```bash
+sudo insmod ./t2sep_probe.ko apple_start_cpu_probe=1 \
+  apple_start_with_msi=1 apple_send_control_nop=1
+sudo rmmod t2sep_probe
+```
+
+Apple enables two MSI event sources before starting the SEP CPU. The bounded
+variant below allocates exactly two MSI vectors, records interrupt counts,
+runs the same start/stop probe, then frees both vectors and restores the PCI
+enable state:
+
+```bash
+sudo insmod ./t2sep_probe.ko apple_start_cpu_probe=1 apple_start_with_msi=1
+sudo rmmod t2sep_probe
+```
+
 Run the recovered Apple-layout read-only probe with:
 
 ```bash
 sudo insmod ./t2sep_probe.ko read_apple_layout=1
 sudo journalctl -k -n 30 --no-pager
+sudo rmmod t2sep_probe
+```
+
+The next explicitly gated experiment reproduces the three MMIO writes in
+Apple's `_startCPUGated()`, polls only the two FIFO status words for up to one
+second, and then reproduces Apple's `_stopCPUGated()` write. It never reads or
+writes either payload FIFO:
+
+```bash
+sudo insmod ./t2sep_probe.ko apple_start_cpu_probe=1
+sudo journalctl -k --since "10 seconds ago" --no-pager | grep t2sep_probe
 sudo rmmod t2sep_probe
 ```
 

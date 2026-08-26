@@ -112,15 +112,35 @@ register `0x20`, which is PCI BAR4. The mailbox methods then use this layout:
 | `0x10c` | outbound FIFO status; bit 16 means full |
 | `0x810`–`0x81c` | four inbound 32-bit words |
 | `0x820`–`0x82c` | four outbound 32-bit words |
-| `0x8028` | CPU control; Apple writes `5` during startup |
-| `0x8040` | CPU startup/reset register; Apple writes `0` |
-| `0x8048` | CPU startup register; Apple writes `1` |
+| `0x8024` | transport status/interrupt set; Apple writes `5` during stop |
+| `0x8028` | transport status/interrupt clear; Apple writes `5` during start |
+| `0x8040` | transport interrupt mask/disable; Apple writes `0` |
+| `0x8048` | transport interrupt enable; Apple writes `1` |
 
 This is a different PCIe FIFO presentation from the T8012/PongoOS mailbox
 offsets initially tested. The earlier all-zero reads at BAR4 `+0x4000` neither
 showed that the T2 was dead nor described this interface. The next experiment
-reads only the recovered status and CPU-control registers. Reproducing Apple's
-three startup writes remains a separate, explicitly gated milestone.
+reads only the recovered status and CPU-control registers.
+
+The bounded write experiment refined those labels. Apple's method is named
+`startCPU`, but the observed behavior shows that it enables the PCIe FIFO
+transport rather than loading SEP firmware. Writing `5` to `0x8028` changed
+its readback from `0x7f` to `0x7a`; Apple's matching stop write of `5` to
+`0x8024` restored the state.
+
+With two MSI vectors allocated, Linux sent the control endpoint's NOP wire
+message and received a valid response in 10 ms:
+
+```text
+request:  00000100 00000000 00000000 00000000
+response: 00010100 00000000 00000000 00100100
+MSI:      vector 0 = 1, vector 1 = 1
+```
+
+This is the first confirmed bidirectional Linux-to-T2-SEP transaction. The
+probe then issued Apple's stop sequence, freed both vectors, restored the PCI
+command word, and unloaded. No biometric endpoint command or xART operation
+was involved.
 
 ## Safety boundary
 

@@ -10,6 +10,8 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/pci.h>
+#include <linux/delay.h>
+#include <linux/interrupt.h>
 
 #define PCI_VENDOR_ID_APPLE_LOCAL 0x106b
 #define PCI_DEVICE_ID_APPLE_T2_SEP 0x1802
@@ -30,6 +32,7 @@
 #define T2SEP_INTEL_INBOX_EMPTY BIT(17)
 #define T2SEP_INTEL_OUTBOX_FULL BIT(16)
 #define T2SEP_INTEL_CPU_CONTROL 0x8028
+#define T2SEP_INTEL_CPU_STOP 0x8024
 #define T2SEP_INTEL_CPU_RESET 0x8040
 #define T2SEP_INTEL_CPU_START 0x8048
 
@@ -62,6 +65,155 @@ static bool read_apple_layout;
 module_param(read_apple_layout, bool, 0400);
 MODULE_PARM_DESC(read_apple_layout,
 	"Read only AppleSEPIntelIOP BAR4 status and CPU-control registers");
+
+static bool apple_start_cpu_probe;
+module_param(apple_start_cpu_probe, bool, 0400);
+MODULE_PARM_DESC(apple_start_cpu_probe,
+	"Reproduce Apple's CPU-start writes, poll status, then issue Apple's stop write");
+
+static bool apple_start_with_msi;
+module_param(apple_start_with_msi, bool, 0400);
+MODULE_PARM_DESC(apple_start_with_msi,
+	"Allocate Apple's two MSI vectors around the bounded CPU-start probe");
+
+static bool apple_send_control_nop;
+module_param(apple_send_control_nop, bool, 0400);
+MODULE_PARM_DESC(apple_send_control_nop,
+	"Send one non-mutating Apple control-endpoint NOP and read its response");
+
+struct t2sep_irq_probe {
+	atomic_t count[2];
+};
+
+static irqreturn_t t2sep_probe_irq(int irq, void *data)
+{
+	atomic_inc(data);
+	return IRQ_HANDLED;
+}
+
+static int t2sep_setup_msi(struct pci_dev *pdev, struct t2sep_irq_probe *probe)
+{
+	int ret;
+
+	atomic_set(&probe->count[0], 0);
+	atomic_set(&probe->count[1], 0);
+	ret = pci_alloc_irq_vectors(pdev, 2, 2, PCI_IRQ_MSI);
+	if (ret < 0)
+		return ret;
+	if (ret != 2) {
+		pci_free_irq_vectors(pdev);
+		return -ENOSPC;
+	}
+
+	ret = request_irq(pci_irq_vector(pdev, 0), t2sep_probe_irq, 0,
+			  "t2sep-inbox", &probe->count[0]);
+	if (ret)
+		goto out_vectors;
+	ret = request_irq(pci_irq_vector(pdev, 1), t2sep_probe_irq, 0,
+			  "t2sep-outbox", &probe->count[1]);
+	if (ret)
+		goto out_irq0;
+
+	dev_info(&pdev->dev, "allocated MSI vectors %d and %d\n",
+		 pci_irq_vector(pdev, 0), pci_irq_vector(pdev, 1));
+	return 0;
+
+out_irq0:
+	free_irq(pci_irq_vector(pdev, 0), &probe->count[0]);
+out_vectors:
+	pci_free_irq_vectors(pdev);
+	return ret;
+}
+
+static void t2sep_teardown_msi(struct pci_dev *pdev,
+			       struct t2sep_irq_probe *probe)
+{
+	dev_info(&pdev->dev, "MSI observations: vector0=%d vector1=%d\n",
+		 atomic_read(&probe->count[0]), atomic_read(&probe->count[1]));
+	free_irq(pci_irq_vector(pdev, 1), &probe->count[1]);
+	free_irq(pci_irq_vector(pdev, 0), &probe->count[0]);
+	pci_free_irq_vectors(pdev);
+}
+
+static void t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
+{
+	u32 inbox_before = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
+	u32 outbox_before = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+	u32 inbox = inbox_before;
+	u32 outbox = outbox_before;
+	int i;
+
+	/* Exact ordering from AppleSEPIntelIOP::_startCPUGated(). */
+	iowrite32(0, bar4 + T2SEP_INTEL_CPU_RESET);
+	iowrite32(1, bar4 + T2SEP_INTEL_CPU_START);
+	iowrite32(5, bar4 + T2SEP_INTEL_CPU_CONTROL);
+	/* Flush posted PCI writes before polling. */
+	ioread32(bar4 + T2SEP_INTEL_CPU_CONTROL);
+
+	for (i = 0; i < 100; i++) {
+		inbox = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
+		outbox = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+		if (inbox != inbox_before || outbox != outbox_before)
+			break;
+		msleep(10);
+	}
+
+	dev_info(&pdev->dev,
+		 "Apple CPU-start probe after %d ms: inbox %#010x -> %#010x, outbox %#010x -> %#010x\n",
+		 i * 10, inbox_before, inbox, outbox_before, outbox);
+	dev_info(&pdev->dev,
+		 "post-start controls: +0x8028=%#010x +0x8040=%#010x +0x8048=%#010x\n",
+		 ioread32(bar4 + T2SEP_INTEL_CPU_CONTROL),
+		 ioread32(bar4 + T2SEP_INTEL_CPU_RESET),
+		 ioread32(bar4 + T2SEP_INTEL_CPU_START));
+
+	if (apple_send_control_nop) {
+		u32 response[4];
+		u32 nop[4] = { 0x00000100, 0, 0, 0 };
+
+		outbox = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+		if (outbox & T2SEP_INTEL_OUTBOX_FULL) {
+			dev_warn(&pdev->dev,
+				 "control NOP skipped: outbound FIFO is full (%#010x)\n",
+				 outbox);
+		} else {
+			/* Apple writes words 0..2 and commits with a zero word 3. */
+			iowrite32(nop[0], bar4 + 0x820);
+			iowrite32(nop[1], bar4 + 0x824);
+			iowrite32(nop[2], bar4 + 0x828);
+			iowrite32(0, bar4 + 0x82c);
+			ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+
+			for (i = 0; i < 500; i++) {
+				inbox = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
+				if (!(inbox & T2SEP_INTEL_INBOX_EMPTY))
+					break;
+				msleep(10);
+			}
+
+			if (inbox & T2SEP_INTEL_INBOX_EMPTY) {
+				dev_warn(&pdev->dev,
+					 "control NOP timed out after 5000 ms; inbox=%#010x\n",
+					 inbox);
+			} else {
+				response[0] = ioread32(bar4 + 0x810);
+				response[1] = ioread32(bar4 + 0x814);
+				response[2] = ioread32(bar4 + 0x818);
+				response[3] = ioread32(bar4 + 0x81c);
+				dev_info(&pdev->dev,
+					 "control NOP response after %d ms: %08x %08x %08x %08x\n",
+					 i * 10, response[0], response[1],
+					 response[2], response[3]);
+			}
+		}
+	}
+
+	/* Exact CPU-stop write from AppleSEPIntelIOP::_stopCPUGated(). */
+	iowrite32(5, bar4 + T2SEP_INTEL_CPU_STOP);
+	ioread32(bar4 + T2SEP_INTEL_CPU_STOP);
+	dev_info(&pdev->dev,
+		 "issued Apple CPU-stop value 5 at +0x8024; payload FIFOs untouched\n");
+}
 
 static void t2sep_scan_aperture(struct pci_dev *pdev, int bar)
 {
@@ -101,6 +253,8 @@ static int t2sep_probe(struct pci_dev *pdev,
 	u16 original_command;
 	u16 status;
 	bool enabled = false;
+	bool msi_ready = false;
+	struct t2sep_irq_probe irq_probe;
 	int bar;
 	int ret;
 
@@ -124,7 +278,7 @@ static int t2sep_probe(struct pci_dev *pdev,
 		goto out_disable;
 	}
 
-	if (temporarily_enable_device) {
+	if (temporarily_enable_device || apple_start_with_msi) {
 		ret = pci_enable_device_mem(pdev);
 		if (ret) {
 			dev_err(&pdev->dev,
@@ -134,6 +288,16 @@ static int t2sep_probe(struct pci_dev *pdev,
 		enabled = true;
 		dev_info(&pdev->dev,
 			 "temporarily enabled PCI memory decoding for this probe\n");
+	}
+
+	if (apple_start_with_msi) {
+		ret = t2sep_setup_msi(pdev, &irq_probe);
+		if (ret) {
+			dev_err(&pdev->dev, "could not allocate two MSI vectors: %d\n",
+				ret);
+			goto out_disable;
+		}
+		msi_ready = true;
 	}
 
 	dev_info(&pdev->dev,
@@ -229,7 +393,7 @@ static int t2sep_probe(struct pci_dev *pdev,
 		pci_iounmap(pdev, bar4);
 	}
 
-	if (read_apple_layout) {
+	if (read_apple_layout || apple_start_cpu_probe) {
 		void __iomem *bar4;
 		u32 inbox_status;
 		u32 outbox_status;
@@ -267,7 +431,11 @@ static int t2sep_probe(struct pci_dev *pdev,
 			 "Apple layout CPU registers (read-only): +0x8028=%#010x +0x8040=%#010x +0x8048=%#010x\n",
 			 cpu_control, cpu_reset, cpu_start);
 		dev_info(&pdev->dev,
-			 "Apple layout payload FIFOs were not accessed; no MMIO writes performed\n");
+			 "Apple layout payload FIFOs were not accessed%s\n",
+			 apple_start_cpu_probe ? "" : "; no MMIO writes performed");
+
+		if (apple_start_cpu_probe)
+			t2sep_apple_start_cpu_probe(pdev, bar4);
 
 		pci_iounmap(pdev, bar4);
 	}
@@ -275,6 +443,8 @@ static int t2sep_probe(struct pci_dev *pdev,
 	ret = 0;
 
 out_disable:
+	if (msi_ready)
+		t2sep_teardown_msi(pdev, &irq_probe);
 	if (enabled) {
 		u16 command_after_disable;
 
