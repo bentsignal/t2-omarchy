@@ -142,6 +142,29 @@ probe then issued Apple's stop sequence, freed both vectors, restored the PCI
 command word, and unloaded. No biometric endpoint command or xART operation
 was involved.
 
+## SBIO and the storage prerequisite
+
+Static analysis of `AppleMesaSEPDriver` and `AppleSEPGenericTransfer` confirms
+that built-in Touch ID is SEP endpoint `sbio` (`0x08`). The Apple driver asks
+for a 16 KiB host-to-SEP buffer and a `0x4b000`-byte SEP-to-host buffer. It
+registers their DMA page-frame addresses through control opcodes `2` and `3`,
+then uses generic-transfer message type `0xfc` for transactions. The first
+packet has a 28-byte header followed by request data. These details are now
+recovered well enough to implement the transport without guessing.
+
+SBIO is not expected to become available until xART is online. xART is the
+SEP's anti-replay store and is backed by a machine-specific GigaLocker `.gl`
+file on an APFS xART volume. This installation has only a 2 GiB FAT EFI
+partition and a LUKS2/Btrfs Linux partition covering the remainder of the
+internal SSD; no APFS/xART partition or GigaLocker file was found. This is now
+the gating dependency, rather than the PCI mailbox.
+
+Do not solve this by fabricating an xART response, registering DMA buffers and
+freeing them while SEP may retain their addresses, or sending guessed SBIO
+commands. A safe continuation needs the machine's xART volume/material (or a
+macOS Recovery-supported initialization of new xART state) preserved before
+Linux implements the endpoint.
+
 ## Safety boundary
 
 Do not experiment with xART/gigalocker writes on this daily-driver machine.
