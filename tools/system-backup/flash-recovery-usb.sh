@@ -12,7 +12,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run through pkexec or sudo"
 [[ -b $target && -f $image ]] || die "target or ISO is missing"
 
-model=$(lsblk -dnro MODEL "$target" | sed 's/[[:space:]]*$//')
+model=$(lsblk -dno MODEL "$target" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 serial=$(lsblk -dnro SERIAL "$target" | sed 's/[[:space:]]*$//')
 transport=$(lsblk -dnro TRAN "$target")
 capacity=$(blockdev --getsize64 "$target")
