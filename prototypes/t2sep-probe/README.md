@@ -42,6 +42,16 @@ sudo journalctl -k -n 30 --no-pager
 sudo rmmod t2sep_probe
 ```
 
+If status bit `0x20000` is clear, PongoOS treats the receive mailbox as
+non-empty. The next gate consumes and decodes at most one inbound message. It
+still performs no MMIO write, but unlike the status-only probe this read may
+advance the hardware receive FIFO:
+
+```bash
+sudo insmod ./t2sep_probe.ko read_mailbox_status=1 read_one_message=1
+sudo rmmod t2sep_probe
+```
+
 Do not install this in the initramfs or configure it for automatic loading.
 The PCI address may differ on another boot or machine; the device ID and DMI
 allowlist, not the example address, are the safety checks.

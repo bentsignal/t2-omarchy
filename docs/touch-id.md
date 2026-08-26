@@ -14,12 +14,18 @@ unloaded successfully on this machine. The live probe bound only to
 then returned the device to its original unbound state. Its linked-symbol
 audit showed no PCI/MMIO write, device-enable, IRQ, DMA, or reset functions.
 
-The next experiment is separately gated by `read_mailbox_status=1`. Based on
-PongoOS's T8012 support, it maps BAR4 and reads only the hypothesized 32-bit
-mailbox send/receive status registers at offsets `0x4008` and `0x4020`. It
-does not read a receive payload or write/acknowledge any register. This second
-stage was built but had not yet run when these notes were updated because it
-requires a fresh interactive root authorization.
+The second experiment, gated by `read_mailbox_status=1`, maps BAR4 and reads
+only the hypothesized 32-bit mailbox send/receive status registers at offsets
+`0x4008` and `0x4020`. Two runs returned `send=0x00000000` and
+`receive=0x00000000`, then unloaded cleanly with no new kernel warnings. In
+PongoOS's T8012 implementation, receive bit `0x20000` means empty; a clear bit
+therefore suggests an inbound message may be waiting if the BAR translation is
+correct.
+
+The third experiment is gated by both `read_mailbox_status=1` and
+`read_one_message=1`. It reads and decodes at most one waiting 64-bit inbound
+message from offsets `0x4034`/`0x4038`, in PongoOS's documented order. This
+still links no MMIO-write function, but reading may advance the receive FIFO.
 
 ## What the live machine exposes
 

@@ -19,6 +19,9 @@
 #define T2SEP_MAILBOX_BASE 0x4000
 #define T2SEP_SEND_STATUS (T2SEP_MAILBOX_BASE + 0x08)
 #define T2SEP_RECV_STATUS (T2SEP_MAILBOX_BASE + 0x20)
+#define T2SEP_RECV0 (T2SEP_MAILBOX_BASE + 0x34)
+#define T2SEP_RECV1 (T2SEP_MAILBOX_BASE + 0x38)
+#define T2SEP_RECV_EMPTY BIT(17)
 
 static bool allow_unsupported_model;
 module_param(allow_unsupported_model, bool, 0400);
@@ -29,6 +32,11 @@ static bool read_mailbox_status;
 module_param(read_mailbox_status, bool, 0400);
 MODULE_PARM_DESC(read_mailbox_status,
 	"Map BAR4 and read only the hypothesized T8012 mailbox status registers");
+
+static bool read_one_message;
+module_param(read_one_message, bool, 0400);
+MODULE_PARM_DESC(read_one_message,
+	"Consume and decode at most one waiting T8012 SEP-to-host mailbox message");
 
 static bool t2sep_supported_model(void)
 {
@@ -85,7 +93,8 @@ static int t2sep_probe(struct pci_dev *pdev,
 		u32 recv_status;
 
 		if (pci_resource_len(pdev, T2SEP_MAILBOX_BAR) <=
-		    T2SEP_RECV_STATUS + sizeof(u32)) {
+		    (read_one_message ? T2SEP_RECV1 : T2SEP_RECV_STATUS) +
+		    sizeof(u32)) {
 			dev_err(&pdev->dev, "BAR4 is too small for mailbox status probe\n");
 			return -EINVAL;
 		}
@@ -96,13 +105,36 @@ static int t2sep_probe(struct pci_dev *pdev,
 
 		send_status = ioread32(bar4 + T2SEP_SEND_STATUS);
 		recv_status = ioread32(bar4 + T2SEP_RECV_STATUS);
-		pci_iounmap(pdev, bar4);
 
 		dev_info(&pdev->dev,
 			 "T8012 mailbox status (read-only hypothesis): send=%#010x receive=%#010x\n",
 			 send_status, recv_status);
-		dev_info(&pdev->dev,
-			 "mailbox payload and control registers were not accessed\n");
+		if (!read_one_message)
+			dev_info(&pdev->dev,
+				 "mailbox payload and control registers were not accessed\n");
+
+		if (read_one_message) {
+			u32 recv0;
+			u32 recv1;
+			u64 message;
+
+			if (recv_status & T2SEP_RECV_EMPTY) {
+				dev_info(&pdev->dev,
+					 "receive mailbox reports empty; no payload read\n");
+			} else {
+				/* PongoOS reads recv0 before recv1 on T8012. */
+				recv0 = ioread32(bar4 + T2SEP_RECV0);
+				recv1 = ioread32(bar4 + T2SEP_RECV1);
+				message = ((u64)recv1 << 32) | recv0;
+				dev_info(&pdev->dev,
+					 "consumed one inbound message=%#018llx ep=%#04x tag=%#04x opcode=%#04x param=%#04x data=%#010x\n",
+					 message, recv0 & 0xff, (recv0 >> 8) & 0xff,
+					 (recv0 >> 16) & 0xff, (recv0 >> 24) & 0xff,
+					 recv1);
+			}
+		}
+
+		pci_iounmap(pdev, bar4);
 	}
 
 	return 0;
