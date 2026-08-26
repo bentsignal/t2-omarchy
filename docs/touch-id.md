@@ -26,6 +26,14 @@ The third experiment is gated by both `read_mailbox_status=1` and
 `read_one_message=1`. It reads and decodes at most one waiting 64-bit inbound
 message from offsets `0x4034`/`0x4038`, in PongoOS's documented order. This
 still links no MMIO-write function, but reading may advance the receive FIFO.
+It returned an all-zero word, and the receive status remained zero before and
+after the read. The alternative BAR4 base-zero status offsets were also zero.
+This indicates BAR4 is inert at these locations rather than holding a queued
+zero-valued message.
+
+The next status-only gate, `scan_apertures=1`, compares the documented T8012
+status offsets across BAR0, BAR2, and BAR4 to identify which PCI aperture, if
+any, translates the native SEP register window.
 
 ## What the live machine exposes
 

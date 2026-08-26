@@ -52,6 +52,14 @@ sudo insmod ./t2sep_probe.ko read_mailbox_status=1 read_one_message=1
 sudo rmmod t2sep_probe
 ```
 
+If BAR4 is inert, the status-only aperture comparison reads the same PongoOS
+status offsets in each PCI BAR. It does not read a payload:
+
+```bash
+sudo insmod ./t2sep_probe.ko scan_apertures=1
+sudo rmmod t2sep_probe
+```
+
 Do not install this in the initramfs or configure it for automatic loading.
 The PCI address may differ on another boot or machine; the device ID and DMI
 allowlist, not the example address, are the safety checks.
