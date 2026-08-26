@@ -56,6 +56,8 @@ Seagate backup disk into boot media.
 The machine's second USB is a 32 GB SanDisk Cruzer Fit, serial
 `4C530010630724110334`. `tools/system-backup/flash-recovery-usb.sh` is pinned to
 that identity and verifies every written ISO byte before reporting success.
+The device was written and passed full byte-for-byte SHA-256 verification on
+2026-08-26.
 
 ## Planned disk change
 
