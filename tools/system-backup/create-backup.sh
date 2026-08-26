@@ -64,7 +64,8 @@ sync
 btrfs scrub start -B -r "$target_root"
 (
   cd "$target_root"
-  find "snapshots/$stamp" "metadata/$stamp" "efi-files/$stamp" -type f -print0 |
+  find "snapshots/$stamp" "metadata/$stamp" "efi-files/$stamp" -type f \
+    ! -path "metadata/$stamp/SHA256SUMS" -print0 |
     sort -z | xargs -0 sha256sum
 ) > "$target_root/metadata/$stamp/SHA256SUMS"
 sync

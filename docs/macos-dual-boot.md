@@ -34,6 +34,14 @@ The snapshots provide a restore point, but the original disk remains the only
 bootable copy until a restore is tested. Keep the backup disk disconnected
 during macOS installation to prevent selecting it accidentally.
 
+### Completed checkpoint
+
+Backup `20260826T212118Z` was created on external Btrfs filesystem UUID
+`2a922a39-ee48-4b12-8e6f-3c3a69b154a5`. The read-only scrub covered 40.61 GiB
+in 18 minutes 23 seconds and reported **no errors found**. It contains all four
+subvolumes, a raw 2 GiB EFI image and file copy, a 16 MiB LUKS2 header backup,
+GPT metadata, and system/package manifests.
+
 ## Planned disk change
 
 Target approximately 120 GiB of unallocated space for macOS. The safe order,
