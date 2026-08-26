@@ -35,6 +35,12 @@ The next status-only gate, `scan_apertures=1`, compares the documented T8012
 status offsets across BAR0, BAR2, and BAR4 to identify which PCI aperture, if
 any, translates the native SEP register window.
 
+That scan returned all ones from BAR0/BAR2 and zeros from BAR4, with no kernel
+warnings. The next gate, `temporarily_enable_device=1`, uses Linux's standard
+PCI enable API before repeating the scan and disables the function before
+probe returns. It preserves and restores the firmware-provided PCI command
+word exactly.
+
 ## What the live machine exposes
 
 The machine is running Omarchy 4.0.1 with

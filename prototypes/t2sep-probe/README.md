@@ -34,6 +34,17 @@ sudo journalctl -k -n 30 --no-pager
 sudo rmmod t2sep_probe
 ```
 
+The first reversible state-changing experiment temporarily enables PCI memory
+decoding through the kernel's normal PCI API, scans the status candidates, and
+disables the function before probe returns. Because firmware left this
+function's PCI command word enabled despite Linux's enable refcount being zero,
+the probe saves and restores that word exactly:
+
+```bash
+sudo insmod ./t2sep_probe.ko temporarily_enable_device=1 scan_apertures=1
+sudo rmmod t2sep_probe
+```
+
 Run the separately gated status-register experiment with:
 
 ```bash

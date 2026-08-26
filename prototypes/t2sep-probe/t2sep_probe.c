@@ -44,6 +44,11 @@ module_param(scan_apertures, bool, 0400);
 MODULE_PARM_DESC(scan_apertures,
 	"Read status candidates at T8012 offsets in BAR0, BAR2, and BAR4");
 
+static bool temporarily_enable_device;
+module_param(temporarily_enable_device, bool, 0400);
+MODULE_PARM_DESC(temporarily_enable_device,
+	"Temporarily call pci_enable_device_mem() during the probe, then disable it");
+
 static void t2sep_scan_aperture(struct pci_dev *pdev, int bar)
 {
 	void __iomem *mapping;
@@ -79,7 +84,9 @@ static int t2sep_probe(struct pci_dev *pdev,
 			const struct pci_device_id *id)
 {
 	u16 command;
+	u16 original_command;
 	u16 status;
+	bool enabled = false;
 	int bar;
 	int ret;
 
@@ -91,12 +98,29 @@ static int t2sep_probe(struct pci_dev *pdev,
 	}
 
 	ret = pci_read_config_word(pdev, PCI_COMMAND, &command);
-	if (ret)
-		return pcibios_err_to_errno(ret);
+	if (ret) {
+		ret = pcibios_err_to_errno(ret);
+		goto out_disable;
+	}
+	original_command = command;
 
 	ret = pci_read_config_word(pdev, PCI_STATUS, &status);
-	if (ret)
-		return pcibios_err_to_errno(ret);
+	if (ret) {
+		ret = pcibios_err_to_errno(ret);
+		goto out_disable;
+	}
+
+	if (temporarily_enable_device) {
+		ret = pci_enable_device_mem(pdev);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"temporary pci_enable_device_mem failed: %d\n", ret);
+			return ret;
+		}
+		enabled = true;
+		dev_info(&pdev->dev,
+			 "temporarily enabled PCI memory decoding for this probe\n");
+	}
 
 	dev_info(&pdev->dev,
 		 "read-only probe: vendor=%04x device=%04x revision=%02x irq=%u command=%04x status=%04x\n",
@@ -136,12 +160,15 @@ static int t2sep_probe(struct pci_dev *pdev,
 		    (read_one_message ? T2SEP_RECV1 : T2SEP_RECV_STATUS) +
 		    sizeof(u32)) {
 			dev_err(&pdev->dev, "BAR4 is too small for mailbox status probe\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto out_disable;
 		}
 
 		bar4 = pci_iomap(pdev, T2SEP_MAILBOX_BAR, 0);
-		if (!bar4)
-			return -ENOMEM;
+		if (!bar4) {
+			ret = -ENOMEM;
+			goto out_disable;
+		}
 
 		send_status = ioread32(bar4 + T2SEP_SEND_STATUS);
 		recv_status = ioread32(bar4 + T2SEP_RECV_STATUS);
@@ -188,7 +215,24 @@ static int t2sep_probe(struct pci_dev *pdev,
 		pci_iounmap(pdev, bar4);
 	}
 
-	return 0;
+	ret = 0;
+
+out_disable:
+	if (enabled) {
+		u16 command_after_disable;
+
+		pci_disable_device(pdev);
+		if (!pci_read_config_word(pdev, PCI_COMMAND, &command_after_disable) &&
+		    command_after_disable != original_command) {
+			pci_write_config_word(pdev, PCI_COMMAND, original_command);
+			dev_info(&pdev->dev,
+				 "restored PCI command word from %#06x to original %#06x\n",
+				 command_after_disable, original_command);
+		}
+		dev_info(&pdev->dev,
+			 "temporary PCI enable released before probe returned\n");
+	}
+	return ret;
 }
 
 static void t2sep_remove(struct pci_dev *pdev)
