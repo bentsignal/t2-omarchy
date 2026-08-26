@@ -10,6 +10,7 @@ between AMD performance mode and an Intel-only battery mode at boot.
 ## Guides
 
 - [Power management and dual boot modes](docs/power-management.md)
+- [Touch ID / T2 Secure Enclave research](docs/touch-id.md)
 - [Audio recovery](#audio-recovery)
 
 ## Power-management summary
