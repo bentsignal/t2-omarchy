@@ -24,6 +24,15 @@
 #define T2SEP_RECV1 (T2SEP_MAILBOX_BASE + 0x38)
 #define T2SEP_RECV_EMPTY BIT(17)
 
+/* Recovered from AppleSEPIntelIOP in Apple's macOS 14.5 KDK. */
+#define T2SEP_INTEL_INBOX_STATUS 0x0108
+#define T2SEP_INTEL_OUTBOX_STATUS 0x010c
+#define T2SEP_INTEL_INBOX_EMPTY BIT(17)
+#define T2SEP_INTEL_OUTBOX_FULL BIT(16)
+#define T2SEP_INTEL_CPU_CONTROL 0x8028
+#define T2SEP_INTEL_CPU_RESET 0x8040
+#define T2SEP_INTEL_CPU_START 0x8048
+
 static bool allow_unsupported_model;
 module_param(allow_unsupported_model, bool, 0400);
 MODULE_PARM_DESC(allow_unsupported_model,
@@ -48,6 +57,11 @@ static bool temporarily_enable_device;
 module_param(temporarily_enable_device, bool, 0400);
 MODULE_PARM_DESC(temporarily_enable_device,
 	"Temporarily call pci_enable_device_mem() during the probe, then disable it");
+
+static bool read_apple_layout;
+module_param(read_apple_layout, bool, 0400);
+MODULE_PARM_DESC(read_apple_layout,
+	"Read only AppleSEPIntelIOP BAR4 status and CPU-control registers");
 
 static void t2sep_scan_aperture(struct pci_dev *pdev, int bar)
 {
@@ -211,6 +225,49 @@ static int t2sep_probe(struct pci_dev *pdev,
 					 recv_status_after, recv_status);
 			}
 		}
+
+		pci_iounmap(pdev, bar4);
+	}
+
+	if (read_apple_layout) {
+		void __iomem *bar4;
+		u32 inbox_status;
+		u32 outbox_status;
+		u32 cpu_control;
+		u32 cpu_reset;
+		u32 cpu_start;
+
+		if (pci_resource_len(pdev, T2SEP_MAILBOX_BAR) <=
+		    T2SEP_INTEL_CPU_START + sizeof(u32)) {
+			dev_err(&pdev->dev,
+				 "BAR4 is too small for AppleSEPIntelIOP register probe\n");
+			ret = -EINVAL;
+			goto out_disable;
+		}
+
+		bar4 = pci_iomap(pdev, T2SEP_MAILBOX_BAR, 0);
+		if (!bar4) {
+			ret = -ENOMEM;
+			goto out_disable;
+		}
+
+		inbox_status = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
+		outbox_status = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+		cpu_control = ioread32(bar4 + T2SEP_INTEL_CPU_CONTROL);
+		cpu_reset = ioread32(bar4 + T2SEP_INTEL_CPU_RESET);
+		cpu_start = ioread32(bar4 + T2SEP_INTEL_CPU_START);
+
+		dev_info(&pdev->dev,
+			 "Apple layout BAR4: inbox_status=%#010x (%s), outbox_status=%#010x (%s)\n",
+			 inbox_status,
+			 inbox_status & T2SEP_INTEL_INBOX_EMPTY ? "empty" : "not empty",
+			 outbox_status,
+			 outbox_status & T2SEP_INTEL_OUTBOX_FULL ? "full" : "not full");
+		dev_info(&pdev->dev,
+			 "Apple layout CPU registers (read-only): +0x8028=%#010x +0x8040=%#010x +0x8048=%#010x\n",
+			 cpu_control, cpu_reset, cpu_start);
+		dev_info(&pdev->dev,
+			 "Apple layout payload FIFOs were not accessed; no MMIO writes performed\n");
 
 		pci_iounmap(pdev, bar4);
 	}

@@ -13,6 +13,13 @@ hypothesized T8012 mailbox send/receive status registers. The offsets come from
 checkra1n/PongoOS's 32-bit SEP mailbox layout. It does not read the receive
 payload, enable interrupts, acknowledge anything, or send a message.
 
+The preferred status probe uses the Intel PCIe layout recovered from Apple's
+`AppleSEPIntelIOP` driver in the macOS 14.5 Kernel Debug Kit. Apple maps BAR4
+(PCI BAR register `0x20`), reads inbound/outbound FIFO status at offsets
+`0x108`/`0x10c`, and accesses the 128-bit FIFOs at `0x810`/`0x820`. The probe
+reads the status and CPU-control registers only; it does not access either FIFO
+or reproduce Apple's startup writes.
+
 Build against the running kernel:
 
 ```bash
@@ -30,6 +37,14 @@ Load, inspect, and unload interactively:
 
 ```bash
 sudo insmod ./t2sep_probe.ko
+sudo journalctl -k -n 30 --no-pager
+sudo rmmod t2sep_probe
+```
+
+Run the recovered Apple-layout read-only probe with:
+
+```bash
+sudo insmod ./t2sep_probe.ko read_apple_layout=1
 sudo journalctl -k -n 30 --no-pager
 sudo rmmod t2sep_probe
 ```

@@ -99,6 +99,29 @@ The important architectural rule is that raw fingerprint images and templates
 must stay inside Apple's Secure Enclave. Linux should relay authenticated
 commands and consume a match result, not attempt to read fingerprint pixels.
 
+## Recovered Intel T2 register layout
+
+The x86_64 slice of `AppleSEPManager` from Apple's macOS 14.5 (23F79) Kernel
+Debug Kit contains symbols and executable code for `AppleSEPIntelIOP`. Its
+`start(IOService *)` method maps the PCI device memory selected by config
+register `0x20`, which is PCI BAR4. The mailbox methods then use this layout:
+
+| BAR4 offset | Apple driver use |
+| --- | --- |
+| `0x108` | inbound FIFO status; bit 17 means empty |
+| `0x10c` | outbound FIFO status; bit 16 means full |
+| `0x810`–`0x81c` | four inbound 32-bit words |
+| `0x820`–`0x82c` | four outbound 32-bit words |
+| `0x8028` | CPU control; Apple writes `5` during startup |
+| `0x8040` | CPU startup/reset register; Apple writes `0` |
+| `0x8048` | CPU startup register; Apple writes `1` |
+
+This is a different PCIe FIFO presentation from the T8012/PongoOS mailbox
+offsets initially tested. The earlier all-zero reads at BAR4 `+0x4000` neither
+showed that the T2 was dead nor described this interface. The next experiment
+reads only the recovered status and CPU-control registers. Reproducing Apple's
+three startup writes remains a separate, explicitly gated milestone.
+
 ## Safety boundary
 
 Do not experiment with xART/gigalocker writes on this daily-driver machine.
