@@ -42,6 +42,17 @@ in 18 minutes 23 seconds and reported **no errors found**. It contains all four
 subvolumes, a raw 2 GiB EFI image and file copy, a 16 MiB LUKS2 header backup,
 GPT metadata, and system/package manifests.
 
+The current Omarchy 4.0.1 recovery ISO was also downloaded to
+`~/Downloads/recovery-media/omarchy-4.0.1.iso` and verified against the
+official release SHA-256:
+
+```text
+69cbb4e10d98ad831c3c9f245b5757a9d1fedfd0c9592780e977d6f950dea8c3
+```
+
+Write it to a *second* USB stick of at least 8 GB. Do not turn the verified
+Seagate backup disk into boot media.
+
 ## Planned disk change
 
 Target approximately 120 GiB of unallocated space for macOS. The safe order,
@@ -57,6 +68,14 @@ Exact sector boundaries must be computed from the live recovery environment.
 Do not blindly paste boundaries from this document. LUKS2 metadata/header
 backup does not contain filesystem data and is not a substitute for the Btrfs
 backup.
+
+For this audited 4 KiB-sector disk, the guarded helper in
+`tools/system-backup/prepare-macos-space.sh` targets 128 GiB of free tail space
+and first reduces Btrfs to 780 GiB, leaving more than 21 GiB of unused room
+inside the shortened LUKS partition. It validates the disk GUID, partition
+start/size/type, and LUKS UUID recorded above, and must be run from recovery
+media with the installed root filesystem inactive. Its constants are valid
+only for the recorded starting layout.
 
 In Internet Recovery, create/install macOS only in the newly unallocated tail
 space. Never erase the physical Apple SSD or the Linux partitions. Keep the
