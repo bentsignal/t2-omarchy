@@ -5,6 +5,22 @@ machine-specific evidence, current public research, safety boundaries, and a
 concrete bring-up plan for the built-in Touch ID sensor on this repository's
 `MacBookPro16,1`.
 
+## Prototype progress
+
+`prototypes/t2sep-probe/` contains the first out-of-tree kernel prototype. It
+builds against the installed `linux-t2` 7.1.8 headers and has been loaded and
+unloaded successfully on this machine. The live probe bound only to
+`04:00.2`, reported PCI command `0x0006`, status `0x0010`, and all three BARs,
+then returned the device to its original unbound state. Its linked-symbol
+audit showed no PCI/MMIO write, device-enable, IRQ, DMA, or reset functions.
+
+The next experiment is separately gated by `read_mailbox_status=1`. Based on
+PongoOS's T8012 support, it maps BAR4 and reads only the hypothesized 32-bit
+mailbox send/receive status registers at offsets `0x4008` and `0x4020`. It
+does not read a receive payload or write/acknowledge any register. This second
+stage was built but had not yet run when these notes were updated because it
+requires a fresh interactive root authorization.
+
 ## What the live machine exposes
 
 The machine is running Omarchy 4.0.1 with

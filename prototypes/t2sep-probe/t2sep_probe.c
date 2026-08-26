@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Read-only enumeration probe for the T2 SEP PCI function.
+ *
+ * This intentionally does not enable the PCI function, request regions,
+ * map a BAR, register an interrupt, perform DMA, or write PCI/MMIO state.
+ */
+
+#include <linux/dmi.h>
+#include <linux/io.h>
+#include <linux/module.h>
+#include <linux/pci.h>
+
+#define PCI_VENDOR_ID_APPLE_LOCAL 0x106b
+#define PCI_DEVICE_ID_APPLE_T2_SEP 0x1802
+
+/* T8012 32-bit ASC mailbox layout from checkra1n/PongoOS. */
+#define T2SEP_MAILBOX_BAR 4
+#define T2SEP_MAILBOX_BASE 0x4000
+#define T2SEP_SEND_STATUS (T2SEP_MAILBOX_BASE + 0x08)
+#define T2SEP_RECV_STATUS (T2SEP_MAILBOX_BASE + 0x20)
+
+static bool allow_unsupported_model;
+module_param(allow_unsupported_model, bool, 0400);
+MODULE_PARM_DESC(allow_unsupported_model,
+	"Permit read-only enumeration on models other than MacBookPro16,1");
+
+static bool read_mailbox_status;
+module_param(read_mailbox_status, bool, 0400);
+MODULE_PARM_DESC(read_mailbox_status,
+	"Map BAR4 and read only the hypothesized T8012 mailbox status registers");
+
+static bool t2sep_supported_model(void)
+{
+	return dmi_match(DMI_PRODUCT_NAME, "MacBookPro16,1");
+}
+
+static int t2sep_probe(struct pci_dev *pdev,
+			const struct pci_device_id *id)
+{
+	u16 command;
+	u16 status;
+	int bar;
+	int ret;
+
+	if (!t2sep_supported_model() && !allow_unsupported_model) {
+		dev_err(&pdev->dev,
+			"refusing unsupported model %s (read-only override exists)\n",
+			dmi_get_system_info(DMI_PRODUCT_NAME) ?: "unknown");
+		return -ENODEV;
+	}
+
+	ret = pci_read_config_word(pdev, PCI_COMMAND, &command);
+	if (ret)
+		return pcibios_err_to_errno(ret);
+
+	ret = pci_read_config_word(pdev, PCI_STATUS, &status);
+	if (ret)
+		return pcibios_err_to_errno(ret);
+
+	dev_info(&pdev->dev,
+		 "read-only probe: vendor=%04x device=%04x revision=%02x irq=%u command=%04x status=%04x\n",
+		 pdev->vendor, pdev->device, pdev->revision, pdev->irq,
+		 command, status);
+
+	for (bar = 0; bar < PCI_STD_NUM_BARS; bar++) {
+		resource_size_t start = pci_resource_start(pdev, bar);
+		resource_size_t length = pci_resource_len(pdev, bar);
+		unsigned long flags = pci_resource_flags(pdev, bar);
+
+		if (!length)
+			continue;
+
+		dev_info(&pdev->dev,
+			 "BAR%d start=%pa length=%pa flags=%#lx (not mapped)\n",
+			 bar, &start, &length, flags);
+	}
+
+	dev_info(&pdev->dev,
+		 "enumeration complete; no PCI config or MMIO writes performed\n");
+
+	if (read_mailbox_status) {
+		void __iomem *bar4;
+		u32 send_status;
+		u32 recv_status;
+
+		if (pci_resource_len(pdev, T2SEP_MAILBOX_BAR) <=
+		    T2SEP_RECV_STATUS + sizeof(u32)) {
+			dev_err(&pdev->dev, "BAR4 is too small for mailbox status probe\n");
+			return -EINVAL;
+		}
+
+		bar4 = pci_iomap(pdev, T2SEP_MAILBOX_BAR, 0);
+		if (!bar4)
+			return -ENOMEM;
+
+		send_status = ioread32(bar4 + T2SEP_SEND_STATUS);
+		recv_status = ioread32(bar4 + T2SEP_RECV_STATUS);
+		pci_iounmap(pdev, bar4);
+
+		dev_info(&pdev->dev,
+			 "T8012 mailbox status (read-only hypothesis): send=%#010x receive=%#010x\n",
+			 send_status, recv_status);
+		dev_info(&pdev->dev,
+			 "mailbox payload and control registers were not accessed\n");
+	}
+
+	return 0;
+}
+
+static void t2sep_remove(struct pci_dev *pdev)
+{
+	dev_info(&pdev->dev, "read-only probe removed\n");
+}
+
+static const struct pci_device_id t2sep_ids[] = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_APPLE_LOCAL, PCI_DEVICE_ID_APPLE_T2_SEP) },
+	{ }
+};
+MODULE_DEVICE_TABLE(pci, t2sep_ids);
+
+static struct pci_driver t2sep_driver = {
+	.name = "t2sep_probe",
+	.id_table = t2sep_ids,
+	.probe = t2sep_probe,
+	.remove = t2sep_remove,
+};
+module_pci_driver(t2sep_driver);
+
+MODULE_AUTHOR("Shawn and Codex");
+MODULE_DESCRIPTION("Read-only Apple T2 Secure Enclave PCI enumeration probe");
+MODULE_LICENSE("GPL");
