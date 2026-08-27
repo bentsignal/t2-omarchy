@@ -229,7 +229,20 @@ last. The reversible change used `efibootmgr`; no EFI or APFS files changed.
 comparison runner. It validates the exact model and PCI identity, refuses an
 already-bound SEP, sends only the previously proven control NOP, and guarantees
 module cleanup. Its first invocation was canceled while waiting for polkit and
-did not load the module.
+did not load the module. The successful invocation after fingerprint enrollment
+returned the same valid response as the pre-macOS baseline:
+
+```text
+response: 00010100 00000000 00000000 00100100
+latency:  10 ms
+MSI:      vector 0 = 1, vector 1 = 1
+```
+
+The runner then stopped the transport, restored PCI command `0x0006`, unloaded,
+and left the SEP unbound. This confirms that Apple initialization did not break
+the recovered PCI transport. A control NOP does not enumerate endpoints or
+prove that xART/SBIO is online, so the next milestone remains a bounded
+discovery/status transaction after preserving the enrolled APFS baseline.
 
 ## Useful baseline commands
 
