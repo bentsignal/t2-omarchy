@@ -244,6 +244,12 @@ the recovered PCI transport. A control NOP does not enumerate endpoints or
 prove that xART/SBIO is online, so the next milestone remains a bounded
 discovery/status transaction after preserving the enrolled APFS baseline.
 
+`tools/system-backup/capture-enrolled-apfs.sh` captures that baseline. It is
+pinned to the internal APFS UUID/PARTUUID/size and the Seagate serial/Btrfs
+UUID, saves post-install GPT and EFI-variable inventories, hashes the source
+during the raw copy, then independently hashes the saved image. The second read
+also exercises Btrfs's checksums for every stored extent in the image.
+
 ## Useful baseline commands
 
 ```bash
