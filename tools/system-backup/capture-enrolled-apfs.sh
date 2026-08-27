@@ -33,6 +33,8 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $(findmnt -rn -S "$source_apfs" | wc -l) -eq 0 ]] || die "APFS is mounted in Linux"
 [[ $(findmnt -rn -S "$backup_partition" -o TARGET) == "$backup_mount" ]] ||
   die "backup is not mounted at the expected path"
+mount_options=$(findmnt -rn -S "$backup_partition" -o OPTIONS)
+[[ ,$mount_options, == *,rw,* ]] || die "backup filesystem is not mounted read-write"
 [[ $(df -B1 --output=avail "$backup_mount" | tail -1) -gt 150000000000 ]] ||
   die "backup has insufficient free space"
 [[ ! -e $image && ! -e $partial ]] || die "baseline or partial image already exists"

@@ -250,6 +250,16 @@ UUID, saves post-install GPT and EFI-variable inventories, hashes the source
 before a sparse raw copy, then independently hashes the saved image. The final
 read also exercises Btrfs's checksums for every stored extent in the image.
 
+The first baseline attempt exposed an external-transport problem before an
+image was created. Seagate enclosure `0bc2:231a` (serial `NAA959T1`) was routed
+through the Dell dock and two USB hubs using UAS. Repeated command timeouts and
+host resets caused 6 write and 2 read I/O errors, after which Btrfs correctly
+aborted the transaction and forced the backup read-only. Btrfs recorded no
+corruption or generation errors. The filesystem was unmounted; use a direct
+USB connection, validate it read-only, and scrub before retrying. If direct
+connection is unavailable, a device-specific `usb-storage` UAS quirk is safer
+than retrying the same failing UAS path.
+
 ## Useful baseline commands
 
 ```bash
