@@ -83,6 +83,24 @@ start/size/type, and LUKS UUID recorded above, and must be run from recovery
 media with the installed root filesystem inactive. Its constants are valid
 only for the recorded starting layout.
 
+### Completed resize verification (2026-08-27)
+
+The offline resize completed and the installed Omarchy system booted normally.
+Read-only verification from the installed system found:
+
+- LUKS partition start unchanged: 524544 native 4096-byte sectors
+- LUKS partition size: 210196992 native sectors (about 801.82 GiB)
+- Btrfs device size: exactly 780.00 GiB
+- Deliberate unused space inside LUKS: 21.82 GiB
+- Unallocated SSD tail: 137440169984 bytes (128.001 GiB)
+- Mounted subvolumes: `@`, `@home`, `@log`, and `@pkg`
+- EFI partition mounted normally at `/boot`
+- No failed systemd units
+- Btrfs read/write/flush/corruption/generation error counters: all zero
+
+This is the required checkpoint before entering Apple Internet Recovery. Do
+not resize Linux again; create Apple storage only in the unallocated tail.
+
 In Internet Recovery, create/install macOS only in the newly unallocated tail
 space. Never erase the physical Apple SSD or the Linux partitions. Keep the
 macOS/APFS allocation until Touch ID works from Linux: Apple initialization is
