@@ -14,6 +14,7 @@ backup_mount=/run/media/shawn/OMARCHY_BACKUP
 stamp=20260827-post-enrollment
 destination="$backup_mount/apfs-baselines/$stamp"
 image="$destination/nvme0n1p3.apfs.img"
+partial="$image.partial"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run through pkexec or sudo"
@@ -34,7 +35,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
   die "backup is not mounted at the expected path"
 [[ $(df -B1 --output=avail "$backup_mount" | tail -1) -gt 150000000000 ]] ||
   die "backup has insufficient free space"
-[[ ! -e $image ]] || die "baseline image already exists: $image"
+[[ ! -e $image && ! -e $partial ]] || die "baseline or partial image already exists"
 
 mkdir -p "$destination"
 sfdisk --dump "$source_disk" > "$destination/nvme0n1.sfdisk"
@@ -42,10 +43,17 @@ lsblk -e7 -O > "$destination/lsblk.txt"
 blkid > "$destination/blkid.txt"
 efibootmgr -v > "$destination/efibootmgr.txt"
 
-echo "Capturing $expected_apfs_size APFS bytes to $image"
-dd if="$source_apfs" bs=16M iflag=fullblock status=progress |
-  tee "$image" |
-  sha256sum | awk '{print $1}' > "$destination/source.sha256"
+cleanup() {
+  [[ -e $partial ]] && rm -f -- "$partial"
+}
+trap cleanup EXIT
+
+echo "Hashing the enrolled APFS source"
+sha256sum "$source_apfs" | awk '{print $1}' > "$destination/source.sha256"
+
+echo "Capturing $expected_apfs_size APFS bytes sparsely to $image"
+dd if="$source_apfs" of="$partial" bs=16M iflag=fullblock conv=sparse,fsync status=progress
+mv -- "$partial" "$image"
 sync
 
 echo "Verifying saved APFS image"
@@ -54,4 +62,5 @@ cmp -s "$destination/source.sha256" "$destination/image.sha256" ||
   die "source and saved-image SHA-256 values differ"
 
 sync
+trap - EXIT
 echo "Verified APFS baseline: $(cat "$destination/image.sha256")"
