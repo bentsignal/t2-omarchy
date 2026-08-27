@@ -1,6 +1,6 @@
 # Touch ID on Linux: T2 research notes
 
-Status as of 2026-08-26: **not working yet**. This document records the
+Status as of 2026-08-27: **transport working; biometric path not working yet**. This document records the
 machine-specific evidence, current public research, safety boundaries, and a
 concrete bring-up plan for the built-in Touch ID sensor on this repository's
 `MacBookPro16,1`.
@@ -73,11 +73,12 @@ device is exposed through USB, no kernel driver binds the SEP, and no
 Installing `fprintd` before a transport driver exists would not create device
 support.
 
-The internal 1 TB SSD currently contains only a 2 GB FAT32 EFI partition and
-a LUKS2/Btrfs Linux partition. There is no macOS/APFS partition on the internal
-disk. Any macOS tracing or extraction phase must therefore use external media
-or a deliberately prepared test installation; it must not repartition or
-overwrite the current Linux system as an incidental experiment.
+The internal 1 TB SSD now contains the original 2 GB FAT32 EFI partition, the
+shortened LUKS2/Btrfs Linux partition, and a 128 GiB APFS container. macOS was
+installed through Internet Recovery, booted successfully, and used to enroll
+one fingerprint. Linux then booted successfully with the original LUKS and
+Btrfs UUIDs intact and zero Btrfs device error counters. This provides genuine
+Apple-initialized SEP/APFS state for the next phase; keep the APFS container.
 
 ## Public state of the work
 
@@ -154,10 +155,12 @@ recovered well enough to implement the transport without guessing.
 
 SBIO is not expected to become available until xART is online. xART is the
 SEP's anti-replay store and is backed by a machine-specific GigaLocker `.gl`
-file on an APFS xART volume. This installation has only a 2 GiB FAT EFI
-partition and a LUKS2/Btrfs Linux partition covering the remainder of the
-internal SSD; no APFS/xART partition or GigaLocker file was found. This is now
-the gating dependency, rather than the PCI mailbox.
+file on APFS-backed storage. The machine now has an Apple-created APFS
+container and a macOS-enrolled fingerprint, removing the earlier absence of
+Apple storage as a blocker. Linux still needs a safe xART implementation; the
+available forensic APFS reader explicitly does not support T2 encryption, so
+the presence of the GigaLocker file cannot yet be confirmed from Linux by
+mounting the macOS data volume.
 
 Do not solve this by fabricating an xART response, registering DMA buffers and
 freeing them while SEP may retain their addresses, or sending guessed SBIO
@@ -204,6 +207,29 @@ never acknowledges or advances an unknown state machine.
 7. Expose successful matches through a narrow userspace daemon/libfprint
    backend. Add PAM last, with fingerprint marked `sufficient` and ordinary
    password authentication retained as an immediate fallback.
+
+## Post-macOS checkpoint
+
+The Apple installer created one GPT partition without changing either Linux
+partition:
+
+```text
+/dev/nvme0n1p3
+size:     137440149504 bytes (about 128 GiB)
+type:     APFS
+UUID:     b673d4d8-c2b7-4c15-8e58-268ade21a855
+PARTUUID: a0aeaaa2-eb54-41f5-bedb-cbf6055b8b43
+```
+
+macOS set itself first in UEFI BootOrder. Linux restored the order to
+`0002,0080,0001`: Limine first, macOS second, and the stale systemd-boot entry
+last. The reversible change used `efibootmgr`; no EFI or APFS files changed.
+
+`prototypes/t2sep-probe/run-control-nop.sh` is the fail-closed post-macOS
+comparison runner. It validates the exact model and PCI identity, refuses an
+already-bound SEP, sends only the previously proven control NOP, and guarantees
+module cleanup. Its first invocation was canceled while waiting for polkit and
+did not load the module.
 
 ## Useful baseline commands
 
