@@ -540,6 +540,15 @@ meaning is not yet proven. It must not be sent live until passive `sbio`
 discovery, OOL limits, DMA registration lifetime, and completion semantics
 have all been validated.
 
+The exact transaction is now represented by
+`sbio_initialization_session()` in the offline generic-transfer model. Its
+first packet is fixed byte-for-byte to command `0x73`, total length four,
+flags zero, and payload `03 00 00 00`; the reply transaction must declare a
+zero total and contain no payload. A nonempty reply, changed command, malformed
+notification, or continuation after completion fails. This helper deliberately
+does not expose any encoder for the state-mutating commands below and is not
+called by the kernel module.
+
 The early command sequence can now be separated by risk instead of treating
 every small request as a harmless query:
 

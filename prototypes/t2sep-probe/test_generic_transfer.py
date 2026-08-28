@@ -270,6 +270,27 @@ class GenericTransferTests(unittest.TestCase):
             session.accept(gt.encode_mailbox_notification(1, 7, gt.MESSAGE_ERROR), bytes(raw))
         self.assertEqual(raised.exception.code, 0xE00002C2)
 
+    def test_exact_sbio_initialization_transaction_and_empty_reply(self):
+        session = gt.sbio_initialization_session(initial_sequence=9)
+        first = session.start()
+        self.assertEqual(gt.decode_mailbox_notification(first.notification_word),
+                         (9, 0x73, gt.MESSAGE_FIRST, 0))
+        self.assertEqual(first.packet.hex(),
+                         "0100000004000000000000000000000000000000730000000400000003000000")
+        reply = gt.Packet(0, 0, 0, 0x73, b"").encode()
+        result = session.accept(
+            gt.encode_mailbox_notification(40, 0x73, gt.MESSAGE_FIRST), reply)
+        self.assertEqual(result.response, b"")
+        self.assertTrue(session.complete)
+
+    def test_sbio_initialization_rejects_any_reply_payload(self):
+        session = gt.sbio_initialization_session()
+        session.start()
+        reply = gt.Packet(1, 0, 0, 0x73, b"x").encode()
+        with self.assertRaisesRegex(gt.ProtocolError, "configured maximum"):
+            session.accept(
+                gt.encode_mailbox_notification(1, 0x73, gt.MESSAGE_FIRST), reply)
+
     def test_strict_python_types_fail_with_protocol_errors(self):
         invalid_packets = (bytearray(28), "packet", None)
         for raw in invalid_packets:

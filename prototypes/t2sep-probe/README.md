@@ -147,6 +147,12 @@ packetless continuation pulls, response reassembly, and the shared per-direction
 sequence streams; request-upload completion alone is never reported as a
 completed transaction.
 
+The only SBIO-specific helper is the recovered initialization fixture:
+command `0x73`, flags zero, four-byte little-endian value `3`, and a strictly
+empty response transaction. No pairing, key-exchange, sequence-state,
+enrollment, or matching command encoder is present, and nothing connects this
+fixture to the kernel module.
+
 `intel-fifo.py` independently models the x86_64 driver's exact MMIO action
 order without opening or mapping a device. A receive plan is four ordered reads
 at `0x810..0x81c`. A post plan checks outbox-full, writes payload words 0..2,

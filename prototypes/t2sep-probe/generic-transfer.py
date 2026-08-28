@@ -14,6 +14,9 @@ MESSAGE_FIRST = 0xFC
 MESSAGE_NEXT_IN = 0xFD
 MESSAGE_NEXT_OUT = 0xFE
 MESSAGE_ERROR = 0xFF
+SBIO_INITIALIZE_COMMAND = 0x73
+SBIO_INITIALIZE_VALUE = 3
+SBIO_SEND_BUFFER_SIZE = 0x4000
 
 
 class ProtocolError(ValueError):
@@ -351,6 +354,20 @@ class TransactionSession:
             return TransactionResult(response=response)
         return TransactionResult(
             outbound=self.outbound._emit_notification(MESSAGE_NEXT_OUT))
+
+
+def sbio_initialization_session(*, initial_sequence: int = 0,
+                                send_capacity: int = SBIO_SEND_BUFFER_SIZE
+                                ) -> TransactionSession:
+    """Build only the recovered command-0x73/value-3 initialization fixture."""
+    return TransactionSession(
+        struct.pack("<I", SBIO_INITIALIZE_VALUE),
+        SBIO_INITIALIZE_COMMAND,
+        0,
+        send_capacity,
+        0,
+        initial_sequence,
+    )
 
 
 def main() -> None:
