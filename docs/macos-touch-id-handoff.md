@@ -1,31 +1,32 @@
 # macOS Codex handoff: T2 bridgeOS service activation
 
-> **Current handoff (2026-08-28):** macOS Foundation reconstruction proves the
-> first `[0]` request is byte-exact. The 119-byte HELO has 24 valid native key-
-> order encodings because NSDictionary enumeration is process-seeded; it must
-> be validated semantically, not against one canonical byte string. The one
-> ordering used by the live `biometrickitd` process remains uncaptured, but key
-> order is not a sound explanation for the missing Linux reply. Continue from
-> the sanitized findings below; do not repeat broad biometric captures.
+> **Current handoff (2026-08-28):** Linux now also mirrors every portable part
+> of MultiverseSupport's socket setup (`AF_INET6`, TCP, nonblocking connect,
+> exact address/scope, and interface binding). The T2 still sends HELO but does
+> not answer the byte-exact method-zero request. Darwin's
+> `SO_INTCOPROC_ALLOW` has no Linux equivalent. Commit `c11696a` contains this
+> result. The next task is a narrow comparison with the already successful
+> macOS boot connection; do not repeat enrollment or broad biometric captures.
 
 Give the macOS Codex session this exact instruction:
 
-> Continue from `b0be814` or later. Read this file and `docs/touch-id.md`.
-> Linux now reaches the T2 BiometricKit listener and receives its valid
-> server-first BridgeXPC HELO, but the reconstructed client HELO/method-0 bytes
-> get no reply. On macOS, capture or otherwise derive the exact raw bytes that
-> `/usr/libexec/biometrickitd` writes for only (1) its initial BridgeXPC HELO and
-> (2) its first `getBridgeVersion:` request after boot. Prefer read-only dynamic
-> tracing, debugger inspection, or deterministic reconstruction from the exact
-> current binaries. Do not capture fingerprint templates, run enrollment or
-> match, modify the enrolled finger, disable SIP, or publish raw private data.
-> Compare those bytes byte-for-byte with `bridge-query.py`, add a sanitized
-> verifier/fixture and tests, document the mismatch or exact equality, commit,
-> and push the handback for Linux. The Linux checkpoint includes
-> `tools/research/macos-bridge-wire-compare.py`: save each complete frame in a
-> separate mode-0600 file and run it with the actual macOS build. It validates
-> exact framing and semantics, prints only sizes/hashes/first-difference offsets,
-> and never prints raw wire bytes.
+> Continue from `c11696a` or later. Read this file, `docs/touch-id.md`, and
+> `docs/macos-touch-id-findings.md`. First locate the private packet capture and
+> logs from the already successful boot-time BiometricKit connection; do not
+> put raw pcaps, serials, UUIDs, or fingerprint data in git. Isolate the TCP flow
+> to the directory-advertised BiometricKit port (49165 in that recorded boot)
+> and report a sanitized comparison: both complete endpoint tuples, TCP option
+> state if recoverable, exact frame sizes/hashes/order/timing for client HELO,
+> server HELO, method 0, and its reply, plus decoded non-private method status
+> and bridge version. Use `macos-bridge-wire-compare.py` for the client frames.
+> Determine whether the successful connection has any bytes or TCP transition
+> between HELO and method 0 that Linux lacks. If the old private capture is
+> insufficient, make one narrow boot capture that stops immediately after the
+> automatic bridge-version reply; do not enroll, match, touch the sensor,
+> disable SIP, or capture later biometric traffic. Add only sanitized evidence,
+> reproducible analysis tooling/tests, and conclusions to the repo, then commit
+> and push a Linux handback. Explicitly state the next bounded Linux experiment
+> authorized by the evidence.
 
 The older activation instruction below is retained as history and is already
 complete.
