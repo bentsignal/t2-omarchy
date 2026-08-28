@@ -23,6 +23,7 @@ class MacosBiometricEvidenceTests(unittest.TestCase):
         result = evidence.inspect(fixture())
         self.assertEqual(result["service"], "com.apple.eos.BiometricKit")
         self.assertEqual(result["directory"], "RemoteServiceDiscovery")
+        self.assertEqual(result["transport"], "BiometricKitBridgeTransport")
         self.assertEqual(len(result["sha256"]), 64)
 
     def test_rejects_wrong_architecture_and_each_missing_fact(self):

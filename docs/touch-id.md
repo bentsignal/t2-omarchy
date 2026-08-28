@@ -441,6 +441,15 @@ the T2 directory currently advertises the host-requested
 has connected to it. The first future experiment remains a supervised,
 bounded directory-only capture; it sends no service-open request.
 
+The current daemon also embeds code whose build paths identify it as
+`bkremoted`. Its binary contains `BiometricKitBridgeConnection`,
+`BiometricKitBridgeTransport`, and `BiometricKitBridgeServices`, along with
+`sendMessage:`, `sendMessage:andWaitForReply:`, `handleEnvelope:`, and
+`handleEventWithMessage:error:`. The installed-binary evidence checker now
+requires this coupled set. It locates the next reverse-engineering boundary—the
+biometric envelope above BridgeXPC—but does not yet prove the envelope's bytes,
+message numbers, or whether any operation is safe to transmit.
+
 ## SBIO and the Intel xART split
 
 Static analysis of `AppleMesaSEPDriver` and `AppleSEPGenericTransfer` confirms

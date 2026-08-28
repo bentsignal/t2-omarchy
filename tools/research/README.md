@@ -37,8 +37,11 @@ checksums.
 
 `macos-biometric-evidence.py` verifies the coupled current Intel route in an
 extracted thin x86_64 `biometrickitd`: RemoteServiceDiscovery, BridgeXPC, the
-named BiometricKit services, and the two connection selectors. It performs no
-device or network access and can pin a known installed-slice SHA-256.
+named BiometricKit services, and the two connection selectors. It also requires
+the embedded `bkremoted` connection, transport, and services classes plus their
+synchronous/asynchronous send and envelope/event handlers. This identifies the
+post-discovery implementation boundary without claiming a wire layout. It
+performs no device or network access and can pin a known installed-slice SHA-256.
 
 `macos-rsd-port-evidence.py` verifies the companion x86_64 `remoted` evidence:
 the NCM-device listener class/method and its unique exact instruction storing

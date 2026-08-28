@@ -20,6 +20,13 @@ REQUIRED = (
     b"com.apple.eos.BiometricKit.ta\0",
     b"initForRemoteService:\0",
     b"activateConnection:\0",
+    b"BiometricKitBridgeConnection\0",
+    b"BiometricKitBridgeTransport\0",
+    b"BiometricKitBridgeServices\0",
+    b"sendMessage:\0",
+    b"sendMessage:andWaitForReply:\0",
+    b"handleEnvelope:\0",
+    b"handleEventWithMessage:error:\0",
 )
 
 
@@ -41,6 +48,7 @@ def inspect(data: bytes) -> dict[str, str]:
         "service": "com.apple.eos.BiometricKit",
         "directory": "RemoteServiceDiscovery",
         "connection": "BridgeXPCConnection",
+        "transport": "BiometricKitBridgeTransport",
     }
 
 
