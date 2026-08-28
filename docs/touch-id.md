@@ -824,6 +824,19 @@ encoding: current bridgeOS serializes it as the lower-case reserved UUID string
 `d4161201-daf5-4bbd-ae4f-9bf319fabbe0`. The strict method-3 decoder maps only
 that exact value to `None`; other strings remain invalid.
 
+Persistent BridgeXPC sessions and unsolicited service events are now proven
+too. A single live connection successfully carried method 0 followed by the
+maximum-identity biometric query without a second HELO. A bounded presence
+detection command then returned synchronous status zero, immediately delivered
+a server-initiated no-reply envelope, and accepted same-session cancellation
+with status zero. The event's exact logical shape was
+`[9, 0xe3ff8000, record, referenceTimestamp, continuousTimeDelta]`. Its 40-byte
+record decoded to inner status `0xe3ff8001`, version 1, ordinal 59, and zero
+data bytes. The decoder enforces five-object arity, exact channel/method,
+unsigned timestamps, a 64 KiB data cap, and exact `40 + dataSize` length. The
+presence probe reports only types, integer metadata, and data length—never raw
+event bytes—and always cancels in a `finally` block.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

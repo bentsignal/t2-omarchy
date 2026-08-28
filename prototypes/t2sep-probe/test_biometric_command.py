@@ -198,6 +198,26 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
                         active_operation=operation, status=status,
                         version=1, data=data)
 
+    def test_current_bridge_service_event_record(self):
+        record = bytearray(43)
+        struct.pack_into("<II", record, 8, 0xE3FF8002, 1)
+        struct.pack_into("<Q", record, 24, 7)
+        struct.pack_into("<Q", record, 32, 3)
+        record[40:] = b"abc"
+        decoded = command.decode_bridge_service_event(
+            [9, 0xE3FF8000, bytes(record), 11, 12])
+        self.assertEqual((decoded.status, decoded.version, decoded.ordinal,
+                          decoded.data, decoded.reference_timestamp,
+                          decoded.continuous_time_delta),
+                         (0xE3FF8002, 1, 7, b"abc", 11, 12))
+        for bad in (
+            [8, 0xE3FF8000, bytes(record), 11, 12],
+            [9, 0xE3FF8001, bytes(record), 11, 12],
+            [9, 0xE3FF8000, bytes(record[:-1]), 11, 12],
+        ):
+            with self.assertRaises(command.BiometricCommandError):
+                command.decode_bridge_service_event(bad)
+
 
 if __name__ == "__main__":
     unittest.main()

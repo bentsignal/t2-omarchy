@@ -42,6 +42,67 @@ class QueryError(RuntimeError):
     pass
 
 
+class BridgeSession:
+    """One activated BridgeXPC socket with correlated calls and queued events."""
+
+    def __init__(self, sock: socket.socket):
+        self.sock = sock
+        self.activated = False
+        self.events: list[protocol.TransportRequest] = []
+
+    def activate(self) -> None:
+        if self.activated:
+            return
+        self.sock.sendall(protocol.encode_helo_frame(
+            CURRENT_OS_BUILD, CURRENT_BRIDGE_VERSION, CURRENT_PROCESS_NAME,
+            max_body=BODY_CAP))
+        self.activated = True
+
+    def call(self, logical_message: list[object],
+             reply_id: str | None = None) -> list[object]:
+        self.activate()
+        if reply_id is None:
+            reply_id = str(uuid.uuid4()).upper()
+        self.sock.sendall(protocol.encode_transport_request_frame(
+            logical_message, reply_id, max_body=BODY_CAP))
+        for _ in range(8):
+            header, body = recv_frame(self.sock)
+            if header.kind == protocol.FRAME_NOOP:
+                continue
+            if header.kind == protocol.FRAME_HELO:
+                protocol.decode_helo_body(body, max_body=BODY_CAP)
+                continue
+            if header.kind != protocol.FRAME_MESSAGE:
+                raise QueryError("unexpected BridgeXPC frame kind")
+            try:
+                return protocol.decode_transport_reply_body(
+                    body, reply_id, max_body=BODY_CAP)
+            except protocol.BridgeProtocolError as reply_error:
+                try:
+                    event = protocol.decode_transport_request_body(
+                        body, max_body=BODY_CAP)
+                except protocol.BridgeProtocolError:
+                    raise reply_error
+                self.events.append(event)
+        raise QueryError("no correlated reply within the eight-frame limit")
+
+    def receive_event(self) -> protocol.TransportRequest:
+        if self.events:
+            return self.events.pop(0)
+        self.activate()
+        for _ in range(8):
+            header, body = recv_frame(self.sock)
+            if header.kind == protocol.FRAME_NOOP:
+                continue
+            if header.kind == protocol.FRAME_HELO:
+                protocol.decode_helo_body(body, max_body=BODY_CAP)
+                continue
+            if header.kind == protocol.FRAME_MESSAGE:
+                return protocol.decode_transport_request_body(
+                    body, max_body=BODY_CAP)
+        raise QueryError("no server event within the eight-frame limit")
+
+
 def recv_exact(sock: socket.socket, size: int) -> bytes:
     chunks = bytearray()
     while len(chunks) < size:
@@ -61,29 +122,7 @@ def recv_frame(sock: socket.socket) -> tuple[protocol.BridgeFrameHeader, bytes]:
 def exchange_connected_socket(sock: socket.socket, logical_message: list[object],
                               reply_id: str | None = None) -> list[object]:
     """Send HELO and one enveloped logical message; return its correlated reply."""
-    helo = protocol.encode_helo_frame(CURRENT_OS_BUILD, CURRENT_BRIDGE_VERSION,
-                                      CURRENT_PROCESS_NAME,
-                                      max_body=BODY_CAP)
-    if reply_id is None:
-        reply_id = str(uuid.uuid4()).upper()
-    query = protocol.encode_transport_request_frame(
-        logical_message, reply_id, max_body=BODY_CAP)
-    # Catalina's -connected writes HELO, starts its read, and immediately
-    # flushes requests queued before activation.  Preserve that wire order.
-    sock.sendall(helo)
-    sock.sendall(query)
-
-    for _ in range(4):
-        header, body = recv_frame(sock)
-        if header.kind == protocol.FRAME_NOOP:
-            continue
-        if header.kind == protocol.FRAME_HELO:
-            protocol.decode_helo_body(body, max_body=BODY_CAP)
-            continue
-        if header.kind == protocol.FRAME_MESSAGE:
-            return protocol.decode_transport_reply_body(
-                body, reply_id, max_body=BODY_CAP)
-    raise QueryError("no message reply within the four-frame limit")
+    return BridgeSession(sock).call(logical_message, reply_id)
 
 
 def query_connected_socket(sock: socket.socket,

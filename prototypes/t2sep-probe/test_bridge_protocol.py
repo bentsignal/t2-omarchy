@@ -209,6 +209,27 @@ class BridgeEnvelopeTests(unittest.TestCase):
             bridge.encode_transport_request_frame(
                 [0], bridge.NO_REPLY_UUID, max_body=256)
 
+    def test_server_initiated_transport_request(self):
+        sentinel = bridge.NO_REPLY_UUID.lower()
+        body = plistlib.dumps([1, False, sentinel, [0xE3FF8000, b"event", 1, 2]],
+                              fmt=plistlib.FMT_BINARY)
+        event = bridge.decode_transport_request_body(body, max_body=256)
+        self.assertEqual(event.reply_id, bridge.NO_REPLY_UUID)
+        self.assertFalse(event.expects_reply)
+        self.assertEqual(event.message[1], b"event")
+        reply_id = "01234567-89AB-4CDE-8FAB-0123456789AB"
+        body = plistlib.dumps([1, False, reply_id, ["request"]],
+                              fmt=plistlib.FMT_BINARY)
+        self.assertTrue(bridge.decode_transport_request_body(
+            body, max_body=256).expects_reply)
+        for malformed in (
+            plistlib.dumps([1, True, reply_id, []]),
+            plistlib.dumps([1, False, "not-a-uuid", []]),
+            plistlib.dumps([1, False, reply_id, "bad"]),
+        ):
+            with self.assertRaises(bridge.BridgeProtocolError):
+                bridge.decode_transport_request_body(malformed, max_body=256)
+
     def test_bridge_version_reply_fails_closed(self):
         bad_replies = (b"bad", plistlib.dumps([0]), plistlib.dumps([True, 1]),
                        plistlib.dumps([0, -1]), plistlib.dumps({"status": 0}))

@@ -70,6 +70,13 @@ class BridgeFrameHeader:
     body_size: int
 
 
+@dataclass(frozen=True)
+class TransportRequest:
+    reply_id: str
+    message: list[object]
+    expects_reply: bool
+
+
 def biometric_sockaddr(interface_index: int) -> tuple[str, int, int, int]:
     """Return the recovered IPv6 target tuple without creating a socket."""
     interface_index = _unsigned(interface_index, 32, "interface index")
@@ -330,6 +337,31 @@ def decode_transport_reply_body(body: bytes, reply_id: str, *,
     if not isinstance(envelope[3], list):
         raise BridgeProtocolError("transport reply payload must be an array")
     return envelope[3]
+
+
+def decode_transport_request_body(body: bytes, *, max_body: int) -> TransportRequest:
+    """Validate one server-initiated request/event transport envelope."""
+    if not isinstance(body, bytes):
+        raise BridgeProtocolError("transport request body must be bytes")
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    if len(body) > max_body:
+        raise BridgeProtocolError("transport request exceeds the body cap")
+    try:
+        envelope = plistlib.loads(body)
+    except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+        raise BridgeProtocolError("transport request is not a property list") from error
+    if not isinstance(envelope, list) or len(envelope) != 4:
+        raise BridgeProtocolError("transport request must contain four objects")
+    if type(envelope[0]) is not int or envelope[0] != TRANSPORT_ENVELOPE_TYPE:
+        raise BridgeProtocolError("transport request has an unsupported envelope type")
+    if type(envelope[1]) is not bool or envelope[1] is not False:
+        raise BridgeProtocolError("transport message is not a request")
+    reply_id = _reply_id(envelope[2], allow_sentinel=True)
+    if not isinstance(envelope[3], list):
+        raise BridgeProtocolError("transport request payload must be an array")
+    return TransportRequest(
+        reply_id, envelope[3], reply_id != NO_REPLY_UUID)
 
 
 def encode_service_opened_query_frame(*, max_body: int) -> bytes:

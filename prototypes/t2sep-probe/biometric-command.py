@@ -38,6 +38,10 @@ SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
 SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
 SERVICE_EVENT_MATCH_ACTIVITY = 0xE3FF800B
 SERVICE_EVENT_VERSION = 1
+BRIDGE_SERVICE_EVENT_METHOD = 9
+BRIDGE_SERVICE_EVENT_CHANNEL = 0xE3FF8000
+SERVICE_RECORD_HEADER_SIZE = 40
+MAX_SERVICE_EVENT_DATA = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,16 @@ class CatalinaMatchIdentity:
 class BiometricIdentity:
     user_id: int
     uuid: bytes
+
+
+@dataclass(frozen=True)
+class ServiceStatusEvent:
+    status: int
+    version: int
+    ordinal: int
+    data: bytes
+    reference_timestamp: int
+    continuous_time_delta: int
 
 
 def _u32(value: int, field: str) -> int:
@@ -277,3 +291,33 @@ def decode_terminal_biometric_event(
         return decode_catalina_match_result_event(
             status=status, version=version, data=data)
     raise BiometricCommandError("there is no supported active biometric operation")
+
+
+def decode_bridge_service_event(message: list[object], *,
+                                max_data: int = MAX_SERVICE_EVENT_DATA
+                                ) -> ServiceStatusEvent:
+    """Decode current bkremoted's method-9 service-status record."""
+    if (isinstance(max_data, bool) or not isinstance(max_data, int)
+            or not 0 <= max_data <= MAX_SERVICE_EVENT_DATA):
+        raise BiometricCommandError("service event cap is invalid")
+    if not isinstance(message, list) or len(message) != 5:
+        raise BiometricCommandError("service event must contain five objects")
+    method, channel, record, reference, delta = message
+    if type(method) is not int or method != BRIDGE_SERVICE_EVENT_METHOD:
+        raise BiometricCommandError("message is not a service event")
+    if type(channel) is not int or channel != BRIDGE_SERVICE_EVENT_CHANNEL:
+        raise BiometricCommandError("service event channel is unsupported")
+    if not isinstance(record, bytes) or len(record) < SERVICE_RECORD_HEADER_SIZE:
+        raise BiometricCommandError("service event record is shorter than its header")
+    if any(type(value) is not int or not 0 <= value <= 0xFFFFFFFFFFFFFFFF
+           for value in (reference, delta)):
+        raise BiometricCommandError("service event timestamps are invalid")
+    status, version = struct.unpack_from("<II", record, 8)
+    ordinal = struct.unpack_from("<Q", record, 24)[0]
+    data_size = struct.unpack_from("<Q", record, 32)[0]
+    if data_size > max_data:
+        raise BiometricCommandError("service event data exceeds the cap")
+    if len(record) != SERVICE_RECORD_HEADER_SIZE + data_size:
+        raise BiometricCommandError("service event record size does not match its data size")
+    return ServiceStatusEvent(status, version, ordinal,
+                              record[SERVICE_RECORD_HEADER_SIZE:], reference, delta)

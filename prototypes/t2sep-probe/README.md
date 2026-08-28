@@ -285,6 +285,13 @@ maximum identities returned 5; UID 1000 enumerated zero identities; UID 501
 enumerated one. UUID bytes are intentionally omitted. Current bridgeOS's
 private `BTNil` output is the exact lower-case reserved UUID string and is
 accepted only in that form by the method-3 decoder.
+
+`BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
+queues server-initiated envelopes that race a synchronous call. The gated
+`presence-event-probe.py` verified a status-zero presence start, method-9
+service event (`0xe3ff8001`, version 1, ordinal 59, no data), and status-zero
+same-session cancellation. It caps and structurally decodes the 40-byte service
+record but never prints its raw data.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,

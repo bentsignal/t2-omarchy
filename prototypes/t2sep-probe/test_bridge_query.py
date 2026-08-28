@@ -102,6 +102,20 @@ class PassiveQueryTests(unittest.TestCase):
             query.query_perform_connected_socket(
                 FakeSocket(b""), (0,), max_output=4, reply_id=reply_id)
 
+    def test_persistent_session_queues_unsolicited_event(self):
+        reply_id = "01234567-89AB-4CDE-8FAB-0123456789AB"
+        event_body = plistlib.dumps(
+            [1, False, query.protocol.NO_REPLY_UUID.lower(),
+             [0xE3FF8000, b"event", 1, 2]], fmt=plistlib.FMT_BINARY)
+        reply_body = plistlib.dumps(
+            [1, True, reply_id, [0, 3]], fmt=plistlib.FMT_BINARY)
+        sock = FakeSocket(frame(query.protocol.FRAME_MESSAGE, event_body)
+                          + frame(query.protocol.FRAME_MESSAGE, reply_body))
+        session = query.BridgeSession(sock)
+        self.assertEqual(session.call([0], reply_id), [0, 3])
+        self.assertEqual(session.receive_event().message[1], b"event")
+        self.assertEqual(sock.events[:2], ["send", "send"])
+
     def test_rejects_eof_malformed_reply_and_frame_flood(self):
         with self.assertRaises(query.QueryError):
             query.query_connected_socket(FakeSocket(b""))
