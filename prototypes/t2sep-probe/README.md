@@ -248,6 +248,11 @@ output file, and a source kill switch. `run-t2ncm-flags-probe.sh` temporarily
 unbinds only `7-1:1.0` and always rebinds it through an exit trap. The supervised
 result was `00 00 00 00`, and neither multicast nor direct RSD discovery woke
 afterward, so this read is now retained as disproven activation evidence.
+The companion `run-t2ncm-apple-config.sh` also reproduces the four exact
+AppleUSBNCM `configureData` class operations while the function is unbound and
+restores Linux's driver through the same trap. That sequence completed, but
+both discovery paths remained silent, ruling out ordinary NCM configuration
+values as the service wake trigger.
 
 `rsd-mdns-query.py` stages that supervised boundary. Its fake-socket-tested
 engine sends one exact named SRV/QU query and accepts only UDP/5353 datagrams from the

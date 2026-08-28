@@ -18,6 +18,7 @@
 #define LIVE_T2_NCM_FLAGS_READ_ENABLED 0
 #define T2_INTERFACE "/sys/bus/usb/devices/7-1:1.0"
 #define CONFIRMATION "I_UNDERSTAND_THIS_ONLY_READS_FOUR_T2_NCM_FLAG_BYTES"
+#define CONFIG_CONFIRMATION "I_UNDERSTAND_THIS_TEMPORARILY_REPRODUCES_APPLE_NCM_CONFIGURATION"
 
 static int read_number(const char *directory, const char *name,
                        unsigned int *value, int base)
@@ -78,8 +79,8 @@ static int exact_device_path(char device[PATH_MAX], unsigned int *interface_numb
     return 0;
 }
 
-static int control_read(int fd, uint8_t request_type, uint8_t request,
-                        uint16_t value, uint16_t index, void *data, uint16_t length)
+static int control_transfer(int fd, uint8_t request_type, uint8_t request,
+                            uint16_t value, uint16_t index, void *data, uint16_t length)
 {
     struct usbdevfs_ctrltransfer transfer = {
         .bRequestType = request_type,
@@ -98,6 +99,7 @@ int main(int argc, char **argv)
     const char *output = NULL;
     const char *confirmation = NULL;
     bool live = false;
+    bool apple_config = false;
     char device[PATH_MAX];
     unsigned int interface_number, bus, dev;
     uint8_t descriptor[18] = {0};
@@ -107,6 +109,8 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--live"))
             live = true;
+        else if (!strcmp(argv[i], "--apple-config"))
+            apple_config = true;
         else if (!strcmp(argv[i], "--confirm") && ++i < argc)
             confirmation = argv[i];
         else if (!strcmp(argv[i], "--output") && ++i < argc)
@@ -124,7 +128,8 @@ int main(int argc, char **argv)
     fprintf(stderr, "live T2 NCM flags read disabled in source\n");
     return EXIT_FAILURE;
 #endif
-    if (!confirmation || strcmp(confirmation, CONFIRMATION) || !output || output[0] != '/' ||
+    if (!confirmation || strcmp(confirmation, apple_config ? CONFIG_CONFIRMATION : CONFIRMATION) ||
+        !output || output[0] != '/' ||
         strstr(output, "..")) {
         fprintf(stderr, "live mode requires the exact confirmation and an absolute output path\n");
         return EXIT_FAILURE;
@@ -138,25 +143,47 @@ int main(int argc, char **argv)
         perror("open usbfs device");
         goto done;
     }
-    if (control_read(fd, 0x80, 0x06, 0x0100, 0, descriptor, sizeof(descriptor)) !=
+    if (control_transfer(fd, 0x80, 0x06, 0x0100, 0, descriptor, sizeof(descriptor)) !=
             (int)sizeof(descriptor) || descriptor[0] != sizeof(descriptor) ||
         descriptor[1] != 0x01 || descriptor[8] != 0xac || descriptor[9] != 0x05 ||
         descriptor[10] != 0x33 || descriptor[11] != 0x82) {
         fprintf(stderr, "usbfs descriptor identity did not match 05ac:8233\n");
         goto done;
     }
-    if (control_read(fd, 0xa1, 0xa0, 0, (uint16_t)interface_number,
-                     flags, sizeof(flags)) != (int)sizeof(flags)) {
+    if (control_transfer(fd, 0xa1, 0xa0, 0, (uint16_t)interface_number,
+                         flags, sizeof(flags)) != (int)sizeof(flags)) {
         perror("Apple NCM flags read");
         goto done;
+    }
+    if (apple_config) {
+        uint16_t datagram_limit = 1514;
+        uint32_t input_size = 16384;
+        const char *failed = NULL;
+        if (control_transfer(fd, 0x21, 0x8a, 0, (uint16_t)interface_number,
+                             NULL, 0) != 0)
+            failed = "SET_CRC_MODE";
+        else if (control_transfer(fd, 0x21, 0x84, 0, (uint16_t)interface_number,
+                                  NULL, 0) != 0)
+            failed = "SET_NTB_FORMAT";
+        else if (control_transfer(fd, 0x21, 0x88, 0, (uint16_t)interface_number,
+                                  &datagram_limit, sizeof(datagram_limit)) != 2)
+            failed = "SET_MAX_DATAGRAM_SIZE";
+        else if (control_transfer(fd, 0x21, 0x86, 0, (uint16_t)interface_number,
+                                  &input_size, sizeof(input_size)) != 4)
+            failed = "SET_NTB_INPUT_SIZE";
+        if (failed) {
+            fprintf(stderr, "exact Apple NCM configuration failed at %s: %s\n",
+                    failed, strerror(errno));
+            goto done;
+        }
     }
     out = open(output, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
     if (out < 0 || write(out, flags, sizeof(flags)) != (ssize_t)sizeof(flags)) {
         perror("create private evidence");
         goto done;
     }
-    printf("read four Apple NCM flag bytes from verified 05ac:8233 on bus %u device %u\n",
-           bus, dev);
+    printf("read four Apple NCM flag bytes%s from verified 05ac:8233 on bus %u device %u\n",
+           apple_config ? " and reproduced the bounded Apple configuration" : "", bus, dev);
     result = EXIT_SUCCESS;
 done:
     if (out >= 0)

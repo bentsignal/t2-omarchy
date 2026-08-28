@@ -198,6 +198,17 @@ for `ff02::fb`. This confirms that the missing advertisement was not merely
 lost before an IP capture attached: bridgeOS `remoted` is not active at this
 NCM-interface startup boundary under Linux.
 
+The remaining AppleUSBNCM configuration delta was then reconstructed from its
+vtable and `configureData` call sites rather than guessed from method names.
+With data alternate setting zero, macOS sends `SET_CRC_MODE(0)`,
+`SET_NTB_FORMAT(0)`, `SET_MAX_DATAGRAM_SIZE(1514)`, and
+`SET_NTB_INPUT_SIZE(16384)`. Linux sends the same CRC, format, and input-size
+values but had selected a larger datagram value. A source-gated wrapper
+successfully reproduced the complete Apple sequence while unbound, then
+restored `cdc_ncm`. The T2 stayed ICMP-reachable but again answered neither
+multicast nor direct named RSD discovery. Thus ordinary AppleUSBNCM control
+configuration is not the missing bridgeOS service activation boundary.
+
 Only after independent transcript validation should a second supervised step
 request the advertised service, perform the bounded BridgeXPC HELO exchange,
 and stop before sending a Mesa command. The boot capture proves the sequence
