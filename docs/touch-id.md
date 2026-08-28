@@ -244,6 +244,17 @@ the recovered PCI transport. A control NOP does not enumerate endpoints or
 prove that xART/SBIO is online, so the next milestone remains a bounded
 discovery/status transaction after preserving the enrolled APFS baseline.
 
+The x86_64 KDK implementation shows that discovery is passive. macOS creates
+an `AppleSEPEndpoint` for endpoint `0xfd`; it does not send a guessed discovery
+request. Its callback accepts exactly two message opcodes. Opcode 0 advertises
+an endpoint ID in the parameter byte and its four-character name in the data
+word. Opcode 1 supplies four one-byte OOL page limits for that same endpoint.
+The driver rejects messages not addressed to `0xfd`, unknown opcodes, duplicate
+or inconsistent advertisements, and more than 253 endpoint records. Therefore
+the next probe should only collect and validate bounded `0xfd` advertisements
+that SEP emits after the known NOP. It must stop on any other message instead
+of interpreting it as discovery.
+
 `tools/system-backup/capture-enrolled-apfs.sh` captures that baseline. It is
 pinned to the internal APFS UUID/PARTUUID/size and the Seagate serial/Btrfs
 UUID, saves post-install GPT and EFI-variable inventories, hashes the source

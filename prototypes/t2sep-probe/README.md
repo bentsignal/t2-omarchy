@@ -121,3 +121,13 @@ sudo rmmod t2sep_probe
 Do not install this in the initramfs or configure it for automatic loading.
 The PCI address may differ on another boot or machine; the device ID and DMI
 allowlist, not the example address, are the safety checks.
+
+`decode-message.py` is an offline decoder for four 32-bit FIFO words. It never
+opens a device or accesses MMIO. In addition to the common SEP header, it
+decodes the two passive discovery records used by Intel macOS on endpoint
+`0xfd`: opcode 0 advertises an endpoint ID/name and opcode 1 supplies its four
+OOL page limits. Run its tests with:
+
+```bash
+python -m unittest test_decode_message.py
+```
