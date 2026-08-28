@@ -117,6 +117,15 @@ roughly 15 GB archive in memory and caused `systemd-oomd` to kill the terminal
 scope. The decoder rejects any compressed or expanded chunk above 256 MiB and
 gives liblzma a 512 MiB memory limit.
 
+`decode-complzvn.c` strictly unwraps an Apple `complzvn` prelinked kernel using
+an external `lzvn_decode` implementation. It caps compressed input at 256 MiB
+and output at 512 MiB, validates the wrapper's exact file length, refuses to
+replace or follow the output path, and requires a decoded Mach-O signature.
+This avoids the legacy LZVN CLI wrapper, whose malformed-input path double-
+frees memory. The decoded Catalina 19H15 prelinked kernel was inspected without
+committing it; its prelink manifest does not contain an x86_64
+AppleSEPGenericTransfer image.
+
 For an additional process-level ceiling, run archive work in its own user
 scope and stream only selected paths to `bsdtar`:
 

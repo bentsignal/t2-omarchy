@@ -925,6 +925,16 @@ from which to recover that third word. The Sonoma boot collection contains
 string/personality reference there. The available KDK GenericTransfer slice is
 arm64e. Thus zero remains plausible but unproved, and kernel SBIO initialization
 stays intentionally unwired pending either an Intel binary or a bounded trace.
+
+The full Catalina Core package has now been checked as well. Its 7.5 GiB PBZX
+payload was streamed under a 1 GiB memory scope; only AppleSEPManager and the
+`complzvn` prelinked kernel were extracted. A bounded decoder validated the
+wrapper's 26,325,018-byte compressed and 72,273,920-byte expanded sizes and a
+native x86_64 Mach-O result. Neither the prelink manifest nor its symbols and
+strings contain AppleSEPGenericTransfer; AppleMesaSEPDriver appears only as a
+personality/name reference. This closes the remaining obvious Catalina
+installer location without changing the third-word conclusion above.
+
 For inbound data, the mailbox command must also equal the command in the DMA
 packet header. Error notification `0xff` uses word four (byte offset 16) of a
 buffer larger than the common header as its 32-bit status. Both rules are now
