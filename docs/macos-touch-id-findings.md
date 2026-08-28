@@ -188,6 +188,16 @@ received no response while ICMPv6 remained healthy. Therefore neither nonzero
 Apple interface flags nor the `0xa1/0xa0` read itself is the missing activation.
 No RSD capture file was created and no TCP or biometric request was sent.
 
+A subsequent full-payload usbmon capture began before a narrow NCM unbind/
+rebind, avoiding the race where the Linux network interface does not yet
+exist. The T2 emitted exactly one 140-byte NCM transfer after startup. Its
+complete Ethernet payload was an IPv6 MLDv2 report from
+`ac:de:48:33:44:55` / `fe80::aede:48ff:fe33:4455`, joining only its two
+solicited-node multicast groups. There was no DNS-SD payload and no membership
+for `ff02::fb`. This confirms that the missing advertisement was not merely
+lost before an IP capture attached: bridgeOS `remoted` is not active at this
+NCM-interface startup boundary under Linux.
+
 Only after independent transcript validation should a second supervised step
 request the advertised service, perform the bounded BridgeXPC HELO exchange,
 and stop before sending a Mesa command. The boot capture proves the sequence

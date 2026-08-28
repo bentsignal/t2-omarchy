@@ -61,6 +61,13 @@ python tools/research/macos-bridgexpc-evidence.py /path/to/BridgeXPC \
 the NCM-device listener class/method and its unique exact instruction storing
 port `58783`. It likewise performs no device or network access.
 
+`capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
+the transient network interface using binary `usbmon7`. It accepts only the
+exact private output path, requires the exact bound `7-1:1.0` function, and
+restores `cdc_ncm` through an exit trap. Its pcap can contain internal T2 frame
+payloads and must not be committed. The first supervised capture contained
+only the T2's complete MLDv2 report and no DNS-SD advertisement.
+
 `pbzx-stream.py` incrementally decodes the PBZX payload inside older macOS
 installer packages. It exists because a whole-payload decoder expanded a
 roughly 15 GB archive in memory and caused `systemd-oomd` to kill the terminal
