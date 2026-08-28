@@ -161,9 +161,16 @@ response, retains replaced mappings because Intel exposes no unregister
 opcode, balances active operations and sleep holds, and permits release only
 after transport stop plus explicit scrub. Run the offline suites with:
 
+`endpoint-router.py` models the later normal doorbell callback. It strips the
+fourth transport word, routes only registered endpoint IDs `0..31`, and uses
+the recovered 32-index/31-message circular queue bound. Unknown or fixed-range
+records are dropped, disabled queues retain messages, transport errors fail,
+and a full queue never overwrites data.
+
 ```bash
 python -m unittest test_decode_message.py test_generic_transfer.py \
   test_intel_fifo.py test_endpoint_lifecycle.py \
+  test_endpoint_router.py \
   test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py \
   test_rsd_query.py test_verify_discovery_log.py
 ```

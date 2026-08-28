@@ -139,6 +139,19 @@ the two vectors as interchangeable completion interrupts, and must serialize
 FIFO drain/post state outside hard-IRQ context. The offline FIFO model exposes
 only these two named vectors and rejects every other index.
 
+After discovery, `AppleSEPManager::_doorbellAction` drains the inbox until the
+mailbox getter returns an error. It copies only FIFO words 0–2 into the
+12-byte `AppleSEPMessage`, rejects endpoint values with any of bits 5–7 set,
+looks up the remaining endpoint in a fixed 32-entry table, and drops records
+for an absent entry. Each endpoint owns a 32-index circular FIFO; because the
+producer treats `next == consumer` as full, its usable capacity is 31 records.
+Queueing never overwrites the oldest record. A disabled endpoint retains its
+pending records but does not dispatch them. `endpoint-router.py` models these
+bounds offline, rejects transport-error metadata before routing, preserves
+FIFO order, and fails on the 32nd undrained record. Discovery endpoint `0xfd`
+is intentionally outside this normal router; it belongs to the earlier
+discovery callback phase.
+
 This is a different PCIe FIFO presentation from the T8012/PongoOS mailbox
 offsets initially tested. The earlier all-zero reads at BAR4 `+0x4000` neither
 showed that the T2 was dead nor described this interface. The next experiment
