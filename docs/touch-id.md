@@ -445,6 +445,17 @@ by that endpoint's non-inverted OOL limits. Completion is success only if
 the final log to say `sbio=yes limits=yes result=0`; a merely clean timeout or
 some unrelated endpoint table is no longer accepted.
 
+That future result is now checked twice rather than trusted through grep. The
+kernel validates while consuming the FIFO; afterward
+`verify-discovery-log.py` consumes only the journal range captured after the
+runner's cursor and independently replays every four-word candidate through
+the offline `DiscoveryTable`. It requires one validated NOP before discovery,
+zero-based contiguous record indices, an exact identity-or-limits detail for
+every candidate, matching record/identity totals, usable `sbio`, a single
+successful summary, and the CPU-stop record afterward. Missing, duplicated,
+stale, reordered, truncated, internally inconsistent, or error-bearing logs
+all fail before the wrapper reports success.
+
 `AppleMesaSEPDriver::initSbioCommunication()` also establishes the first SBIO
 transaction in Apple's ordering: after generic-transfer setup, it sends
 command `0x73` with one little-endian 32-bit input value, `3`, and requests no

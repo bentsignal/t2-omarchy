@@ -147,7 +147,7 @@ after completion. Run both offline suites with:
 ```bash
 python -m unittest test_decode_message.py test_generic_transfer.py \
   test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py \
-  test_rsd_query.py
+  test_rsd_query.py test_verify_discovery_log.py
 ```
 
 `bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
@@ -222,5 +222,13 @@ SEP, two MSI vectors, verified NOP output, module cleanup, and the exact final
 pkexec ./run-discovery.sh
 ```
 
-Build and review this runner without executing it until a privileged hardware
-test is explicitly intended.
+The wrapper no longer accepts those conditions through independent grep
+matches. It passes only its cursor-bounded journal text to
+`verify-discovery-log.py`, an offline verifier that requires one ordered NOP,
+contiguous zero-based candidate indices, one matching identity/OOL detail per
+candidate, a kernel summary whose counts match an independent replay through
+`DiscoveryTable`, usable `sbio`, and one later CPU-stop record. It rejects
+failure words, stale/mixed sessions, truncation, reordered or altered details,
+summary disagreement, and transport-error candidate bits. Build and review
+this runner without executing it until a privileged hardware test is
+explicitly intended.

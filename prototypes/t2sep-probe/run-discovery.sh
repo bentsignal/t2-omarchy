@@ -32,9 +32,7 @@ else
 fi
 printf '%s\n' "$log"
 
-grep -Fq 'control NOP response passed strict validation' <<<"$log" ||
-  die "validated NOP result is missing"
-grep -Eq 'bounded discovery complete: .* sbio=yes limits=yes result=0$' <<<"$log" ||
-  die "bounded discovery did not produce a usable sbio endpoint"
+python3 "$module_dir/verify-discovery-log.py" <<<"$log" ||
+  die "discovery transcript failed independent offline verification"
 [[ ! -L $device/driver ]] || die "SEP remained bound after probe"
 [[ ! -d /sys/module/t2sep_probe ]] || die "module remained loaded after probe"
