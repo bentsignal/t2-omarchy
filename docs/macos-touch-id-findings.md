@@ -219,6 +219,26 @@ restored `cdc_ncm`. The T2 stayed ICMP-reachable but again answered neither
 multicast nor direct named RSD discovery. Thus ordinary AppleUSBNCM control
 configuration is not the missing bridgeOS service activation boundary.
 
+A fresh Linux reboot on 2026-08-28 removed the earlier stale-NCM ambiguity.
+After assigning only the wire-proven host address
+`fe80::aede:48ff:fe00:1122`, three ICMPv6 exchanges succeeded in 2--4 ms;
+RX/TX counters advanced with zero errors. The exact named RSD query was then
+sent once directly and once by multicast under the bounded live gate. Both
+timed out, while TCP connection attempts to the binary-derived `58783` and
+legacy `52032` endpoints were actively refused. The runner's source kill
+switch was restored immediately afterward and no private capture file was
+created. This reconfirms on a healthy current boot that the missing boundary is
+bridgeOS service activation, not Linux NCM packet transport.
+
+Static inspection of the current x86_64 `AppleUSBiBridge` kext adds one useful
+constraint. Its `start` method obtains a preferred USB configuration and calls
+the device's configuration method; this Linux instance already exposes exactly
+one configuration and has selected configuration `1`. The kext's only explicit
+remote-wake operation is in system sleep/wake power callbacks, not its ordinary
+startup path. Neither fact yet identifies the action that starts bridgeOS
+`remoted`, but they make a configuration-number mismatch and a hidden wake call
+inside macOS `remoted::needsConnect` poor explanations.
+
 The installed macOS 26.6.2 System volume also contains a signed recovery
 firmware bundle named `iBridge1_1Customer.bundle`. Its manifest identifies
 bridgeOS `3.0` build `14Y910` (`DaytonaBridgeUpdateJazz`), so it is historical
