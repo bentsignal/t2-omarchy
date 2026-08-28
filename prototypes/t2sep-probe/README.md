@@ -175,6 +175,15 @@ socket calls. Port `58783` and the presence of `com.apple.eos.BiometricKit`
 remain unverified for this T2 bridgeOS, so this codec is not wired into
 `bridge-query.py` and does not weaken its hard live gate.
 
+Its `PassiveRSDTranscript` state machine validates a complete server transcript
+from fragmented offline bytes. It caps bytes, frames, controls, and XPC sizes;
+requires peer settings before data; accepts only streams 1 and 3; refuses
+cross-stream XPC reconstruction, flooding, unsupported HTTP/2 records, partial
+termination, and trailing traffic; and returns only the strictly validated
+named service port. Tests exercise byte-at-a-time input, multi-frame XPC
+fragmentation, malformed settings/window updates, wrong streams, truncation,
+interleaving, surplus frames, resource caps, and deterministic garbage.
+
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,
 32-bit page-frame fit, and the endpoint's advertised send/receive page limits.

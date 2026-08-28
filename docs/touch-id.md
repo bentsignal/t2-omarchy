@@ -318,6 +318,21 @@ sizes, and nesting; rejects duplicate keys, unknown types/flags, noncanonical
 padding and booleans, surplus bytes, malformed ports, and unexpected directory
 shapes.
 
+The codec also has an incremental passive transcript validator. It accepts
+arbitrarily fragmented caller-supplied bytes, but caps the total transcript,
+frame count, frame payload, XPC body, ignored controls, strings, blobs,
+collections, and nesting. It requires peer SETTINGS before DATA; permits only
+the root/reply streams and the small SETTINGS/WINDOW_UPDATE/HEADERS/DATA subset;
+reassembles XPC wrappers without mixing streams; and succeeds only when exactly
+one complete handshake directory advertises the requested service. Partial
+frames, early end-of-stream, duplicate or invalid settings, control floods,
+unknown frames, interleaving, and all bytes after the directory fail closed.
+A deterministic garbage corpus is also required to terminate only with a
+protocol error, never an unexpected exception or false success. An additional
+end-to-end check encoded a realistic directory with pymobiledevice3, framed it
+with `hyperframe`, fragmented it independently, and recovered the expected port
+through the local transcript validator.
+
 This does **not** establish that T2 bridgeOS exposes its `remoted` listener on
 `58783`, nor that its directory advertises `com.apple.eos.BiometricKit`.
 Neither the candidate codec nor any existing runner connects to that port. A

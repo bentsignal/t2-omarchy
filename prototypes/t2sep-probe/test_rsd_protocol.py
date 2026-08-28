@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import random
 import struct
 import sys
 import unittest
@@ -169,6 +170,151 @@ class ServiceDirectoryTests(unittest.TestCase):
             with self.subTest(directory=directory):
                 with self.assertRaises(rsd.RSDProtocolError):
                     rsd.validate_service_directory(directory, wanted_service=self.SERVICE)
+
+
+class PassiveTranscriptTests(unittest.TestCase):
+    SERVICE = "com.apple.eos.BiometricKit"
+
+    @classmethod
+    def directory_message(cls):
+        return rsd.encode_xpc_message({
+            "MessageType": "Handshake",
+            "MessagingProtocolVersion": rsd.Int64(3),
+            "Properties": {"BuildVersion": "23J631"},
+            "Services": {
+                cls.SERVICE: {
+                    "Entitlement": "com.apple.private.BiometricKit",
+                    "Port": "52032",
+                    "Properties": {"UsesRemoteXPC": False},
+                }
+            },
+            "UUID": uuid.UUID(int=1),
+        }, message_id=0)
+
+    @classmethod
+    def transcript(cls, *, fragments=1):
+        message = cls.directory_message()
+        cuts = [len(message) * index // fragments for index in range(fragments + 1)]
+        frames = [
+            rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0,
+                                   struct.pack(">HI", 3, 100)),
+            rsd.encode_http2_frame(rsd.HTTP2_WINDOW_UPDATE, 0, 0,
+                                   struct.pack(">I", 4096)),
+            rsd.encode_http2_frame(rsd.HTTP2_HEADERS, rsd.HTTP2_END_HEADERS,
+                                   rsd.ROOT_CHANNEL),
+        ]
+        frames.extend(
+            rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL,
+                                   message[cuts[index]:cuts[index + 1]])
+            for index in range(fragments)
+        )
+        return b"".join(frames)
+
+    def test_fragmented_wire_and_xpc_round_trip(self):
+        wire = self.transcript(fragments=5)
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+        for byte in wire:
+            parser.feed(bytes((byte,)))
+        self.assertEqual(parser.finish(), 52032)
+
+    def test_allows_bounded_empty_xpc_control(self):
+        control = rsd.encode_xpc_message(
+            None, message_id=0, flags=rsd.XPC_ALWAYS_SET | rsd.XPC_REPLY
+        )
+        settings = rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0)
+        control_frame = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0,
+                                               rsd.REPLY_CHANNEL, control)
+        directory = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL,
+                                           self.directory_message())
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+        parser.feed(settings + control_frame + directory)
+        self.assertEqual(parser.finish(), 52032)
+
+    def test_rejects_data_before_peer_settings_and_wrong_stream(self):
+        directory = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL,
+                                           self.directory_message())
+        ack = rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, rsd.HTTP2_ACK, 0)
+        for wire in (directory, ack + directory,
+                     rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0)
+                     + rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, 5,
+                                              self.directory_message())):
+            parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+            with self.assertRaises(rsd.RSDProtocolError):
+                parser.feed(wire)
+
+    def test_rejects_truncation_surplus_and_interleaving(self):
+        wire = self.transcript(fragments=2)
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+        parser.feed(wire[:-1])
+        with self.assertRaises(rsd.RSDProtocolError):
+            parser.finish()
+
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+        with self.assertRaises(rsd.RSDProtocolError):
+            parser.feed(wire + rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0))
+
+        message = self.directory_message()
+        settings = rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0)
+        first = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL,
+                                       message[:20])
+        wrong = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, rsd.REPLY_CHANNEL,
+                                       message[20:])
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+        with self.assertRaises(rsd.RSDProtocolError):
+            parser.feed(settings + first + wrong)
+
+    def test_rejects_frame_flood_and_byte_caps(self):
+        settings = rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0)
+        window = rsd.encode_http2_frame(rsd.HTTP2_WINDOW_UPDATE, 0, 0,
+                                        struct.pack(">I", 1))
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE,
+                                          max_frames=2)
+        with self.assertRaises(rsd.RSDProtocolError):
+            parser.feed(settings + window + window)
+
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE,
+                                          max_total=8)
+        with self.assertRaises(rsd.RSDProtocolError):
+            parser.feed(b"123456789")
+
+        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE,
+                                          max_frame=4)
+        with self.assertRaises(rsd.RSDProtocolError):
+            parser.feed((5).to_bytes(3, "big") + b"\0" * 6)
+
+    def test_rejects_malformed_control_frames(self):
+        malformed = [
+            rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, rsd.HTTP2_ACK, 0, b"x"),
+            rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 1),
+            rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0, b"x"),
+            rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0,
+                                   struct.pack(">HIHI", 3, 1, 3, 2)),
+            rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0,
+                                   struct.pack(">HI", 5, 100)),
+            rsd.encode_http2_frame(rsd.HTTP2_WINDOW_UPDATE, 0, 0, b"\0" * 4),
+            rsd.encode_http2_frame(rsd.HTTP2_WINDOW_UPDATE, 0, 5,
+                                   struct.pack(">I", 1)),
+            rsd.encode_http2_frame(9, 0, 0),
+        ]
+        for wire in malformed:
+            parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+            with self.subTest(wire=wire.hex()):
+                with self.assertRaises(rsd.RSDProtocolError):
+                    parser.feed(wire)
+
+    def test_deterministic_garbage_never_completes_or_escapes_protocol_error(self):
+        generator = random.Random(0x523544)
+        for _ in range(250):
+            wire = generator.randbytes(generator.randrange(0, 256))
+            parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE,
+                                              max_total=512)
+            try:
+                for offset in range(0, len(wire), 7):
+                    parser.feed(wire[offset:offset + 7])
+                parser.finish()
+            except rsd.RSDProtocolError:
+                continue
+            self.fail("random garbage unexpectedly formed a valid RSD transcript")
 
 
 if __name__ == "__main__":

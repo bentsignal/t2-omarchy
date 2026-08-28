@@ -24,6 +24,8 @@ HTTP2_DATA = 0
 HTTP2_HEADERS = 1
 HTTP2_SETTINGS = 4
 HTTP2_WINDOW_UPDATE = 8
+HTTP2_ACK = 1
+HTTP2_END_STREAM = 1
 HTTP2_END_HEADERS = 4
 ROOT_CHANNEL = 1
 REPLY_CHANNEL = 3
@@ -87,6 +89,161 @@ class XPCMessage:
     flags: int
     message_id: int
     value: Any | None
+
+
+class PassiveRSDTranscript:
+    """Incrementally validate one bounded, passive RSD server transcript.
+
+    This consumes caller-supplied bytes only.  It has no socket and cannot send
+    the candidate client handshake.  A successful result means only that the
+    supplied transcript advertised the requested named service.
+    """
+
+    def __init__(self, *, wanted_service: str, max_frame: int = 65536,
+                 max_frames: int = 16, max_total: int = 262144,
+                 max_xpc_body: int = 65536):
+        if not isinstance(wanted_service, str) or not wanted_service:
+            raise RSDProtocolError("wanted service must be a nonempty string")
+        for value, name in ((max_frame, "frame"), (max_frames, "frame count"),
+                            (max_total, "total"), (max_xpc_body, "XPC body")):
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise RSDProtocolError(f"{name} cap must be a positive integer")
+        self.wanted_service = wanted_service
+        self.max_frame = max_frame
+        self.max_frames = max_frames
+        self.max_total = max_total
+        self.max_xpc_body = max_xpc_body
+        self._wire = bytearray()
+        self._streams = {ROOT_CHANNEL: bytearray(), REPLY_CHANNEL: bytearray()}
+        self._total = 0
+        self._frame_count = 0
+        self._settings_seen = False
+        self._settings_count = 0
+        self._ignored_controls = 0
+        self._port: int | None = None
+
+    def feed(self, chunk: bytes) -> None:
+        if not isinstance(chunk, bytes):
+            raise RSDProtocolError("transcript chunks must be bytes")
+        if self._port is not None and chunk:
+            raise RSDProtocolError("RSD transcript contains bytes after its directory")
+        self._total += len(chunk)
+        if self._total > self.max_total:
+            raise RSDProtocolError("RSD transcript exceeds the total byte cap")
+        self._wire += chunk
+        while len(self._wire) >= 9:
+            length = int.from_bytes(self._wire[:3], "big")
+            if length > self.max_frame:
+                raise RSDProtocolError("RSD transcript frame exceeds its cap")
+            frame_size = 9 + length
+            if len(self._wire) < frame_size:
+                return
+            frame = bytes(self._wire[:frame_size])
+            del self._wire[:frame_size]
+            self._frame_count += 1
+            if self._frame_count > self.max_frames:
+                raise RSDProtocolError("RSD transcript exceeds its frame-count cap")
+            self._accept_frame(*decode_http2_frame(frame, max_payload=self.max_frame))
+
+    def _accept_frame(self, frame_type: int, flags: int, stream_id: int,
+                      payload: bytes) -> None:
+        if self._port is not None:
+            raise RSDProtocolError("RSD transcript contains a frame after its directory")
+        if frame_type == HTTP2_SETTINGS:
+            self._accept_settings(flags, stream_id, payload)
+            return
+        if frame_type == HTTP2_WINDOW_UPDATE:
+            self._accept_window_update(flags, stream_id, payload)
+            return
+        if frame_type == HTTP2_HEADERS:
+            if (not self._settings_seen or stream_id not in self._streams
+                    or flags != HTTP2_END_HEADERS or payload):
+                raise RSDProtocolError("unexpected RSD HTTP/2 headers frame")
+            return
+        if frame_type != HTTP2_DATA:
+            raise RSDProtocolError("unsupported frame in passive RSD transcript")
+        if not self._settings_seen or stream_id not in self._streams:
+            raise RSDProtocolError("RSD data arrived before settings or on a wrong stream")
+        if flags & ~HTTP2_END_STREAM:
+            raise RSDProtocolError("RSD data frame contains unsupported flags")
+        stream = self._streams[stream_id]
+        stream += payload
+        if len(stream) > self.max_xpc_body + XPC_WRAPPER_HEADER.size + 8:
+            raise RSDProtocolError("fragmented RSD XPC message exceeds its cap")
+        self._consume_xpc_messages(stream)
+        if flags & HTTP2_END_STREAM and stream:
+            raise RSDProtocolError("RSD stream ended with a partial XPC message")
+
+    def _accept_settings(self, flags: int, stream_id: int, payload: bytes) -> None:
+        if stream_id != 0 or flags & ~HTTP2_ACK:
+            raise RSDProtocolError("malformed RSD settings frame")
+        if flags & HTTP2_ACK:
+            if payload:
+                raise RSDProtocolError("an acknowledged settings frame must be empty")
+        elif len(payload) % 6:
+            raise RSDProtocolError("RSD settings payload is not a sequence of entries")
+        identifiers: set[int] = set()
+        for offset in range(0, len(payload), 6):
+            identifier, value = struct.unpack_from(">HI", payload, offset)
+            if not 1 <= identifier <= 6 or identifier in identifiers:
+                raise RSDProtocolError("RSD settings contain an invalid or duplicate ID")
+            if identifier == 2 and value not in (0, 1):
+                raise RSDProtocolError("RSD ENABLE_PUSH setting is invalid")
+            if identifier == 4 and value > 0x7FFFFFFF:
+                raise RSDProtocolError("RSD initial window setting is invalid")
+            if identifier == 5 and not 16384 <= value <= 0xFFFFFF:
+                raise RSDProtocolError("RSD maximum frame setting is invalid")
+            identifiers.add(identifier)
+        self._settings_count += 1
+        if self._settings_count > 2:
+            raise RSDProtocolError("RSD transcript contains too many settings frames")
+        if not flags & HTTP2_ACK:
+            self._settings_seen = True
+
+    def _accept_window_update(self, flags: int, stream_id: int,
+                              payload: bytes) -> None:
+        if flags or stream_id not in (0, ROOT_CHANNEL, REPLY_CHANNEL) or len(payload) != 4:
+            raise RSDProtocolError("malformed RSD window-update frame")
+        increment = int.from_bytes(payload, "big")
+        if increment & 0x80000000 or increment == 0:
+            raise RSDProtocolError("invalid RSD window-update increment")
+        self._ignored_controls += 1
+        if self._ignored_controls > 4:
+            raise RSDProtocolError("RSD transcript contains too many control frames")
+
+    def _consume_xpc_messages(self, stream: bytearray) -> None:
+        while len(stream) >= XPC_WRAPPER_HEADER.size + 8:
+            body_size = int.from_bytes(stream[8:16], "little")
+            if body_size > self.max_xpc_body:
+                raise RSDProtocolError("RSD XPC body exceeds its cap")
+            message_size = XPC_WRAPPER_HEADER.size + 8 + body_size
+            if len(stream) < message_size:
+                return
+            encoded = bytes(stream[:message_size])
+            del stream[:message_size]
+            message = decode_xpc_message(encoded, max_body=self.max_xpc_body)
+            if message.value is None:
+                if message.flags & XPC_DATA_PRESENT:
+                    raise RSDProtocolError("empty RSD XPC control claims to carry data")
+                self._ignored_controls += 1
+                if self._ignored_controls > 4:
+                    raise RSDProtocolError("RSD transcript contains too many control messages")
+                continue
+            if not message.flags & XPC_DATA_PRESENT:
+                raise RSDProtocolError("RSD directory XPC message lacks DATA_PRESENT")
+            self._port = validate_service_directory(
+                message.value, wanted_service=self.wanted_service
+            )
+            if stream or any(self._streams[channel] for channel in self._streams
+                             if self._streams[channel] is not stream):
+                raise RSDProtocolError("RSD directory was interleaved with surplus XPC data")
+
+    def finish(self) -> int:
+        if self._wire or any(self._streams.values()):
+            raise RSDProtocolError("RSD transcript ended with a partial frame or XPC message")
+        if not self._settings_seen or self._port is None:
+            raise RSDProtocolError("RSD transcript ended before a service directory")
+        return self._port
 
 
 def _pad4(length: int) -> int:
