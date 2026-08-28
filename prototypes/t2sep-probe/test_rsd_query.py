@@ -1,5 +1,6 @@
 import importlib.util
 import io
+import json
 from pathlib import Path
 import struct
 import sys
@@ -124,6 +125,34 @@ class RSDQueryTests(unittest.TestCase):
         with mock.patch.object(query, "live_capture", return_value=capture) as live:
             self.assertEqual(query.live_query("t2", 1.0), 49152)
         live.assert_called_once_with("t2", 1.0)
+
+    def test_private_capture_is_exclusive_and_self_verifying(self):
+        capture = query.PassiveDirectoryCapture(49165, b"private transcript")
+        with self.subTest("new file"):
+            import tempfile
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "capture.json"
+                query.write_capture(path, capture)
+                payload = json.loads(path.read_text())
+                self.assertEqual(payload["advertised_port"], 49165)
+                self.assertEqual(bytes.fromhex(payload["server_transcript_hex"]),
+                                 capture.server_transcript)
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                self.assertIsNone(payload["validation_error"])
+                with self.assertRaises(query.QueryError):
+                    query.write_capture(path, capture)
+
+    def test_parser_failure_retains_bounded_transcript(self):
+        settings = protocol.encode_http2_frame(protocol.HTTP2_SETTINGS, 0, 0)
+        malformed = protocol.encode_xpc_message(
+            {"unexpected": "data"}, message_id=0,
+            flags=protocol.XPC_ALWAYS_SET)
+        data = protocol.encode_http2_frame(
+            protocol.HTTP2_DATA, 0, protocol.ROOT_CHANNEL, malformed)
+        with self.assertRaises(query.PartialCaptureError) as caught:
+            query.capture_connected_socket(
+                FakeSocket(settings + data), uuid.UUID(int=2))
+        self.assertEqual(caught.exception.server_transcript, settings + data)
 
     def test_malformed_live_verification_still_precedes_all_io(self):
         for malformed in ("yes", (), ("address", 59602, "evidence"),

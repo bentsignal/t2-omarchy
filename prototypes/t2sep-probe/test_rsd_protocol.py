@@ -256,17 +256,20 @@ class PassiveTranscriptTests(unittest.TestCase):
         self.assertEqual(parser.finish(), 52032)
 
     def test_allows_bounded_empty_xpc_control(self):
-        control = rsd.encode_xpc_message(
-            None, message_id=0, flags=rsd.XPC_ALWAYS_SET | rsd.XPC_REPLY
-        )
-        settings = rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0)
-        control_frame = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0,
-                                               rsd.REPLY_CHANNEL, control)
-        directory = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL,
-                                           self.directory_message())
-        parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
-        parser.feed(settings + control_frame + directory)
-        self.assertEqual(parser.finish(), 52032)
+        for value in (None, {}):
+            with self.subTest(value=value):
+                control = rsd.encode_xpc_message(
+                    value, message_id=0, flags=rsd.XPC_ALWAYS_SET | rsd.XPC_REPLY
+                )
+                settings = rsd.encode_http2_frame(rsd.HTTP2_SETTINGS, 0, 0)
+                control_frame = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0,
+                                                       rsd.REPLY_CHANNEL, control)
+                directory = rsd.encode_http2_frame(
+                    rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL,
+                    self.directory_message())
+                parser = rsd.PassiveRSDTranscript(wanted_service=self.SERVICE)
+                parser.feed(settings + control_frame + directory)
+                self.assertEqual(parser.finish(), 52032)
 
     def test_rejects_data_before_peer_settings_and_wrong_stream(self):
         directory = rsd.encode_http2_frame(rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL,

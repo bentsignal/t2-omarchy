@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import hashlib
 import importlib.util
+import json
 import math
+import os
 from pathlib import Path
 import socket
 import sys
@@ -51,6 +54,12 @@ LIVE_DIRECTORY_CAPTURE_ENABLED = False
 
 class QueryError(RuntimeError):
     pass
+
+
+class PartialCaptureError(QueryError):
+    def __init__(self, message: str, server_transcript: bytes):
+        super().__init__(message)
+        self.server_transcript = server_transcript
 
 
 @dataclass(frozen=True)
@@ -105,7 +114,8 @@ def capture_connected_socket(sock: socket.socket,
             transcript += frame
             parser.feed(frame)
         except protocol.RSDProtocolError as error:
-            raise QueryError("peer RSD transcript failed validation") from error
+            raise PartialCaptureError(
+                "peer RSD transcript failed validation", bytes(transcript)) from error
         if parser.peer_settings_seen and not handshake_sent:
             sock.sendall(protocol.candidate_rsd_settings_ack())
             sock.sendall(protocol.candidate_rsd_device_handshake(client_uuid))
@@ -183,12 +193,36 @@ def live_query(interface: str, timeout: float) -> int:
     return live_capture(interface, timeout).advertised_port
 
 
+def write_capture(path: Path, capture: PassiveDirectoryCapture, *,
+                  validation_error: str | None = None) -> None:
+    """Create one mode-0600 private transcript without replacing a file."""
+    if not isinstance(path, Path) or path.exists() or path.is_symlink():
+        raise QueryError("capture output path must be new")
+    if not isinstance(capture, PassiveDirectoryCapture):
+        raise QueryError("capture result has the wrong type")
+    payload = {
+        "advertised_port": capture.advertised_port,
+        "server_transcript_hex": capture.server_transcript.hex(),
+        "server_transcript_sha256": hashlib.sha256(
+            capture.server_transcript).hexdigest(),
+        "validation_error": validation_error,
+    }
+    encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+    except OSError as error:
+        raise QueryError(f"cannot create capture output {path}") from error
+
+
 def main() -> None:
     argument_parser = argparse.ArgumentParser()
     argument_parser.add_argument("--live", action="store_true")
     argument_parser.add_argument("--interface", default="enp4s0f1u1")
     argument_parser.add_argument("--timeout", type=float, default=2.0)
     argument_parser.add_argument("--confirm", default="")
+    argument_parser.add_argument("--output", type=Path)
     args = argument_parser.parse_args()
 
     if not args.live:
@@ -208,8 +242,18 @@ def main() -> None:
         argument_parser.error(f"live mode requires --confirm={CONFIRMATION}")
     if not 0 < args.timeout <= 5:
         argument_parser.error("timeout must be greater than zero and no more than five seconds")
-    port = live_query(args.interface, args.timeout)
-    print(f"RSD advertised {BIOMETRIC_SERVICE} on port {port}")
+    if args.output is None:
+        argument_parser.error("live mode requires --output with a new private path")
+    if args.output.exists() or args.output.is_symlink():
+        argument_parser.error("live output path must not already exist")
+    try:
+        capture = live_capture(args.interface, args.timeout)
+    except PartialCaptureError as error:
+        write_capture(args.output, PassiveDirectoryCapture(
+            0, error.server_transcript), validation_error=str(error))
+        raise
+    write_capture(args.output, capture)
+    print(f"RSD advertised {BIOMETRIC_SERVICE} on port {capture.advertised_port}")
 
 
 if __name__ == "__main__":

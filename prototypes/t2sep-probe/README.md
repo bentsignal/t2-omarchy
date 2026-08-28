@@ -226,7 +226,14 @@ requires both `--live` and a long confirmation token. Do not run it until the
 T2 interface has a scoped link-local configuration and a live passive query is
 explicitly intended. Its connection path is additionally hard-disabled in
 source until port `52032`, currently proven only from Catalina 19H15, is
-verified against the newer bridgeOS installed on this machine.
+verified against the newer bridgeOS installed on this machine. The separate
+`captured-bridge-query.py` removes that stale fixed-port assumption: it accepts
+only a private, mode-0600, checksum-valid transcript, independently replays the
+strict directory parser, and derives the service port from that transcript.
+A supervised Linux attempt reached the advertised TCP listener but received no
+BridgeXPC reply within three seconds, even with the exact current 119-byte HELO.
+Its source gate was restored to false; the result points to an activation or
+pre-BridgeXPC transport step still to recover.
 The source gate must be an exact port plus nonempty evidence tuple. Peer HELO
 JSON must have the recovered four keys and valid types; invalid interface names
 and nonfinite/out-of-range timeouts are rejected before sysfs or socket access.

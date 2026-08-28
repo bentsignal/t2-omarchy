@@ -256,7 +256,10 @@ class PassiveRSDTranscript:
             encoded = bytes(stream[:message_size])
             del stream[:message_size]
             message = decode_xpc_message(encoded, max_body=self.max_xpc_body)
-            if message.value is None:
+            # Current Multiverse sends an empty dictionary with only
+            # XPC_ALWAYS_SET as a bounded channel-control record. Older
+            # fixtures used the null form. Neither carries directory data.
+            if message.value is None or message.value == {}:
                 if message.flags & XPC_DATA_PRESENT:
                     raise RSDProtocolError("empty RSD XPC control claims to carry data")
                 self._ignored_controls += 1

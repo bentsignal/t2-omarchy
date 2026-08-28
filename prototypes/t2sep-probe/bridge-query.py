@@ -24,6 +24,11 @@ sys.modules[SPEC.name] = protocol
 SPEC.loader.exec_module(protocol)
 
 BODY_CAP = 64 * 1024
+# The current macOS trace records an exact 119-byte HELO.  With its five-byte
+# OS build and 13-byte process name, that requires JSON integer 39, not 39.0.
+CURRENT_BRIDGE_VERSION = 39
+CURRENT_OS_BUILD = "25G83"
+CURRENT_PROCESS_NAME = "biometrickitd"
 CONFIRMATION = "I_UNDERSTAND_THIS_OPENS_T2_BIOMETRIC_SERVICE"
 # Must become (52032, nonempty-evidence-note) only after a current macOS binary
 # or trace confirms the named service still owns Catalina's port.
@@ -52,7 +57,8 @@ def recv_frame(sock: socket.socket) -> tuple[protocol.BridgeFrameHeader, bytes]:
 
 def query_connected_socket(sock: socket.socket) -> tuple[int, int]:
     """Send only HELO and method 0, then accept one bounded message reply."""
-    helo = protocol.encode_helo_frame("Linux", 37.0, "t2-bridge-query",
+    helo = protocol.encode_helo_frame(CURRENT_OS_BUILD, CURRENT_BRIDGE_VERSION,
+                                      CURRENT_PROCESS_NAME,
                                       max_body=BODY_CAP)
     query = protocol.encode_bridge_version_query_frame(max_body=BODY_CAP)
     sock.sendall(helo + query)
@@ -130,7 +136,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.live:
-        helo = protocol.encode_helo_frame("Linux", 37.0, "t2-bridge-query",
+        helo = protocol.encode_helo_frame(CURRENT_OS_BUILD, CURRENT_BRIDGE_VERSION,
+                                          CURRENT_PROCESS_NAME,
                                           max_body=BODY_CAP)
         query = protocol.encode_bridge_version_query_frame(max_body=BODY_CAP)
         print(f"offline only: HELO={helo.hex()}")

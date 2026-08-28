@@ -516,13 +516,22 @@ It requires an actual property-list boolean—not integer `0`/`1`—and preserve
 signed-32 status, arity, type, and body-size checks. It still refuses to encode
 `BTNil`.
 
-The live runner nevertheless remains fail-closed: `CURRENT_PORT_VERIFICATION`
-is unset. The current daemon obtains the endpoint dynamically from RSD, so the
-confirmed BridgeXPC framing does not prove Catalina's fixed port `52032`.
-Until a passive directory capture confirms the current T2 listener and its
-advertised port, the Linux runner cannot open a socket or fall through to a
-biometric command.
-It contains no method-3 or SBIO send path. Unit tests use a fragmented fake
+Linux has now completed that bounded directory exchange against the verified
+Multiverse port `59602`. A strict 7,560-byte server transcript advertised
+`com.apple.eos.BiometricKit` on boot-dynamic port `49165`, matching the macOS
+boot observation. The private transcript is stored outside the repository
+with mode `0600`; its SHA-256 is
+`5fb049a9a94f6e0238183a738fc6ab70ed905d2a6f1681fe985fe025a84bf47d`.
+The parser also records that current Multiverse uses an empty dictionary,
+rather than null, for its initial no-data channel-control record.
+
+A first Linux connection to the transcript-derived service port completed its
+TCP handshake, but the peer returned no BridgeXPC bytes within the three-second
+bound after an exact current 119-byte HELO and method-0 version request. This
+narrows the remaining gap to service activation or pre-BridgeXPC transport;
+it does not justify sending method 3. The capture-bound runner is disabled in
+source after the supervised attempt and contains no method-3 or SBIO send path.
+Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
 machine's newer bridgeOS, the connection function is mechanically disabled in
