@@ -415,21 +415,31 @@ x86_64 slice SHA-256 is
 `macos-rsd-port-evidence.py` independently requires the x86_64 Mach-O, class,
 method, and unique exact `movw` port store.
 
-The runner now records that port evidence separately in
-`CURRENT_RSD_PORT_VERIFICATION`, but its live branch first checks
-`CURRENT_T2_ADDRESS_VERIFICATION`, which remains `None`. A malformed address
-or port evidence tuple is also rejected before interface inspection or socket
-construction. Tests prove absent/malformed gates and invalid timeouts cannot
-reach sysfs or construct a socket. This preserves the live prohibition while
-avoiding the false claim that the current Apple port is still unknown.
+The same binary's `RSDRemoteNCMDevice::local_address` and `remote_address`
+methods call a shared six-byte-MAC helper with direction values 1 and 0. The
+helper toggles MAC byte 0 with `0x02`, inserts `ff:fe`, and, for the remote
+direction, XORs byte 5 with `0xff`, then prepends `fe80::/64`. Applied to the
+kernel-observed NCM MAC `ac:de:48:00:11:22`, this yields:
 
-This establishes Apple’s current NCM-device listener port as `58783`, but does
-**not** establish the current T2 peer address or that its directory currently
-advertises the host-requested `com.apple.eos.BiometricKit` service.
-Neither the candidate codec nor the currently disabled runner has connected to
-that port. A future live experiment may only become possible after the
-installed-macOS endpoint evidence or passive network evidence confirms this
-specific T2 route.
+```text
+host/local: fe80::aede:48ff:fe00:1122
+T2/remote:  fe80::aede:48ff:fe00:11dd
+port:       58783
+```
+
+`rsd-protocol.py` implements this derivation with strict input checks, and the
+runner records the address and port evidence independently. Live execution is
+still mechanically impossible because the earlier missing-evidence gate has
+been replaced by the explicit source kill switch
+`LIVE_DIRECTORY_CAPTURE_ENABLED = False`. That switch is checked before sysfs
+or socket work. Tests separately prove the kill switch, malformed evidence,
+and invalid timeouts cannot construct a socket.
+
+This establishes Apple's current NCM endpoint, but does **not** establish that
+the T2 directory currently advertises the host-requested
+`com.apple.eos.BiometricKit` service. Neither the codec nor the disabled runner
+has connected to it. The first future experiment remains a supervised,
+bounded directory-only capture; it sends no service-open request.
 
 ## SBIO and the Intel xART split
 

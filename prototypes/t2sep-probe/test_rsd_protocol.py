@@ -19,11 +19,23 @@ class XPCCodecTests(unittest.TestCase):
     def test_candidate_endpoint_is_offline_and_scoped(self):
         self.assertEqual(
             rsd.candidate_rsd_sockaddr(3),
-            ("fe80::aede:48ff:fe33:4455", 58783, 0, 3),
+            ("fe80::aede:48ff:fe00:11dd", 58783, 0, 3),
         )
         for bad in (0, -1, 1 << 32, True, "3"):
             with self.assertRaises(rsd.RSDProtocolError):
                 rsd.candidate_rsd_sockaddr(bad)
+
+    def test_current_remoted_ncm_address_derivation(self):
+        mac = bytes.fromhex("acde48001122")
+        self.assertEqual(rsd.ncm_link_local_address(mac, peer=False),
+                         "fe80::aede:48ff:fe00:1122")
+        self.assertEqual(rsd.ncm_link_local_address(mac, peer=True),
+                         "fe80::aede:48ff:fe00:11dd")
+        for mac_value, peer in ((b"", False), (b"12345", False),
+                                (bytearray(mac), False), (mac, 1)):
+            with self.subTest(mac=mac_value, peer=peer):
+                with self.assertRaises(rsd.RSDProtocolError):
+                    rsd.ncm_link_local_address(mac_value, peer=peer)
 
     def test_exact_empty_dictionary_wrapper(self):
         encoded = rsd.encode_xpc_message({}, message_id=0)

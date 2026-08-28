@@ -37,9 +37,15 @@ CURRENT_RSD_PORT_VERIFICATION = (
     protocol.RSD_PORT_CANDIDATE,
     "installed macOS 26.6.2 remoted NCM-device listener",
 )
-# Must become (address, evidence-note) only after current installed-macOS or a
-# passive trace verifies the T2 peer address. No live path exists with this unset.
-CURRENT_T2_ADDRESS_VERIFICATION = None
+# RSDRemoteNCMDevice::remote_address in the same binary derives the peer's
+# link-local address from the NCM MAC, toggling the EUI-64 U/L bit, inserting
+# ff:fe, and XORing the peer's last byte with ff.
+CURRENT_T2_ADDRESS_VERIFICATION = (
+    protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
+    "installed macOS 26.6.2 remoted NCM remote_address derivation",
+)
+# Deliberately remains false until a supervised passive-directory experiment.
+LIVE_DIRECTORY_CAPTURE_ENABLED = False
 
 
 class QueryError(RuntimeError):
@@ -132,8 +138,8 @@ def verify_t2_interface(name: str) -> int:
 
 
 def live_query(interface: str, timeout: float) -> int:
-    if CURRENT_T2_ADDRESS_VERIFICATION is None:
-        raise QueryError("live RSD query disabled: verify current T2 peer address")
+    if not LIVE_DIRECTORY_CAPTURE_ENABLED:
+        raise QueryError("live RSD query disabled: supervised capture not enabled")
     expected = (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
                 protocol.RSD_PORT_CANDIDATE)
     address_verification = CURRENT_T2_ADDRESS_VERIFICATION

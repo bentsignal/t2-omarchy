@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Strict offline codec for the candidate modern remoted/RSD directory path.
+"""Strict offline codec for the modern remoted/RSD directory path.
 
-Nothing in this module opens a socket.  Port 58783 and this RemoteXPC framing
-are recovered from independent open implementations of Apple's modern RSD
-protocol, but have not yet been verified against this Mac's T2 bridgeOS.
+Nothing in this module opens a socket. The installed Intel macOS remoted proves
+the NCM endpoint construction; the T2 directory response remains unobserved.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 import struct
 import uuid
 from typing import Any
@@ -19,7 +19,23 @@ class RSDProtocolError(ValueError):
 
 
 RSD_PORT_CANDIDATE = 58783
-T2_LINK_LOCAL_ADDRESS_CANDIDATE = "fe80::aede:48ff:fe33:4455"
+T2_NCM_MAC = bytes.fromhex("acde48001122")
+
+
+def ncm_link_local_address(mac: bytes, *, peer: bool) -> str:
+    """Reproduce current macOS remoted's NCM IPv6 address construction."""
+    if not isinstance(mac, bytes) or len(mac) != 6:
+        raise RSDProtocolError("NCM MAC address must contain exactly six bytes")
+    if not isinstance(peer, bool):
+        raise RSDProtocolError("NCM peer selector must be boolean")
+    interface_id = bytearray(mac[:3] + b"\xff\xfe" + mac[3:])
+    interface_id[0] ^= 0x02
+    if peer:
+        interface_id[-1] ^= 0xFF
+    return str(ipaddress.IPv6Address(b"\xfe\x80" + b"\0" * 6 + interface_id))
+
+
+T2_LINK_LOCAL_ADDRESS_CANDIDATE = ncm_link_local_address(T2_NCM_MAC, peer=True)
 HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 HTTP2_DATA = 0
 HTTP2_HEADERS = 1
@@ -93,7 +109,7 @@ class XPCMessage:
 
 
 def candidate_rsd_sockaddr(interface_index: int) -> tuple[str, int, int, int]:
-    """Return the unverified modern RSD endpoint tuple without opening a socket."""
+    """Return the statically verified modern RSD endpoint without opening a socket."""
     if isinstance(interface_index, bool) or not isinstance(interface_index, int):
         raise RSDProtocolError("interface index must be an integer")
     if not 1 <= interface_index < 1 << 32:
