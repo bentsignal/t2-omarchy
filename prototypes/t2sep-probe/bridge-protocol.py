@@ -190,16 +190,19 @@ def encode_perform_command_frame(request: tuple[BridgeAtom, ...],
 
 def encode_helo_frame(os_build: str, bridge_xpc_version: float,
                       process_name: str, *, max_body: int) -> bytes:
-    """Encode the four-key HELO JSON observed in Catalina BridgeXPC 37."""
-    if not isinstance(os_build, str) or not os_build:
-        raise BridgeProtocolError("OS build must be a nonempty string")
+    """Encode the four-key HELO JSON verified in current BridgeXPC 39."""
+    if (not isinstance(os_build, str) or not os_build or "\0" in os_build
+            or len(os_build.encode("utf-8")) > 128):
+        raise BridgeProtocolError("OS build is invalid")
     if (isinstance(bridge_xpc_version, bool)
             or not isinstance(bridge_xpc_version, (int, float))
             or not math.isfinite(bridge_xpc_version)
             or bridge_xpc_version < 0):
         raise BridgeProtocolError("BridgeXPC version must be finite and nonnegative")
-    if not isinstance(process_name, str) or not process_name:
-        raise BridgeProtocolError("process name must be a nonempty string")
+    if (not isinstance(process_name, str) or not process_name
+            or "\0" in process_name
+            or len(process_name.encode("utf-8")) > 256):
+        raise BridgeProtocolError("process name is invalid")
     if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
         raise BridgeProtocolError("max_body must be a nonnegative integer")
     body = json.dumps({

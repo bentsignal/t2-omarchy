@@ -130,6 +130,16 @@ class BridgeEnvelopeTests(unittest.TestCase):
             "19H15",
         )
 
+    def test_helo_encoder_rejects_strings_the_decoder_would_reject(self):
+        for os_build, process_name in (("bad\0build", "probe"),
+                                       ("x" * 129, "probe"),
+                                       ("Linux", "bad\0name"),
+                                       ("Linux", "x" * 257)):
+            with self.subTest(os_build=os_build, process_name=process_name):
+                with self.assertRaises(bridge.BridgeProtocolError):
+                    bridge.encode_helo_frame(os_build, 39, process_name,
+                                             max_body=1024)
+
     def test_helo_decoder_fails_closed(self):
         valid = {
             "MaxSupportedProtocolVersion": 1,

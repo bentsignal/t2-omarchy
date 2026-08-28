@@ -389,6 +389,15 @@ source tuple, validates the peer's complete four-key HELO rather than accepting
 arbitrary UTF-8, rejects traversal-capable interface names and nonfinite
 timeouts, and proves all those gates run before sysfs or socket access.
 
+The offline `discovered-bridge-plan.py` now joins the modern discovery and
+BridgeXPC layers without weakening that gate. It accepts a port only in the
+range returned by the strict RSD directory validator, combines it with the
+current RSD-derived link-local T2 address and a nonzero interface index, then
+constructs only HELO, method 0 (`getBridgeVersion:`), and method 1
+(`getServiceOpened:`) frames. The module does not import or create sockets.
+This also prevents accidentally carrying Catalina's different fixed peer
+address into the modern dynamic-service path.
+
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service
 Discovery protocol identify TCP port `58783`; pymobiledevice3 attributes it to
