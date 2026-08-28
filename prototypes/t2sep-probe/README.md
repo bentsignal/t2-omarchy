@@ -294,6 +294,14 @@ same-session cancellation. It caps and structurally decodes the 40-byte service
 record, collects at most two events, but never prints raw data. The first
 five-second physical-touch window produced only the initial status, so a
 coordinated retry is still required.
+
+`match-authentication-probe.py` is the source-disabled next stage. It takes a
+fresh, UID-scoped identity snapshot on the same session, starts only the
+ordinary match form, permits only the statically/live-proven ready and activity
+events before the terminal match event, and delegates the final decision to
+the fail-closed trusted-identity model. Exact trusted match, explicit no-match,
+unknown UUID, unexpected event, timeout, and mandatory-cancel paths are tested.
+Its result intentionally omits identity UUIDs.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,

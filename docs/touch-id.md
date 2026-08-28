@@ -840,6 +840,20 @@ block. A first coordinated-touch attempt saw only the initial
 `0xe3ff8001` record during its five-second window, so physical touch-event
 confirmation remains the next manual test.
 
+The eventual authentication path is now composed offline in
+`match-authentication-probe.py`, with its live source gate closed. On one
+persistent connection it freshly enumerates identities for exactly one UID,
+arms one `MatchAuthentication`, starts only the ordinary zero-special-mode
+match command, accepts the proven zero-data `0xe3ff8001` ready event and the
+minimum-nine-byte `0xe3ff800b` activity event as nonterminal, and requires
+exactly one `0xe3ff8002` terminal result. A non-`0xffffffff` result succeeds
+only when both its UID and 16-byte sensor UUID match the fresh trusted snapshot.
+No-match is an explicit false decision; another UID, unknown UUID, malformed
+record, unexpected status, timeout, event flood, or transport loss fails the
+operation permanently. Cancellation is attempted on every post-start exit.
+The public result reports only the Boolean decision, UID, identity count,
+status numbers, and cancel status; it never exposes UUID bytes.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
