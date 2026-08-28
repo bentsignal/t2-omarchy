@@ -43,8 +43,11 @@ sudo rmmod t2sep_probe
 
 Apple's control endpoint provides a NOP command. This is the first bounded
 request/response test: it sends one NOP with tag 1, waits up to five seconds,
-and consumes at most one 128-bit response. It requires the recovered transport
-enable sequence and two MSI vectors:
+and consumes at most one 128-bit response. The probe rejects Apple's transport
+error bits and requires the exact previously observed NOP header plus zero
+data/reserved words. The fourth word is transport metadata and is logged
+separately. It requires the recovered transport enable sequence and two MSI
+vectors:
 
 ```bash
 sudo insmod ./t2sep_probe.ko apple_start_cpu_probe=1 \

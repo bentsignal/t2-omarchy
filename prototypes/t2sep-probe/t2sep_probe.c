@@ -31,6 +31,8 @@
 #define T2SEP_INTEL_OUTBOX_STATUS 0x010c
 #define T2SEP_INTEL_INBOX_EMPTY BIT(17)
 #define T2SEP_INTEL_OUTBOX_FULL BIT(16)
+#define T2SEP_INTEL_MSG_ERROR BIT(18)
+#define T2SEP_INTEL_MSG_FATAL BIT(19)
 #define T2SEP_INTEL_CPU_CONTROL 0x8028
 #define T2SEP_INTEL_CPU_STOP 0x8024
 #define T2SEP_INTEL_CPU_RESET 0x8040
@@ -204,6 +206,19 @@ static void t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4
 					 "control NOP response after %d ms: %08x %08x %08x %08x\n",
 					 i * 10, response[0], response[1],
 					 response[2], response[3]);
+				if (response[3] & (T2SEP_INTEL_MSG_ERROR |
+						   T2SEP_INTEL_MSG_FATAL)) {
+					dev_err(&pdev->dev,
+						"control NOP transport error flags: %08x\n",
+						response[3]);
+				} else if (response[0] != 0x00010100 ||
+					   response[1] != 0 || response[2] != 0) {
+					dev_err(&pdev->dev,
+						"control NOP response failed strict validation\n");
+				} else {
+					dev_info(&pdev->dev,
+						"control NOP response passed strict validation\n");
+				}
 			}
 		}
 	}
