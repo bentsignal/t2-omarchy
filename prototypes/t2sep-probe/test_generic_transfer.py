@@ -19,6 +19,11 @@ class GenericTransferTests(unittest.TestCase):
         encoded = gt.Packet(4, 0, 0, 7, b"abcd").encode()
         self.assertEqual(struct.unpack("<7I", encoded[:28]), (1, 4, 0, 0, 0, 7, 4))
 
+    def test_sbio_initialization_fixture(self):
+        encoded = gt.Packet(4, 0, 0, 0x73, b"\x03\0\0\0").encode()
+        self.assertEqual(encoded.hex(),
+                         "0100000004000000000000000000000000000000730000000400000003000000")
+
     def test_continuation_chunk(self):
         source = gt.Packet(10, 4, 2, 9, b"567890")
         self.assertEqual(gt.decode_packet(source.encode()), source)

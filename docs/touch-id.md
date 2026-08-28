@@ -170,6 +170,16 @@ meaning is not yet proven. It must not be sent live until passive `sbio`
 discovery, OOL limits, DMA registration lifetime, and completion semantics
 have all been validated.
 
+The generic-transfer endpoint setup is likewise ordered and stateful.
+`enableEndpoint()` obtains the named service through `AppleSEPDeviceService`,
+allocates two page-aligned shared-memory objects through `IOSlaveProcessor`,
+and passes the outbound and inbound objects to two different
+`AppleSEPEndpoint` registration methods. Only after both registrations succeed
+does `getEndpoint()` consider the channel usable; it waits for the endpoint's
+enabled state before returning it to `transact()`. Linux must reproduce that
+ownership and teardown contract rather than merely DMA-map two allocations and
+send their addresses. The current prototype intentionally has no DMA path.
+
 The earlier assumption that T2 requires an APFS-backed GigaLocker before SBIO
 can appear came from Apple-silicon SEP work. The universal macOS 14.5 KDK shows
 that this is an architecture split, not a common requirement. Its arm64e slice
