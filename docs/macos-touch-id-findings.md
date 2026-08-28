@@ -233,6 +233,15 @@ legacy fixed-port model while also explaining why it must remain disabled for
 the current system: current macOS used the newer RSD-discovered, boot-dynamic
 route, and Linux already observed an active refusal on `52032`.
 
+A final transport-layer distinction was tested without touching SEP or the T2
+PCI functions: an exact `USBDEVFS_RESET` request targeted only usbfs device
+`05ac:8233`, after validating its singleton configuration and ancestry below
+`0000:04:00.1/t2bce_core`. The T2 virtual host controller rejected the ioctl
+with `EPERM`, even for root; both `cdc_ncm` interfaces remained bound and no
+reset occurred. Thus Linux's generic USB device-reset path cannot reproduce a
+deeper macOS enumeration transition on this VHCI. The helper remains
+source-disabled, and its capture contains only the rejected attempt.
+
 Only after independent transcript validation should a second supervised step
 request the advertised service, perform the bounded BridgeXPC HELO exchange,
 and stop before sending a Mesa command. The boot capture proves the sequence

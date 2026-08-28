@@ -68,6 +68,14 @@ restores `cdc_ncm` through an exit trap. Its pcap can contain internal T2 frame
 payloads and must not be committed. The first supervised capture contained
 only the T2's complete MLDv2 report and no DNS-SD advertisement.
 
+`capture-t2ncm-device-reset.sh` and `t2ncm-device-reset.py` model the narrower
+follow-up distinction between interface rebind and a whole USB-device reset.
+They validate the exact `05ac:8233` singleton below PCI `0000:04:00.1`, accept
+only a private fixed capture path, and keep the reset source-disabled. A
+supervised attempt showed that `t2bce_vhci` rejects `USBDEVFS_RESET` with
+`EPERM` even for root, leaving both NCM interfaces bound; the generic usbfs
+route therefore cannot perform this transition.
+
 `pbzx-stream.py` incrementally decodes the PBZX payload inside older macOS
 installer packages. It exists because a whole-payload decoder expanded a
 roughly 15 GB archive in memory and caused `systemd-oomd` to kill the terminal
