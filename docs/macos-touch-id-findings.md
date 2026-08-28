@@ -47,10 +47,9 @@ remoted/T2-facing endpoint:  T2 IPv6 port 49165
 state:                       ESTABLISHED
 ```
 
-The endpoint addresses follow from the host interface/NDP roles and the local
-listener ownership. macOS `netstat` truncates both printed IPv6 addresses, so
-the full endpoint association is a supported inference rather than a packet
-observation. Port `49165` is directly owned by `remoted`.
+Boot-time `lsof` and unified network logs directly confirm both full endpoint
+addresses. Port `49165` is a T2 service port; `remoted` first connects to it and
+hands the connected socket to `biometrickitd` through its local XPC service.
 
 Across the 60-second window the biometric socket counters changed from
 283350/118410 to 421450/137756 receive/transmit bytes: +138100 RX and +19346 TX.
@@ -84,21 +83,61 @@ the byte chronology is not wire-proven. The unified log's BridgeXPC message
 sizes and socket-counter deltas prove traffic, but do not expose its payload.
 An empty pcap must not be interpreted as absence of bridge traffic.
 
+## Boot-time activation sequence
+
+A one-shot LaunchDaemon began collection approximately five seconds after
+kernel boot. A post-boot query of the persistent unified-log store recovered
+the earlier interval. All offsets below use kernel boot time as zero:
+
+| Offset | Directly observed event |
+| ---: | --- |
+| +2.081 s | `remoted` starts. |
+| +2.279 s | `localbridge` attaches; NCM host and device backends initialize. |
+| +2.290 s | The internal bridge device becomes usable; its first connection attempt fails with `No route to host`. |
+| +3.875 s | `pollConnect` succeeds after `en6` becomes routable. |
+| +3.908 s | `remoted` begins the directory connection from host port `49153` to T2 port `59602`. |
+| +3.945 s | The HTTP/2 transport is ready. |
+| +3.973 s | Both peers decline TLS and the `localbridge` directory handshake completes. |
+| +4.677 s | A client confirms `com.apple.eos.BiometricKit` exists in the directory. |
+| +4.711 s | launchd schedules `biometrickitd`; it is running at +4.722 s. |
+| +7.076 s | `biometrickitd` begins `setupConnection`. |
+| +7.077 s | Its `eos` query fails; its `bridge` query returns `localbridge`, then it fetches `com.apple.eos.BiometricKit`. |
+| +7.079 s | `remoted` receives CONNECT and connects to T2 port `49165` successfully. |
+| +7.087 s | BridgeXPC uses the handed-off socket on `en6`; no TLS layer is present. |
+| +7.092 s | TCP is ready. A 119-byte BridgeXPC HELO is sent and a 101-byte HELO is received. |
+| +7.101 s | The first queued BridgeXPC request receives a successful reply. |
+| +7.102 s | `biometrickitd` reports Bridge interface version 3 and begins sensor initialization. |
+
+The directory connection is directly identified as:
+
+```text
+host: fe80::aede:48ff:fe00:1122%en6 port 49153
+T2:   fe80::aede:48ff:fe33:4455%en6 port 59602
+stack: TCP + HTTP/2 RemoteXPC, TLS disabled by both peers
+```
+
+This is the activation exchange that the earlier post-login experiment could
+not observe. It also shows that port `58783`, although embedded in the inspected
+`remoted` implementation for a different role, is not the directory endpoint
+used by this Mac/T2 boot path. Port `59602` is directly observed for the current
+boot, but it should still be discovered rather than assumed stable.
+
 ## Linux continuation
 
-The most important correction is that current macOS does not use fixed ports
-`58783` or `52032` for the active biometric connection. `remoted` dynamically
-created a bank of host listeners and BiometricKit used port `49165` during this
-boot. Linux should not hard-code that ephemeral value.
+Current macOS does not use fixed ports `58783` or `52032` for this boot path.
+The directory ran on T2 port `59602`, and its returned BiometricKit service ran
+on T2 port `49165`. Linux must not hard-code either boot-dynamic value.
 
-The next fail-closed Linux experiment should remain discovery-only. After a
-narrow NCM rebind and proof that TX advances, reproduce only enough activation
-to make the current `remoted` directory/listener bank appear, then passively
-recover the advertised `com.apple.eos.BiometricKit` port. Keep the existing
-five-second, byte/frame, ancestry, and source kill-switch gates. Do not send a
-biometric command until the current service discovery and BridgeXPC handshake
-are captured and independently decoded.
+The next fail-closed Linux experiment should reproduce only the directory
+connection. After a narrow NCM rebind and proof that TX advances, connect from
+the proven host address to the T2 address using a freshly observed/discovered
+directory port, perform the already bounded HTTP/2 RemoteXPC handshake with TLS
+disabled, and passively recover `com.apple.eos.BiometricKit`. Keep the existing
+five-second, byte/frame, ancestry, and source kill-switch gates. The successful
+result must include the complete bounded server transcript and the named
+service port. Do not send CONNECT or a biometric command in that first run.
 
-Boot-time macOS capture could still establish the missing activation sequence,
-but installing a LaunchDaemon or restarting Apple daemons requires separate
-approval and was not performed here.
+Only after independent transcript validation should a second supervised step
+request the advertised service, perform the bounded BridgeXPC HELO exchange,
+and stop before sending a Mesa command. The boot capture proves the sequence
+and frame sizes but not private payload bytes.
