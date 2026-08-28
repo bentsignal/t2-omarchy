@@ -1,4 +1,40 @@
-# macOS Codex handoff: T2 Touch ID activation capture
+# macOS Codex handoff: T2 bridgeOS service activation
+
+> **Current handoff (2026-08-28):** Continue from commit `77f7593` or a later
+> descendant. The original macOS capture below is complete. The next macOS
+> task is to identify what activates bridgeOS Remote Service Discovery during
+> boot; do not repeat the original broad capture.
+
+Give the macOS Codex session this exact instruction:
+
+> Continue the T2 Touch ID Linux investigation from the current `main` branch.
+> Read `docs/touch-id.md`, `docs/macos-touch-id-findings.md`, and
+> `docs/macos-touch-id-handoff.md` completely before acting.
+>
+> Linux now has healthy CDC-NCM connectivity to the T2, but bridgeOS's
+> RSD/mDNS responder and dynamic BiometricKit listener remain dormant. Direct
+> and multicast RSD queries time out, while ports 58783 and 52032 actively
+> refuse connections. Catalina's Linux-native enrollment, identity-management,
+> match commands, and terminal service-event semantics are already recovered;
+> do not redo that work.
+>
+> Investigate what macOS does below `remoted` that activates bridgeOS Remote
+> Service Discovery. Focus on early-boot IORegistry state, AppleUSBiBridge/T2
+> USB power and configuration properties, the component represented by the
+> observed `localbridge` attachment, relevant kernel/driver state, and any
+> host-to-T2 state transition preceding the directory connection. Compare
+> those facts with the documented Linux state. The current AppleUSBiBridge
+> static analysis already shows one selected USB configuration and remote-wake
+> calls confined to sleep/wake callbacks, so seek stronger evidence rather
+> than merely repeating configuration or NCM queries.
+>
+> Perform as much read-only inspection and static analysis as possible. A new
+> bounded boot or sleep/wake capture is allowed only when it targets a concrete
+> unresolved transition. Do not modify fingerprint enrollment, reset or pair
+> the Touch ID sensor, disable platform security, or publish raw/private
+> biometric evidence. Record sanitized findings, reproducible tooling, and
+> tests in the repository; push a clean checkpoint before handing back to
+> Linux. State exactly which Linux experiment the new evidence authorizes.
 
 > Capture completed on macOS 26.6.2. See
 > [`macos-touch-id-findings.md`](macos-touch-id-findings.md) for the sanitized
@@ -20,8 +56,8 @@ git log -1 --oneline
 git status --short
 ```
 
-The history must contain commit `bfea2e5` or a later descendant. Give the new
-Codex session this instruction:
+The history must contain commit `77f7593` or a later descendant. The shorter
+historical instruction used for the first capture was:
 
 > Read `docs/macos-touch-id-handoff.md` completely, inspect the current git
 > state, and continue the T2 Touch ID investigation from its macOS capture
