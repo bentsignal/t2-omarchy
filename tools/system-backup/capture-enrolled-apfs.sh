@@ -15,6 +15,7 @@ stamp=20260827-post-enrollment
 destination="$backup_mount/apfs-baselines/$stamp"
 image="$destination/nvme0n1p3.apfs.img"
 partial="$image.partial"
+mode=${1:-}
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run through pkexec or sudo"
@@ -37,7 +38,12 @@ mount_options=$(findmnt -rn -S "$backup_partition" -o OPTIONS)
 [[ ,$mount_options, == *,rw,* ]] || die "backup filesystem is not mounted read-write"
 [[ $(df -B1 --output=avail "$backup_mount" | tail -1) -gt 150000000000 ]] ||
   die "backup has insufficient free space"
-[[ ! -e $image && ! -e $partial ]] || die "baseline or partial image already exists"
+if [[ -e $image || -e $partial ]]; then
+  [[ $mode == --replace-incomplete ]] || die "baseline or partial image already exists"
+  [[ ! -e $image || $(stat -c %s "$image") -lt "$expected_apfs_size" ]] ||
+    die "refusing to replace a full-size APFS image"
+  rm -f -- "$image" "$partial" "$destination/source.sha256" "$destination/image.sha256"
+fi
 
 mkdir -p "$destination"
 sfdisk --dump "$source_disk" > "$destination/nvme0n1.sfdisk"
