@@ -33,13 +33,17 @@ class QueryError(RuntimeError):
     pass
 
 
-def capture_socket(sock: socket.socket, interface_index: int) -> mdns.DiscoveredRSDEndpoint:
+def capture_socket(sock: socket.socket, interface_index: int, *,
+                   destination_address: str = MULTICAST_ADDRESS
+                   ) -> mdns.DiscoveredRSDEndpoint:
     """Send one PTR query and consume only bounded T2-sourced responses."""
     if (isinstance(interface_index, bool) or not isinstance(interface_index, int)
             or not 1 <= interface_index < 1 << 32):
         raise QueryError("interface index is out of range")
+    if destination_address not in {MULTICAST_ADDRESS, mdns.T2_LINK_LOCAL_ADDRESS}:
+        raise QueryError("mDNS destination is not an approved T2 discovery address")
     query = mdns.build_srv_query(unicast_response=True)
-    destination = (MULTICAST_ADDRESS, MULTICAST_PORT, 0, interface_index)
+    destination = (destination_address, MULTICAST_PORT, 0, interface_index)
     sent = sock.sendto(query, destination)
     if sent != len(query):
         raise QueryError("mDNS query was not sent in full")
@@ -98,12 +102,15 @@ def verify_t2_interface(name: str) -> int:
     return socket.if_nametoindex(name)
 
 
-def live_capture(interface: str, timeout: float) -> mdns.DiscoveredRSDEndpoint:
+def live_capture(interface: str, timeout: float, *, direct: bool = False
+                 ) -> mdns.DiscoveredRSDEndpoint:
     if not LIVE_MDNS_DISCOVERY_ENABLED:
         raise QueryError("live T2 mDNS discovery disabled in source")
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
             or not math.isfinite(timeout) or not 0 < timeout <= 5):
         raise QueryError("timeout must be finite, positive, and no more than five seconds")
+    if not isinstance(direct, bool):
+        raise QueryError("direct-query selector must be boolean")
     interface_index = verify_t2_interface(interface)
     group = socket.inet_pton(socket.AF_INET6, MULTICAST_ADDRESS)
     with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
@@ -113,7 +120,9 @@ def live_capture(interface: str, timeout: float) -> mdns.DiscoveredRSDEndpoint:
                         group + struct.pack("@I", interface_index))
         sock.bind((HOST_ADDRESS, MULTICAST_PORT, 0, interface_index))
         sock.settimeout(timeout)
-        return capture_socket(sock, interface_index)
+        destination = mdns.T2_LINK_LOCAL_ADDRESS if direct else MULTICAST_ADDRESS
+        return capture_socket(sock, interface_index,
+                              destination_address=destination)
 
 
 def write_capture(path: Path, result: mdns.DiscoveredRSDEndpoint) -> None:
@@ -147,6 +156,7 @@ def main() -> None:
     parser.add_argument("--timeout", type=float, default=2.0)
     parser.add_argument("--confirm", default="")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--direct", action="store_true")
     args = parser.parse_args()
     if not args.live:
         print(f"offline only: srv-query={mdns.build_srv_query().hex()}")
@@ -157,7 +167,7 @@ def main() -> None:
         parser.error("live mode requires --output with a new private file path")
     if args.output.exists() or args.output.is_symlink():
         parser.error("live output path must not already exist")
-    result = live_capture(args.interface, args.timeout)
+    result = live_capture(args.interface, args.timeout, direct=args.direct)
     write_capture(args.output, result)
     print(f"T2 advertised RSD at [{result.endpoint[0]}]:{result.endpoint[1]}")
 

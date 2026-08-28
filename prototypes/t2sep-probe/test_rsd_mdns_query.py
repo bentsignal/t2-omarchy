@@ -71,9 +71,24 @@ class MDNSQueryTests(unittest.TestCase):
         with mock.patch.object(query, "verify_t2_interface") as verify:
             with mock.patch.object(query.socket, "socket") as constructor:
                 with self.assertRaisesRegex(query.QueryError, "disabled"):
-                    query.live_capture("enp4s0f1u1", 2.0)
+                    query.live_capture("enp4s0f1u1", 2.0, direct=True)
         verify.assert_not_called()
         constructor.assert_not_called()
+
+    def test_only_multicast_or_exact_t2_unicast_destination_is_allowed(self):
+        for destination in ("ff02::1", "fe80::1", None):
+            sock = FakeSocket([])
+            with self.subTest(destination=destination):
+                with self.assertRaisesRegex(query.QueryError, "destination"):
+                    query.capture_socket(sock, 3,
+                                         destination_address=destination)
+            self.assertEqual(sock.sent, [])
+        sock = FakeSocket([], short_send=True)
+        with self.assertRaises(query.QueryError):
+            query.capture_socket(
+                sock, 3, destination_address=mdns.T2_LINK_LOCAL_ADDRESS)
+        self.assertEqual(sock.sent[0][1],
+                         (mdns.T2_LINK_LOCAL_ADDRESS, 5353, 0, 3))
 
     def test_capture_rejects_short_send_wrong_source_and_timeout(self):
         for sock in (FakeSocket([], short_send=True), FakeSocket([])):

@@ -145,6 +145,14 @@ produced the same negative result. Thus the DNS-SD responder is dormant during
 Linux boot; merely reproducing Network.framework's lookup does not activate
 it. No port scan or TCP connection was attempted.
 
+A final supervised diagnostic sent that exact SRV question directly to the
+proven T2 link-local address on UDP port 5353, bypassing IPv6 multicast delivery
+while retaining the five-second timeout and exact-interface/source gates. The
+T2 still answered ICMPv6 but returned no DNS response; the private evidence file
+was therefore not created. This rules out multicast reception as the remaining
+explanation for the negative discovery result and strengthens the activation
+boundary above. The direct-query option remains source-disabled by default.
+
 The next reverse-engineering target is the action below `remoted` that makes
 the bridgeOS DNS-SD responder available under macOS. Once that activation is
 understood, the next fail-closed Linux experiment should reproduce only the
