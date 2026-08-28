@@ -129,6 +129,16 @@ planner and rejects full/empty state, a nonzero host fourth word, malformed
 u32 records, and received transport errors. It performs no mapping, polling,
 or I/O.
 
+The same Intel slice fixes the MSI mapping. Interrupt source index/vector 0 is
+`intr_inbox_nempty`; vector 1 is `intr_outbox_empty`. Both handlers require the
+serialized work-loop gate. Inbox invokes the installed doorbell callback (the
+manager drains records until `getMailbox` stops succeeding), or wakes the
+inbox condition if no callback exists. Outbox wakes the condition used by a
+sender blocked on the full bit. A Linux transport therefore must not interpret
+the two vectors as interchangeable completion interrupts, and must serialize
+FIFO drain/post state outside hard-IRQ context. The offline FIFO model exposes
+only these two named vectors and rejects every other index.
+
 This is a different PCIe FIFO presentation from the T8012/PongoOS mailbox
 offsets initially tested. The earlier all-zero reads at BAR4 `+0x4000` neither
 showed that the T2 was dead nor described this interface. The next experiment
@@ -416,6 +426,20 @@ registered DMA mapping allocated, mapped, and non-reusable for the full SEP
 transport lifetime, scrub it before teardown, and stop/reset the transport
 before freeing it. Treating module unload as implicit OOL revocation would
 create a use-after-free DMA hazard.
+
+Replacement needs the same caution. `setSendOOLBuffer` and
+`setReceiveOOLBuffer` first wait for a successful control registration, then
+retain the new memory object and release the old host reference. That proves
+the new address has replaced the endpoint's current address, but it does not
+provide Linux with a wire-level revocation acknowledgement for the old one.
+`endpoint-lifecycle.py` therefore retains every successful historical mapping
+in its offline ownership model. Failed control registration changes nothing;
+an endpoint becomes transaction-ready only after both directions succeed;
+operations are balanced and must drain before sleep/stop; and no current or
+retired mapping can be released until the entire SEP transport is stopped and
+that mapping is scrubbed. This last stop-before-free rule is an explicit Linux
+safety invariant built on the recovered absence of unregister, not a claim
+that Apple's object-release alone performs a wire command.
 
 Disassembly of `_gt_write_next_packet` gives the exact seven-word,
 little-endian header: protocol version (`1`), total transaction length, byte

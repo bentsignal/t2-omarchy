@@ -152,10 +152,18 @@ order without opening or mapping a device. A receive plan is four ordered reads
 at `0x810..0x81c`. A post plan checks outbox-full, writes payload words 0..2,
 commits with a literal zero at `0x82c`, and finishes with the driver's status
 read at `0x10c`. It rejects host metadata in word 3 and received error/fatal
-flags. Run the offline suites with:
+flags. The model also names the exact MSI sources: vector 0 is inbox-nonempty
+and vector 1 is outbox-empty.
+
+`endpoint-lifecycle.py` separately tracks the OOL ownership contract without
+allocating memory. It commits mappings only after a successful control
+response, retains replaced mappings because Intel exposes no unregister
+opcode, balances active operations and sleep holds, and permits release only
+after transport stop plus explicit scrub. Run the offline suites with:
 
 ```bash
-python -m unittest test_decode_message.py test_generic_transfer.py test_intel_fifo.py \
+python -m unittest test_decode_message.py test_generic_transfer.py \
+  test_intel_fifo.py test_endpoint_lifecycle.py \
   test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py \
   test_rsd_query.py test_verify_discovery_log.py
 ```

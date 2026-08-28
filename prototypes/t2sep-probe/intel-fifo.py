@@ -13,6 +13,8 @@ INBOX_EMPTY = 1 << 17
 OUTBOX_FULL = 1 << 16
 MESSAGE_ERROR = 1 << 18
 MESSAGE_FATAL = 1 << 19
+MSI_INBOX_NONEMPTY = 0
+MSI_OUTBOX_EMPTY = 1
 
 
 class FIFOError(ValueError):
@@ -56,6 +58,16 @@ class ReceivedMessage:
     @property
     def transport_flags(self) -> int:
         return self.words[3] & (MESSAGE_ERROR | MESSAGE_FATAL)
+
+
+def decode_msi_vector(vector: int) -> str:
+    if isinstance(vector, bool) or not isinstance(vector, int):
+        raise FIFOError("MSI vector is not an integer")
+    if vector == MSI_INBOX_NONEMPTY:
+        return "inbox-nonempty"
+    if vector == MSI_OUTBOX_EMPTY:
+        return "outbox-empty"
+    raise FIFOError("MSI vector is outside the recovered two-vector mapping")
 
 
 def plan_receive(status: int) -> tuple[MMIOAction, ...]:

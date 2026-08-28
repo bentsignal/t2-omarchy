@@ -10,6 +10,13 @@ SPEC.loader.exec_module(fifo)
 
 
 class IntelFIFOTests(unittest.TestCase):
+    def test_exact_two_vector_event_mapping(self):
+        self.assertEqual(fifo.decode_msi_vector(0), "inbox-nonempty")
+        self.assertEqual(fifo.decode_msi_vector(1), "outbox-empty")
+        for vector in (True, -1, 2, None):
+            with self.assertRaises(fifo.FIFOError):
+                fifo.decode_msi_vector(vector)
+
     def test_receive_plan_uses_exact_pop_order(self):
         self.assertEqual(fifo.plan_receive(0), tuple(
             fifo.MMIOAction("read", offset) for offset in (0x810, 0x814, 0x818, 0x81C)
