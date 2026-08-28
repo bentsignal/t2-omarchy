@@ -78,6 +78,40 @@ class DecodeMessageTests(unittest.TestCase):
         with self.assertRaisesRegex(decode_message.DiscoveryError, "unknown"):
             decode_message.DiscoveryTable().accept([0x080200FD, 0, 0, 0])
 
+    def test_intel_ool_registration_wire_format(self) -> None:
+        self.assertEqual(
+            decode_message.encode_ool_registration(8, 0x12345000, 0x4000, incoming_to_sep=True),
+            [0x08020000, 0x12345, 0x4000, 0],
+        )
+        self.assertEqual(
+            decode_message.encode_ool_registration(8, 0xABC000, 0x4B000, incoming_to_sep=False),
+            [0x08030000, 0xABC, 0x4B000, 0],
+        )
+
+    def test_ool_registration_rejects_unsafe_ranges(self) -> None:
+        invalid = (
+            (0, 0x1000, 0x1000),
+            (0xFD, 0x1000, 0x1000),
+            (8, 0x1001, 0x1000),
+            (8, 0x1000, 0),
+            (8, 0x1000, 0x1001),
+            (8, 0x100000000000, 0x1000),
+        )
+        for endpoint, address, size in invalid:
+            with self.subTest(endpoint=endpoint, address=address, size=size):
+                with self.assertRaises(decode_message.ControlMessageError):
+                    decode_message.encode_ool_registration(
+                        endpoint, address, size, incoming_to_sep=True
+                    )
+
+    def test_sbio_buffer_sizes_match_advertised_limits(self) -> None:
+        endpoint = decode_message.EndpointInfo(8, 0x6F696273, (4, 65, 1, 75))
+        decode_message.validate_ool_sizes(endpoint, 0x4000, 0x4B000)
+        for send, receive in ((0x3000, 0x4B000), (0x4000, 0x4C000), (1, 0x1000)):
+            with self.subTest(send=send, receive=receive):
+                with self.assertRaises(decode_message.ControlMessageError):
+                    decode_message.validate_ool_sizes(endpoint, send, receive)
+
 
 if __name__ == "__main__":
     unittest.main()

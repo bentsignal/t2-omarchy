@@ -11,6 +11,33 @@ class DiscoveryError(ValueError):
     pass
 
 
+class ControlMessageError(ValueError):
+    pass
+
+
+PAGE_SIZE = 4096
+CONTROL_ENDPOINT = 0
+SET_OOL_IN = 2
+SET_OOL_OUT = 3
+
+
+def encode_ool_registration(target_endpoint: int, dma_address: int, size: int,
+                            *, incoming_to_sep: bool) -> list[int]:
+    """Encode, but never send, Intel AppleSEPControl's SET_REMOTE_DMA message."""
+    if not 1 <= target_endpoint <= 0xFC:
+        raise ControlMessageError("target endpoint is outside the service endpoint range")
+    if dma_address < 0 or dma_address % PAGE_SIZE:
+        raise ControlMessageError("DMA address must be nonnegative and page aligned")
+    page_address = dma_address >> 12
+    if page_address > 0xFFFFFFFF:
+        raise ControlMessageError("DMA page address does not fit the Intel wire field")
+    if not 0 < size <= 0xFFFFFFFF or size % PAGE_SIZE:
+        raise ControlMessageError("OOL size must be a positive page multiple fitting 32 bits")
+    opcode = SET_OOL_IN if incoming_to_sep else SET_OOL_OUT
+    return [CONTROL_ENDPOINT | opcode << 16 | target_endpoint << 24,
+            page_address, size, 0]
+
+
 @dataclass(frozen=True)
 class EndpointInfo:
     endpoint_id: int
@@ -66,6 +93,20 @@ class DiscoveryTable:
             return updated
 
         raise DiscoveryError(f"unknown discovery opcode 0x{opcode:02x}")
+
+
+def validate_ool_sizes(endpoint: EndpointInfo, send_size: int, receive_size: int) -> None:
+    """Require page-aligned buffer sizes inside an endpoint's advertised limits."""
+    if endpoint.limits is None:
+        raise ControlMessageError("endpoint has no advertised OOL limits")
+    if send_size <= 0 or receive_size <= 0 or send_size % PAGE_SIZE or receive_size % PAGE_SIZE:
+        raise ControlMessageError("OOL buffer sizes must be positive page multiples")
+    send_pages, receive_pages = send_size // PAGE_SIZE, receive_size // PAGE_SIZE
+    in_min, in_max, out_min, out_max = endpoint.limits
+    if not in_min <= send_pages <= in_max:
+        raise ControlMessageError("send buffer is outside advertised OOL_IN limits")
+    if not out_min <= receive_pages <= out_max:
+        raise ControlMessageError("receive buffer is outside advertised OOL_OUT limits")
 
 
 def fourcc(value: int) -> str:

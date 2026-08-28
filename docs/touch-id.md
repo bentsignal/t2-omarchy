@@ -153,6 +153,33 @@ then uses generic-transfer message type `0xfc` for transactions. The first
 packet has a 28-byte header followed by request data. These details are now
 recovered well enough to implement the transport without guessing.
 
+The Intel x86_64 `AppleSEPEndpoint` implementation removes another ambiguity.
+`setSendOOLBuffer()` calls control opcode `2` (`SET_REMOTE_DMA_IN`), while
+`setReceiveOOLBuffer()` calls opcode `3` (`SET_REMOTE_DMA_OUT`). Their exact
+four-word request is:
+
+```text
+word 0: control endpoint 0x00 | opcode << 16 | target endpoint << 24
+word 1: 32-bit DMA page-frame number (address >> 12)
+word 2: buffer size in bytes
+word 3: zero
+```
+
+Registration succeeds before Apple retains the memory object. The offline
+encoder rejects reserved endpoint IDs, unaligned addresses/sizes, zero sizes,
+and page-frame overflow. A separate gate checks both sizes against the four
+page limits passively advertised for that exact endpoint. It performs no
+allocation, mapping, registration, or device access.
+
+There is no corresponding control “unregister” in the Intel endpoint methods.
+`clearSendOOL()` and `clearReceiveOOL()` zero the already-visible memory but do
+not revoke the address from SEP; object destruction releases the host object
+later. A Linux implementation must therefore keep every successfully
+registered DMA mapping allocated, mapped, and non-reusable for the full SEP
+transport lifetime, scrub it before teardown, and stop/reset the transport
+before freeing it. Treating module unload as implicit OOL revocation would
+create a use-after-free DMA hazard.
+
 Disassembly of `_gt_write_next_packet` gives the exact seven-word,
 little-endian header: protocol version (`1`), total transaction length, byte
 offset, flags, reserved zero, 32-bit command, and this packet's payload
