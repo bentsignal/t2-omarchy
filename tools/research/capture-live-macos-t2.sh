@@ -71,7 +71,16 @@ for interface_name in $t2_interfaces; do
   case "$interface_name" in
     *[!A-Za-z0-9._-]*) echo "unsafe interface name" >&2; exit 2 ;;
   esac
-  sudo tcpdump -i "$interface_name" -n -s 0 -U -w \
+  capture_interface=$interface_name
+  link_type_args=()
+  if ! sudo tcpdump -i "$interface_name" -L >/dev/null 2>&1; then
+    # AppleUSBNCMData interfaces on macOS 26 can be listed by ifconfig and
+    # tcpdump -D yet reject direct BPF attachment. pktap can remain scoped to
+    # that exact interface; RAW output also avoids pktap metadata in evidence.
+    capture_interface="pktap,$interface_name"
+    link_type_args=(-y RAW)
+  fi
+  sudo tcpdump -i "$capture_interface" "${link_type_args[@]}" -n -s 0 -U -w \
     "$capture_dir/$interface_name.pcap" >"$capture_dir/$interface_name-tcpdump.txt" 2>&1 &
   pids="$pids $!"
 done

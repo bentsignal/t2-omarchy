@@ -1,5 +1,9 @@
 # macOS Codex handoff: T2 Touch ID activation capture
 
+> Capture completed on macOS 26.6.2. See
+> [`macos-touch-id-findings.md`](macos-touch-id-findings.md) for the sanitized
+> handback and Linux continuation. Raw evidence remains local only.
+
 This is the continuation point for the Linux Touch ID research on Shawn's
 2019 `MacBookPro16,1`. It is intended to be read by a fresh Codex session
 running on this machine's macOS installation.

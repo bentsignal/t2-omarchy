@@ -81,14 +81,25 @@ def _decode_ethernet_ipv6(packet: bytes) -> dict[str, Any] | None:
     return result
 
 
+def _decode_raw_ipv6(packet: bytes) -> dict[str, Any] | None:
+    if not packet or packet[0] >> 4 != 6:
+        return None
+    # Reuse the bounded IPv6 decoder by supplying a synthetic Ethernet header.
+    item = _decode_ethernet_ipv6(b"\x00" * 12 + b"\x86\xdd" + packet)
+    if item is not None:
+        item.pop("ethernet_source", None)
+    return item
+
+
 def summarize_pcap(path: Path) -> dict[str, Any]:
     data = _regular_file(path, maximum=MAX_PCAP_BYTES)
     if len(data) < 24 or data[:4] not in PCAP_MAGICS:
         raise CaptureError(f"unsupported or truncated pcap: {path.name}")
     endian = PCAP_MAGICS[data[:4]]
     _, _, _, _, snaplen, network = struct.unpack_from(endian + "HHIIII", data, 4)
-    if snaplen == 0 or network != 1:
-        raise CaptureError(f"pcap must use Ethernet link type: {path.name}")
+    # DLT_RAW is 12 on some platforms and 101 in macOS-produced pcap files.
+    if snaplen == 0 or network not in {1, 12, 101}:
+        raise CaptureError(f"pcap must use Ethernet or raw-IP link type: {path.name}")
     offset = 24
     packets = 0
     decoded: list[dict[str, Any]] = []
@@ -99,7 +110,9 @@ def summarize_pcap(path: Path) -> dict[str, Any]:
         offset += 16
         if included > snaplen or included > original or offset + included > len(data):
             raise CaptureError(f"invalid packet length: {path.name}")
-        item = _decode_ethernet_ipv6(data[offset:offset + included])
+        packet = data[offset:offset + included]
+        item = (_decode_ethernet_ipv6(packet) if network == 1
+                else _decode_raw_ipv6(packet))
         if item is not None:
             item["packet_index"] = packets
             decoded.append(item)
@@ -116,7 +129,8 @@ def summarize_pcap(path: Path) -> dict[str, Any]:
         "file": path.name,
         "packet_count": packets,
         "ipv6_packet_count": len(decoded),
-        "ethernet_sources": sorted({item["ethernet_source"] for item in decoded}),
+        "ethernet_sources": sorted({item["ethernet_source"] for item in decoded
+                                    if "ethernet_source" in item}),
         "ipv6_sources": sorted({item["ipv6_source"] for item in decoded}),
         "interesting_flows": [
             {"source": source, "source_port": source_port,

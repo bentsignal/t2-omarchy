@@ -24,9 +24,9 @@ def ethernet_ipv6_tcp(source_port=58783, destination_port=49152, flags=0x12):
     return ethernet + ipv6 + source + destination + tcp
 
 
-def pcap(records):
+def pcap(records, network=1):
     result = bytearray(bytes.fromhex("d4c3b2a1") +
-                       struct.pack("<HHIIII", 2, 4, 0, 0, 65535, 1))
+                       struct.pack("<HHIIII", 2, 4, 0, 0, 65535, network))
     for packet in records:
         result += struct.pack("<IIII", 0, 0, len(packet), len(packet)) + packet
     return bytes(result)
@@ -44,11 +44,20 @@ class CaptureAnalysisTests(unittest.TestCase):
         self.assertEqual(result["interesting_flows"][0]["source_port"], 58783)
         self.assertEqual(result["tcp_resets"], 0)
 
-    def test_rejects_bad_lengths_and_non_ethernet(self):
+    def test_accepts_macos_raw_ipv6(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "en6.pcap"
+            path.write_bytes(pcap([ethernet_ipv6_tcp()[14:]], network=101))
+            result = capture.summarize_pcap(path)
+        self.assertEqual(result["packet_count"], 1)
+        self.assertEqual(result["ethernet_sources"], [])
+        self.assertEqual(result["ipv6_sources"], ["fe80::aede:48ff:fe33:4455"])
+
+    def test_rejects_bad_lengths_and_unknown_link_type(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "bad.pcap"
             path.write_bytes(bytes.fromhex("d4c3b2a1") +
-                             struct.pack("<HHIIII", 2, 4, 0, 0, 64, 101))
+                             struct.pack("<HHIIII", 2, 4, 0, 0, 64, 999))
             with self.assertRaises(capture.CaptureError):
                 capture.summarize_pcap(path)
             path.write_bytes(pcap([b"short"])[:-1])

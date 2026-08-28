@@ -31,7 +31,13 @@ copy_if_readable() {
   source_path=$1
   destination_name=$2
   if [[ -r $source_path && -f $source_path ]]; then
-    /bin/cp -p "$source_path" "$capture_dir/files/$destination_name"
+    # Some sealed-system files expose flags that an unprivileged user cannot
+    # reproduce on a Desktop copy. Preserve metadata when possible, but fall
+    # back to a content-only copy instead of aborting the evidence capture.
+    if ! /bin/cp -p "$source_path" "$capture_dir/files/$destination_name"; then
+      /bin/rm -f "$capture_dir/files/$destination_name"
+      /bin/cp "$source_path" "$capture_dir/files/$destination_name"
+    fi
   fi
 }
 
@@ -58,7 +64,8 @@ copy_if_readable \
 
 if [[ -r /usr/libexec/biometrickitd ]]; then
   file /usr/libexec/biometrickitd >"$capture_dir/biometrickitd-file.txt"
-  otool -L /usr/libexec/biometrickitd >"$capture_dir/biometrickitd-libraries.txt"
+  otool -L /usr/libexec/biometrickitd \
+    >"$capture_dir/biometrickitd-libraries.txt" 2>&1 || true
   codesign -dvvv /usr/libexec/biometrickitd \
     >"$capture_dir/biometrickitd-codesign.txt" 2>&1 || true
   shasum -a 256 /usr/libexec/biometrickitd \
@@ -67,7 +74,8 @@ fi
 
 if [[ -r /usr/libexec/remoted ]]; then
   file /usr/libexec/remoted >"$capture_dir/remoted-file.txt"
-  otool -L /usr/libexec/remoted >"$capture_dir/remoted-libraries.txt"
+  otool -L /usr/libexec/remoted \
+    >"$capture_dir/remoted-libraries.txt" 2>&1 || true
   codesign -dvvv /usr/libexec/remoted \
     >"$capture_dir/remoted-codesign.txt" 2>&1 || true
   shasum -a 256 /usr/libexec/remoted >"$capture_dir/remoted-sha256.txt"
