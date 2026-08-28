@@ -137,6 +137,16 @@ The exact sequence is at `0x100012aac` in slice SHA-256
 resolved endpoint is absent, the same method falls back to fixed port `58783`,
 which explains the previously misunderstood literal.
 
+Control-flow recovery of that exact `needsConnect` method narrows the boundary
+further. It returns while already connected, requires the NCM interface state
+to equal `2` and its local address to be nonzero, then checks the cached Apple
+interface flags through `is_private`. The live `0xa1/0xa0` read returned zero,
+so this machine follows the Bonjour branch above. The method contains no USB
+control transfer, SEP request, or other device-wake operation: after obtaining
+an endpoint it only creates the network connection and starts
+`pollConnect:onQueue:withLog:completion:`. The missing activation is therefore
+not a hidden call inside the macOS NCM host object's connection method.
+
 A supervised Linux test from proven host address `...:1122` sent a generic
 PTR browse, an exact `ncm._remoted._tcp.local.` SRV question, and the same SRV
 question with the mDNS QU bit. TX advanced without errors and the T2 continued
@@ -208,6 +218,20 @@ successfully reproduced the complete Apple sequence while unbound, then
 restored `cdc_ncm`. The T2 stayed ICMP-reachable but again answered neither
 multicast nor direct named RSD discovery. Thus ordinary AppleUSBNCM control
 configuration is not the missing bridgeOS service activation boundary.
+
+The installed macOS 26.6.2 System volume also contains a signed recovery
+firmware bundle named `iBridge1_1Customer.bundle`. Its manifest identifies
+bridgeOS `3.0` build `14Y910` (`DaytonaBridgeUpdateJazz`), so it is historical
+recovery firmware rather than proof of the currently running bridgeOS service
+layout. Read-only Image4/LZFSE extraction of its OS ramdisk nevertheless
+recovers `/usr/libexec/bkremoted` and its launchd plist. That plist gives the
+BiometricKit bridge daemon a launchd-managed IPv4/IPv6 TCP listener named
+`com.apple.bkremoted.socket` on fixed port `52032`; the binary consumes that
+socket with `initWithLaunchdSockets:` and identifies itself as
+`BiometricKit Bridge Daemon`. This independently validates the origin of the
+legacy fixed-port model while also explaining why it must remain disabled for
+the current system: current macOS used the newer RSD-discovered, boot-dynamic
+route, and Linux already observed an active refusal on `52032`.
 
 Only after independent transcript validation should a second supervised step
 request the advertised service, perform the bounded BridgeXPC HELO exchange,

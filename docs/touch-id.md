@@ -573,6 +573,17 @@ the T2 directory currently advertises the host-requested
 has connected to it. The first future experiment remains a supervised,
 bounded directory-only capture; it sends no service-open request.
 
+Read-only extraction of the `iBridge1_1Customer.bundle` recovery OS included
+with macOS 26.6.2 found the historical bridgeOS-side launch contract behind
+that candidate. Its bridgeOS 3.0 (`14Y910`) launchd plist starts
+`/usr/libexec/bkremoted` with an IPv4/IPv6 TCP socket on service `52032`, and
+the daemon consumes `com.apple.bkremoted.socket`. This is strong provenance for
+the legacy port, not current-port verification: the bundle is historical
+recovery firmware, the current macOS trace used RSD and dynamic service ports,
+and the live Linux transport received a TCP refusal on `52032`. Consequently
+`CURRENT_PORT_VERIFICATION` remains unset and the legacy live query remains
+mechanically disabled.
+
 The current daemon also embeds code whose build paths identify it as
 `bkremoted`. Its binary contains `BiometricKitBridgeConnection`,
 `BiometricKitBridgeTransport`, and `BiometricKitBridgeServices`, along with
