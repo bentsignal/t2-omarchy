@@ -1,9 +1,10 @@
 # macOS Codex handoff: T2 bridgeOS service activation
 
-> **Current handoff (2026-08-28):** Continue from commit `77f7593` or a later
-> descendant. The original macOS capture below is complete. The next macOS
-> task is to identify what activates bridgeOS Remote Service Discovery during
-> boot; do not repeat the original broad capture.
+> **Current handoff (2026-08-28):** The macOS activation follow-up is complete.
+> Read-only live inspection and installed-binary verification established that
+> the internal T2 uses Multiverse with fixed directory port `59602`, not the
+> dormant NCM DNS-SD path tested by Linux. Continue with the fail-closed Linux
+> directory-only experiment documented below; do not repeat the broad capture.
 
 Give the macOS Codex session this exact instruction:
 
@@ -35,6 +36,30 @@ Give the macOS Codex session this exact instruction:
 > biometric evidence. Record sanitized findings, reproducible tooling, and
 > tests in the repository; push a clean checkpoint before handing back to
 > Linux. State exactly which Linux experiment the new evidence authorizes.
+
+## 2026-08-28 Multiverse resolution
+
+The installed x86_64 `remoted` slice (SHA-256 `88e78e65...4056`) contains
+`RSDRemoteMultiverseHostDevice::needsConnect`. Its unique verified instruction
+sequence loads `0xe8d2` (59602) as the port argument to
+`multiverse_device_connect`. That exactly matches the boot-observed T2
+directory endpoint.
+
+At boot, Multiverse identifies an already link-active `internal device`, marks
+it usable, and `remoted` names it `localbridge`. Its first connection attempt
+fails only because the IPv6 route is not ready; `pollConnect` then succeeds.
+No separate IORegistry `localbridge` node or intervening host wake request was
+found. The active USB topology is `Apple T2 Controller` (`05ac:8233`,
+configuration 1, full device power) below `AppleUSBVHCIBCE`.
+
+This authorizes one Linux experiment: with the proven interface ancestry and
+host/T2 link-local addresses, connect only to T2 TCP port 59602 and perform the
+bounded directory handshake already implemented by `rsd-query.py`. Stop after
+passively obtaining `com.apple.eos.BiometricKit` and preserve the capped server
+transcript. Do not request the advertised service or send BridgeXPC/biometric
+traffic. Pin live enablement to this exact binary evidence and retain all
+existing timeout, frame-count, byte-count, peer-address, and source kill
+switches. DNS-SD is not a prerequisite for this internal-device route.
 
 > Capture completed on macOS 26.6.2. See
 > [`macos-touch-id-findings.md`](macos-touch-id-findings.md) for the sanitized
@@ -83,8 +108,9 @@ Do not redo these Linux experiments unless later evidence contradicts them:
 - TCP ports `58783` (current `remoted` device-role listener candidate) and
   `52032` (legacy BiometricKit listener) both actively refused connections
   during Linux boot. No `_remoted._tcp` mDNS answer appeared.
-- The capture subsequently resolved the activation sequence and proved that
-  the directory and BiometricKit service ports are boot-dynamic.
+- The capture resolved the activation sequence. Later static verification
+  proved directory port 59602 is fixed in this Intel Multiverse path, while
+  the returned BiometricKit service port remains boot-dynamic.
 - The current x86_64 `remoted` slice previously inspected has SHA-256
   `88e78e65b77e3c2338ca95c9ab201bfa0be90ce81e58ece1c4d1ad11273f4056`.
   Reconfirm this against the live installation rather than assuming it.

@@ -110,7 +110,8 @@ class RSDQueryTests(unittest.TestCase):
         self.assertFalse(query.LIVE_DIRECTORY_CAPTURE_ENABLED)
         self.assertEqual(query.CURRENT_T2_ADDRESS_VERIFICATION[0],
                          "fe80::aede:48ff:fe33:4455")
-        self.assertIsNone(query.SAME_BOOT_DIRECTORY_PORT_VERIFICATION)
+        self.assertEqual(query.SAME_BOOT_DIRECTORY_PORT_VERIFICATION[0], 59602)
+        self.assertTrue(query.SAME_BOOT_DIRECTORY_PORT_VERIFICATION[1])
         with mock.patch.object(query, "verify_t2_interface") as verify:
             with mock.patch.object(query.socket, "socket") as socket_constructor:
                 with self.assertRaisesRegex(query.QueryError, "disabled"):

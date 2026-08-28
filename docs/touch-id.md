@@ -3,9 +3,11 @@
 > **Current result:** the macOS boot capture in
 > [`macos-touch-id-findings.md`](macos-touch-id-findings.md) supersedes earlier
 > fixed-port and host-address candidates retained below as research history.
-> macOS uses host `fe80::aede:48ff:fe00:1122`, reached a boot-dynamic directory
-> on T2 port `59602`, and received boot-dynamic BiometricKit port `49165`.
-> Neither port may be hard-coded for Linux.
+> macOS uses host `fe80::aede:48ff:fe00:1122` and the Intel Multiverse internal-
+> device path to reach the directory on fixed port `59602`. The directory
+> returned boot-dynamic BiometricKit port `49165`. Linux may pin only the
+> directory port to the verified installed binary; the service port must come
+> from the validated directory transcript.
 
 The current offline continuation is `rsd-mdns.py`: a bounded DNS-SD codec for
 the exact `ncm._remoted._tcp.local.` endpoint constructed by installed macOS
@@ -20,10 +22,12 @@ evidence.
 
 Supervised Linux PTR, named SRV, named SRV/QU, and independent Avahi queries
 from `fe80::aede:48ff:fe00:1122` all transmitted successfully but received no
-T2 DNS response. ICMPv6 remained healthy. The bridgeOS responder is therefore
-dormant, and the next unknown is its activation below `remoted`, not DNS packet
-encoding. `macos-rsd-bootstrap-evidence.py` independently pins the named
-Network.framework endpoint construction in the installed Intel binary.
+T2 DNS response. ICMPv6 remained healthy. Read-only macOS follow-up established
+that this internal T2 does not require that separate NCM DNS-SD route:
+`RSDRemoteMultiverseHostDevice::needsConnect` passes literal port `59602` to
+`multiverse_device_connect`. `macos-multiverse-bootstrap-evidence.py` pins that
+exact sequence in the installed Intel binary; the next Linux step is therefore
+the bounded directory-only connection to verified port 59602.
 
 `discovered-rsd-query.py` now composes discovery into the passive directory
 handshake offline. The connector receives only the endpoint derived from the

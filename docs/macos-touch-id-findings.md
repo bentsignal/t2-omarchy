@@ -119,17 +119,35 @@ stack: TCP + HTTP/2 RemoteXPC, TLS disabled by both peers
 This is the activation exchange that the earlier post-login experiment could
 not observe. It also shows that port `58783`, although embedded in the inspected
 `remoted` implementation for a different role, is not the directory endpoint
-used by this Mac/T2 boot path. Port `59602` is directly observed for the current
-boot, but it should still be discovered rather than assumed stable.
+used by this Mac/T2 boot path.
+
+Subsequent read-only inspection resolves the source of port `59602`. The
+installed x86_64 `remoted` slice's
+`RSDRemoteMultiverseHostDevice::needsConnect` loads literal `0xe8d2` (decimal
+59602) immediately before calling
+`multiverse_device_connect(device, &fd, port, &connect_errno)`. The exact
+instruction sequence occurs once in slice SHA-256 `88e78e65...4056` and is
+verified by `macos-multiverse-bootstrap-evidence.py`. This is a fixed port for
+this installed Intel implementation, not a boot-dynamic directory port.
+
+The same boot log explains `localbridge`: it is the name `remoted` assigns to
+Multiverse's internal device, not an IORegistry service attachment. Multiverse
+reported `kIONetworkLinkStateActive`, advanced the device from `waiting for
+link` to `useable`, and emitted the internal-device attach. The first connect
+to 59602 failed with `No route to host`; `pollConnect` succeeded 1.584 seconds
+later after the link-local route became usable. No host USB control, SEP
+request, or other wake operation appears between those attempts.
 
 ## Linux continuation
 
 Current macOS does not use fixed ports `58783` or `52032` for this boot path.
-The directory ran on T2 port `59602`, and its returned BiometricKit service ran
-on T2 port `49165`. Linux must not hard-code either boot-dynamic value.
+Its Intel Multiverse path uses fixed directory port `59602`; the directory's
+returned BiometricKit service port (`49165` in this boot) remains dynamic.
+Linux may pin 59602 only to the verified installed x86_64 evidence and must
+never hard-code the returned BiometricKit port.
 
-The bootstrap is a named DNS-SD endpoint. Independent verification of the
-installed x86_64 `remoted` slice shows
+The separate NCM-host bootstrap is a named DNS-SD endpoint. Independent
+verification of the installed x86_64 `remoted` slice shows
 `RSDRemoteNCMHostDevice::needsConnect` calling
 `nw_endpoint_create_bonjour_service("ncm", "_remoted._tcp", "local.")`.
 The exact sequence is at `0x100012aac` in slice SHA-256
@@ -163,16 +181,17 @@ was therefore not created. This rules out multicast reception as the remaining
 explanation for the negative discovery result and strengthens the activation
 boundary above. The direct-query option remains source-disabled by default.
 
-The next reverse-engineering target is the action below `remoted` that makes
-the bridgeOS DNS-SD responder available under macOS. Once that activation is
-understood, the next fail-closed Linux experiment should reproduce only the
-directory connection. After proof that TX advances, connect from
-the proven host address to the T2 address using a freshly observed/discovered
-directory port, perform the already bounded HTTP/2 RemoteXPC handshake with TLS
+The activation boundary is now resolved enough for the next fail-closed Linux
+experiment. The DNS-SD responder tested on Linux belongs to the separate
+`RSDRemoteNCMHostDevice` path; this Mac uses
+`RSDRemoteMultiverseHostDevice` for its internal T2. Linux should connect from
+the proven host address to the proven T2 address on verified port `59602`,
+perform only the already bounded HTTP/2 RemoteXPC directory handshake with TLS
 disabled, and passively recover `com.apple.eos.BiometricKit`. Keep the existing
-five-second, byte/frame, ancestry, and source kill-switch gates. The successful
-result must include the complete bounded server transcript and the named
-service port. Do not send CONNECT or a biometric command in that first run.
+five-second, byte/frame, PCI/USB-ancestry, peer-address, exact-port-evidence,
+and source kill-switch gates. Success must retain the complete bounded server
+transcript and advertised service port. Do not send CONNECT, BridgeXPC HELO,
+or a biometric command in this first run.
 
 An offline inspection of Sonoma 14.6.1's x86_64
 `BootKernelExtensions.kc` identified one Apple-specific operation absent from
@@ -250,8 +269,9 @@ BiometricKit bridge daemon a launchd-managed IPv4/IPv6 TCP listener named
 socket with `initWithLaunchdSockets:` and identifies itself as
 `BiometricKit Bridge Daemon`. This independently validates the origin of the
 legacy fixed-port model while also explaining why it must remain disabled for
-the current system: current macOS used the newer RSD-discovered, boot-dynamic
-route, and Linux already observed an active refusal on `52032`.
+the current system: current macOS used the newer Multiverse directory and a
+directory-returned, boot-dynamic service port, while Linux already observed an
+active refusal on `52032`.
 
 A final transport-layer distinction was tested without touching SEP or the T2
 PCI functions: an exact `USBDEVFS_RESET` request targeted only usbfs device

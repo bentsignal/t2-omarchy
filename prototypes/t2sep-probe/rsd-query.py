@@ -2,9 +2,9 @@
 """Hard-gated passive RSD directory query for the internal T2 link.
 
 Default execution prints deterministic offline fixtures. Live execution is
-mechanically disabled until Linux can obtain the boot-dynamic T2 directory
-port during that same boot. Even after that source gate is implemented, the
-only request here is the RemoteXPC service-directory handshake.
+mechanically disabled pending a supervised Linux run. The verified installed
+Intel Multiverse path supplies the T2 directory port; the only request here is
+the RemoteXPC service-directory handshake.
 """
 
 from __future__ import annotations
@@ -31,10 +31,14 @@ FRAME_CAP = 64 * 1024
 FRAME_LIMIT = 16
 TOTAL_CAP = 256 * 1024
 CONFIRMATION = "I_UNDERSTAND_THIS_ONLY_READS_THE_T2_RSD_DIRECTORY"
-# A macOS 26.6.2 boot trace observed directory port 59602 for that boot only.
-# It also proved that 58783 belongs to a different remoted role. No Linux
-# same-boot directory-port discovery mechanism has been implemented yet.
-SAME_BOOT_DIRECTORY_PORT_VERIFICATION = None
+# The installed x86_64 remoted slice (SHA-256 88e78e65...4056) uniquely loads
+# 0xe8d2 before RSDRemoteMultiverseHostDevice::needsConnect calls
+# multiverse_device_connect. The macOS boot trace independently observed the
+# same T2 directory port. Port 58783 belongs to a different NCM device role.
+SAME_BOOT_DIRECTORY_PORT_VERIFICATION = (
+    59602,
+    "installed Intel remoted Multiverse connect sequence plus macOS boot trace",
+)
 # A supervised post-rebind Ethernet capture proves bridgeOS source MAC
 # ac:de:48:33:44:55 and source IPv6 fe80::aede:48ff:fe33:4455 directly.
 CURRENT_T2_ADDRESS_VERIFICATION = (
@@ -194,7 +198,7 @@ def main() -> None:
         handshake = protocol.candidate_rsd_device_handshake(identifier)
         print("offline only: T2 address="
               f"{protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE}%<interface>")
-        print("offline only: directory port requires same-boot discovery")
+        print("offline only: verified Multiverse directory port=59602")
         print(f"offline only: opening={opening.hex()}")
         print(f"offline only: settings-ack={acknowledgment.hex()}")
         print(f"offline only: device-handshake={handshake.hex()}")
