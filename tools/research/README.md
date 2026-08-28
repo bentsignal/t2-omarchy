@@ -31,8 +31,9 @@ tools/research/capture-macos-bridge.sh /path/to/output-directory
 
 It does not use `sudo`, inspect fingerprint templates, modify the sealed system
 volume, start a biometric operation, or connect to the T2. It copies the host
-daemon when readable, framework version plists, dependency/signature metadata,
-OS build information, and checksums.
+biometric and `remoted` daemons when readable, their launchd plists, framework
+version plists, dependency/signature metadata, OS build information, and
+checksums.
 
 `pbzx-stream.py` incrementally decodes the PBZX payload inside older macOS
 installer packages. It exists because a whole-payload decoder expanded a

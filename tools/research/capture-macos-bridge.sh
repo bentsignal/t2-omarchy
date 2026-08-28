@@ -25,9 +25,13 @@ copy_if_readable() {
 }
 
 copy_if_readable /usr/libexec/biometrickitd biometrickitd
+copy_if_readable /usr/libexec/remoted remoted
 copy_if_readable \
   /System/Library/LaunchDaemons/com.apple.biometrickitd.plist \
   com.apple.biometrickitd.plist
+copy_if_readable \
+  /System/Library/LaunchDaemons/com.apple.remoted.plist \
+  com.apple.remoted.plist
 copy_if_readable \
   /System/Library/PrivateFrameworks/BridgeXPC.framework/Versions/A/Resources/Info.plist \
   BridgeXPC-Info.plist
@@ -48,6 +52,14 @@ if [[ -r /usr/libexec/biometrickitd ]]; then
     >"$capture_dir/biometrickitd-codesign.txt" 2>&1 || true
   shasum -a 256 /usr/libexec/biometrickitd \
     >"$capture_dir/biometrickitd-sha256.txt"
+fi
+
+if [[ -r /usr/libexec/remoted ]]; then
+  file /usr/libexec/remoted >"$capture_dir/remoted-file.txt"
+  otool -L /usr/libexec/remoted >"$capture_dir/remoted-libraries.txt"
+  codesign -dvvv /usr/libexec/remoted \
+    >"$capture_dir/remoted-codesign.txt" 2>&1 || true
+  shasum -a 256 /usr/libexec/remoted >"$capture_dir/remoted-sha256.txt"
 fi
 
 find "$capture_dir" -type f ! -name capture-sha256.txt \

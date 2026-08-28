@@ -276,6 +276,9 @@ binary is an AppleArchive asset reconstructed from split payload/patch records,
 not a standalone file in any one `payload.NNN`. Standard YAA listing therefore
 cannot recover it, and `ipsw` delegates that reconstruction to Apple's macOS
 `aa` tool. This is a tooling boundary, not evidence that the binary is absent.
+The same check found an 808 KB final `usr/libexec/remoted` in the BOM but no
+standalone copy in any individual payload, so it has the same reconstruction
+boundary. The macOS collector therefore captures both daemons.
 
 Consequently the live runner remains fail-closed: `CURRENT_PORT_VERIFICATION`
 is unset. The next safe evidence source is a read-only copy of the installed
