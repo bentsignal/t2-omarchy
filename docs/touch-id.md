@@ -333,11 +333,29 @@ end-to-end check encoded a realistic directory with pymobiledevice3, framed it
 with `hyperframe`, fragmented it independently, and recovered the expected port
 through the local transcript validator.
 
+The client-side fixture is now split at the real synchronization boundary:
+transport preface/channel setup is sent first; a peer SETTINGS frame must be
+received and validated; only then may the client SETTINGS ACK and RemoteXPC
+device-handshake frame be emitted. `rsd-query.py` stages that exact exchange
+against fragmented fake sockets. It sends no service-open request—successful
+completion returns only the port named in the passive directory—and enforces a
+five-second maximum timeout, 16-frame limit, 64 KiB frame/XPC caps, 256 KiB
+transcript cap, exact internal USB/PCI ancestry, and a traversal-safe interface
+name.
+
+Normal `rsd-query.py` execution prints deterministic offline fixtures. Its live
+branch checks `CURRENT_RSD_ENDPOINT_VERIFICATION` before interface inspection
+or socket construction; that constant is `None`. Even a non-`None` value is
+rejected unless it is an exact `(candidate address, candidate port, nonempty
+evidence note)` tuple. Tests prove absent/malformed gates and invalid timeouts
+cannot reach sysfs or construct a socket.
+
 This does **not** establish that T2 bridgeOS exposes its `remoted` listener on
 `58783`, nor that its directory advertises `com.apple.eos.BiometricKit`.
-Neither the candidate codec nor any existing runner connects to that port. A
-future live experiment may only become possible after the installed Sonoma
-artifacts or passive network evidence confirms this specific T2 route.
+Neither the candidate codec nor the currently disabled runner has connected to
+that port. A future live experiment may only become possible after the
+installed Sonoma artifacts or passive network evidence confirms this specific
+T2 route.
 
 ## SBIO and the Intel xART split
 

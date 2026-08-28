@@ -143,7 +143,8 @@ out-of-range chunks. Run both offline suites with:
 
 ```bash
 python -m unittest test_decode_message.py test_generic_transfer.py \
-  test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py
+  test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py \
+  test_rsd_query.py
 ```
 
 `bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
@@ -183,6 +184,16 @@ termination, and trailing traffic; and returns only the strictly validated
 named service port. Tests exercise byte-at-a-time input, multi-frame XPC
 fragmentation, malformed settings/window updates, wrong streams, truncation,
 interleaving, surplus frames, resource caps, and deterministic garbage.
+
+`rsd-query.py` is the staged passive-directory runner. Default execution only
+prints deterministic fixtures. Its fake-socket-tested engine sends transport
+setup, waits for validated peer SETTINGS, then sends the SETTINGS ACK and
+device handshake; it never constructs a service-open message. The live branch
+is checked before sysfs or socket access and remains mechanically disabled by
+`CURRENT_RSD_ENDPOINT_VERIFICATION = None`. Filling that gate later requires
+an exact candidate address/port tuple plus a nonempty evidence note, two CLI
+gates, exact internal T2 USB/PCI ancestry, carrier, a maximum five-second
+deadline, and the transcript validator's byte/frame limits.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,

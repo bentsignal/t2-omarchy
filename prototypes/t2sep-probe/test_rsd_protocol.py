@@ -16,6 +16,15 @@ SPEC.loader.exec_module(rsd)
 
 
 class XPCCodecTests(unittest.TestCase):
+    def test_candidate_endpoint_is_offline_and_scoped(self):
+        self.assertEqual(
+            rsd.candidate_rsd_sockaddr(3),
+            ("fe80::aede:48ff:fe33:4455", 58783, 0, 3),
+        )
+        for bad in (0, -1, 1 << 32, True, "3"):
+            with self.assertRaises(rsd.RSDProtocolError):
+                rsd.candidate_rsd_sockaddr(bad)
+
     def test_exact_empty_dictionary_wrapper(self):
         encoded = rsd.encode_xpc_message({}, message_id=0)
         self.assertEqual(
@@ -107,7 +116,7 @@ class HTTP2CodecTests(unittest.TestCase):
 
     def test_candidate_preface_is_offline_and_bounded(self):
         identifier = uuid.UUID(int=0)
-        wire = rsd.candidate_rsd_handshake(identifier)
+        wire = rsd.candidate_rsd_transport_opening()
         self.assertTrue(wire.startswith(rsd.HTTP2_PREFACE))
         cursor = len(rsd.HTTP2_PREFACE)
         frames = []
@@ -117,8 +126,16 @@ class HTTP2CodecTests(unittest.TestCase):
             frames.append(rsd.decode_http2_frame(frame))
             cursor += len(frame)
         self.assertEqual(cursor, len(wire))
-        self.assertEqual([frame[0] for frame in frames], [4, 8, 1, 0, 1, 0, 0, 0])
-        handshake = rsd.decode_xpc_message(frames[-1][3])
+        self.assertEqual([frame[0] for frame in frames], [4, 8, 1, 0, 1, 0, 0])
+        self.assertEqual(
+            rsd.decode_http2_frame(rsd.candidate_rsd_settings_ack()),
+            (rsd.HTTP2_SETTINGS, rsd.HTTP2_ACK, 0, b""),
+        )
+        handshake_frame = rsd.decode_http2_frame(
+            rsd.candidate_rsd_device_handshake(identifier)
+        )
+        self.assertEqual(handshake_frame[:3], (rsd.HTTP2_DATA, 0, rsd.ROOT_CHANNEL))
+        handshake = rsd.decode_xpc_message(handshake_frame[3])
         self.assertEqual(handshake.value["MessageType"], "Handshake")
         self.assertEqual(handshake.value["MessagingProtocolVersion"], rsd.UInt64(7))
 

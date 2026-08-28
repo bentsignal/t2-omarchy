@@ -19,6 +19,7 @@ class RSDProtocolError(ValueError):
 
 
 RSD_PORT_CANDIDATE = 58783
+T2_LINK_LOCAL_ADDRESS_CANDIDATE = "fe80::aede:48ff:fe33:4455"
 HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 HTTP2_DATA = 0
 HTTP2_HEADERS = 1
@@ -89,6 +90,16 @@ class XPCMessage:
     flags: int
     message_id: int
     value: Any | None
+
+
+def candidate_rsd_sockaddr(interface_index: int) -> tuple[str, int, int, int]:
+    """Return the unverified modern RSD endpoint tuple without opening a socket."""
+    if isinstance(interface_index, bool) or not isinstance(interface_index, int):
+        raise RSDProtocolError("interface index must be an integer")
+    if not 1 <= interface_index < 1 << 32:
+        raise RSDProtocolError("interface index is out of range")
+    return (T2_LINK_LOCAL_ADDRESS_CANDIDATE, RSD_PORT_CANDIDATE, 0,
+            interface_index)
 
 
 class PassiveRSDTranscript:
@@ -244,6 +255,14 @@ class PassiveRSDTranscript:
         if not self._settings_seen or self._port is None:
             raise RSDProtocolError("RSD transcript ended before a service directory")
         return self._port
+
+    @property
+    def peer_settings_seen(self) -> bool:
+        return self._settings_seen
+
+    @property
+    def complete(self) -> bool:
+        return self._port is not None
 
 
 def _pad4(length: int) -> int:
@@ -504,10 +523,8 @@ def decode_http2_frame(data: bytes, *, max_payload: int = 65536) -> tuple[int, i
     return frame_type, flags, raw_stream_id, data[9:]
 
 
-def candidate_rsd_handshake(client_uuid: uuid.UUID) -> bytes:
-    """Build the offline modern RSD client preface; never connect or send it."""
-    if not isinstance(client_uuid, uuid.UUID):
-        raise RSDProtocolError("client_uuid must be a UUID")
+def candidate_rsd_transport_opening() -> bytes:
+    """Build client preface/channel setup sent before peer SETTINGS."""
     settings = struct.pack(">HIHI", 3, 100, 4, 16 * 1024 * 1024)
     empty = encode_xpc_message({}, message_id=0)
     terminator = encode_xpc_message(
@@ -515,16 +532,6 @@ def candidate_rsd_handshake(client_uuid: uuid.UUID) -> bytes:
     )
     init = encode_xpc_message(None, message_id=0,
                               flags=XPC_ALWAYS_SET | XPC_INIT_HANDSHAKE)
-    handshake = encode_xpc_message({
-        "MessageType": "Handshake",
-        "MessagingProtocolVersion": UInt64(7),
-        "UUID": client_uuid,
-        "Properties": {
-            "RemoteXPCVersionFlags": UInt64(0x0100000000000006),
-            "SensitivePropertiesVisible": True,
-        },
-        "Services": {},
-    }, message_id=1)
     return b"".join((
         HTTP2_PREFACE,
         encode_http2_frame(HTTP2_SETTINGS, 0, 0, settings),
@@ -535,8 +542,29 @@ def candidate_rsd_handshake(client_uuid: uuid.UUID) -> bytes:
         encode_http2_frame(HTTP2_HEADERS, HTTP2_END_HEADERS, REPLY_CHANNEL),
         encode_http2_frame(HTTP2_DATA, 0, ROOT_CHANNEL, terminator),
         encode_http2_frame(HTTP2_DATA, 0, REPLY_CHANNEL, init),
-        encode_http2_frame(HTTP2_DATA, 0, ROOT_CHANNEL, handshake),
     ))
+
+
+def candidate_rsd_settings_ack() -> bytes:
+    """Build the empty SETTINGS ACK sent only after peer SETTINGS arrives."""
+    return encode_http2_frame(HTTP2_SETTINGS, HTTP2_ACK, 0)
+
+
+def candidate_rsd_device_handshake(client_uuid: uuid.UUID) -> bytes:
+    """Build the device handshake sent only after acknowledging peer SETTINGS."""
+    if not isinstance(client_uuid, uuid.UUID):
+        raise RSDProtocolError("client_uuid must be a UUID")
+    handshake = encode_xpc_message({
+        "MessageType": "Handshake",
+        "MessagingProtocolVersion": UInt64(7),
+        "UUID": client_uuid,
+        "Properties": {
+            "RemoteXPCVersionFlags": UInt64(0x0100000000000006),
+            "SensitivePropertiesVisible": True,
+        },
+        "Services": {},
+    }, message_id=1)
+    return encode_http2_frame(HTTP2_DATA, 0, ROOT_CHANNEL, handshake)
 
 
 def validate_service_directory(value: Any, *, wanted_service: str) -> int:
