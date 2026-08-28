@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offline codec for the recovered Intel BiometricKit BridgeXPC envelope.
 
-This models the logical Foundation-object message.  It deliberately does not
-implement BridgeXPC serialization or access a device.
+This models the logical Foundation-object message and the BridgeXPC 39 record
+framing verified in the installed macOS 26.6.2 x86_64 framework.  It does not
+connect to a service or access a device.
 """
 
 from __future__ import annotations
@@ -261,6 +262,17 @@ def encode_bridge_version_query_frame(*, max_body: int) -> bytes:
     return encode_frame_header(FRAME_MESSAGE, len(body)) + body
 
 
+def encode_service_opened_query_frame(*, max_body: int) -> bytes:
+    """Encode current BiometricKit bridge method 1's read-only query."""
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    body = plistlib.dumps([GET_SERVICE_OPENED], fmt=plistlib.FMT_BINARY,
+                          sort_keys=False)
+    if len(body) > max_body:
+        raise BridgeProtocolError("serialized service-opened query exceeds the body cap")
+    return encode_frame_header(FRAME_MESSAGE, len(body)) + body
+
+
 def decode_bridge_version_reply_body(body: bytes, *, max_body: int) -> tuple[int, int]:
     """Validate method 0's exact [int32 status, uint64 version] reply."""
     if not isinstance(body, bytes):
@@ -276,6 +288,26 @@ def decode_bridge_version_reply_body(body: bytes, *, max_body: int) -> tuple[int
     if not isinstance(reply, list) or len(reply) != 2:
         raise BridgeProtocolError("bridge-version reply must contain two objects")
     return _signed(reply[0], 32, "status"), _unsigned(reply[1], 64, "version")
+
+
+def decode_service_opened_reply_body(body: bytes, *, max_body: int) -> tuple[int, bool]:
+    """Validate current method 1's exact [int32 status, bool opened] reply."""
+    if not isinstance(body, bytes):
+        raise BridgeProtocolError("reply body must be bytes")
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    if len(body) > max_body:
+        raise BridgeProtocolError("service-opened reply exceeds the body cap")
+    try:
+        reply = plistlib.loads(body)
+    except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+        raise BridgeProtocolError("service-opened reply is not a property list") from error
+    if not isinstance(reply, list) or len(reply) != 2:
+        raise BridgeProtocolError("service-opened reply must contain two objects")
+    status = _signed(reply[0], 32, "status")
+    if type(reply[1]) is not bool:
+        raise BridgeProtocolError("service-opened state must be boolean")
+    return status, reply[1]
 
 
 def decode_perform_command_reply(reply: tuple[BridgeAtom, ...],

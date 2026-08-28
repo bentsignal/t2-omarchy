@@ -191,10 +191,12 @@ python -m unittest test_decode_message.py test_generic_transfer.py \
   test_sbio_bootstrap.py test_verify_ool_log.py
 ```
 
-`bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
-from the x86_64 Catalina biometric daemon. It encodes the verified logical
-BridgeXPC method-3 array and the daemon's eight-byte inner BiometricKit header,
-plus BridgeXPC's 16-byte socket record header and normal-message binary plist.
+`bridge-protocol.py` models the separate Intel host-to-bridgeOS route first
+recovered from Catalina and now cross-checked in the installed macOS 26.6.2
+x86_64 biometric daemon and BridgeXPC 39 framework. It encodes the verified
+method-3 array, the daemon's eight-byte inner BiometricKit header, and the
+current 16-byte BridgeXPC socket record plus normal-message binary plist.
+Current method 0 and 1 query/reply shapes are also validated offline.
 It validates integer widths, both magic values, types, arity, and
 caller-supplied size limits. It refuses to guess the private `BTNil`
 serialization and does not connect to BridgeXPC, USB, PCI, or SEP.

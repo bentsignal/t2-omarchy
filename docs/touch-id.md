@@ -338,9 +338,43 @@ named-service route.
 thin x86_64 slice and optionally pins its SHA-256. It rejects the wrong
 architecture or any missing framework, import, service name, or selector.
 
+The same installed slice also resolves whether Catalina's logical method ABI
+survived. Its Objective-C metadata maps these current implementations:
+
+```text
+0x1000263d0  getBridgeVersion:
+0x100026767  getServiceOpened:
+0x100026b03  performCommand:input:output:capacity:
+```
+
+Their bodies still construct `[0]`, `[1]`, and
+`[3, command:uint32, input:NSData-or-BTNil, capacity:uint64]`. Methods 0 and 1
+each require a two-element reply; the first object is an `NSNumber` converted
+with `intValue`, while the second uses `unsignedIntegerValue` for method 0 and
+`boolValue` for method 1. Method 3 likewise requires two reply objects and
+accepts only `NSData` or the private `BTNil` singleton for output. This proves
+the logical array ABI on macOS 26.6.2.
+
+The installed System Cryptex also supplies the current x86_64 BridgeXPC 39
+framework, whose extracted slice has SHA-256
+`d1246e1a9061f226605ef86cfa5cd0c3b54b08bde76dd8c22ffa14af59f2212d`.
+Its exact instruction sequences load `0x10001b892` for HELO and
+`0x20001b892` for ordinary messages: little-endian magic `0xb892`, protocol
+version 1, and kinds 1 and 2. It stores the payload length at header offset 8,
+reads a 16-byte header, requests property-list format `0xc8` (binary), and
+retains the same four HELO keys. Thus the framing and serialization recovered
+from Catalina are directly confirmed in the installed current framework.
+`macos-bridgexpc-evidence.py` makes those binary facts reproducible and can pin
+the slice checksum; it performs no network or device access.
+
+The offline codec now includes strict current method-1 request/reply handling.
+It requires an actual property-list boolean—not integer `0`/`1`—and preserves
+signed-32 status, arity, type, and body-size checks. It still refuses to encode
+`BTNil`.
+
 The live runner nevertheless remains fail-closed: `CURRENT_PORT_VERIFICATION`
-is unset. The current daemon deliberately obtains the endpoint dynamically
-from RSD and does not prove Catalina's fixed port `52032`.
+is unset. The current daemon obtains the endpoint dynamically from RSD, so the
+confirmed BridgeXPC framing does not prove Catalina's fixed port `52032`.
 Until a passive directory capture confirms the current T2 listener and its
 advertised port, the Linux runner cannot open a socket or fall through to a
 biometric command.

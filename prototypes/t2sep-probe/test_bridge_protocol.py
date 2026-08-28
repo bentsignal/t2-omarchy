@@ -175,6 +175,31 @@ class BridgeEnvelopeTests(unittest.TestCase):
             with self.assertRaises(bridge.BridgeProtocolError):
                 bridge.decode_bridge_version_reply_body(body, max_body=len(body))
 
+    def test_current_service_opened_query_and_reply(self):
+        frame = bridge.encode_service_opened_query_frame(max_body=256)
+        self.assertEqual(plistlib.loads(frame[16:]), [1])
+        for status, opened in ((0, True), (-1, False)):
+            body = plistlib.dumps([status, opened], fmt=plistlib.FMT_BINARY)
+            self.assertEqual(
+                bridge.decode_service_opened_reply_body(body, max_body=len(body)),
+                (status, opened),
+            )
+
+    def test_service_opened_reply_fails_closed(self):
+        malformed = (
+            b"bad", plistlib.dumps([0]), plistlib.dumps([0, 1]),
+            plistlib.dumps([True, False]), plistlib.dumps([0, False, "extra"]),
+            plistlib.dumps({"status": 0, "opened": False}),
+        )
+        for body in malformed:
+            with self.subTest(body=body):
+                with self.assertRaises(bridge.BridgeProtocolError):
+                    bridge.decode_service_opened_reply_body(body,
+                                                            max_body=len(body))
+        good = plistlib.dumps([0, True], fmt=plistlib.FMT_BINARY)
+        with self.assertRaises(bridge.BridgeProtocolError):
+            bridge.decode_service_opened_reply_body(good, max_body=len(good) - 1)
+
     def test_frame_encoder_does_not_guess_btnil(self):
         with self.assertRaises(bridge.BridgeProtocolError):
             bridge.encode_perform_command_frame((3, 0, None, 0), max_body=1024)

@@ -42,6 +42,20 @@ the embedded `bkremoted` connection, transport, and services classes plus their
 synchronous/asynchronous send and envelope/event handlers. This identifies the
 post-discovery implementation boundary without claiming a wire layout. It
 performs no device or network access and can pin a known installed-slice SHA-256.
+The required selectors include current bridge methods 0, 1, and 3. Their
+disassembled bodies establish the logical request and reply shapes documented
+in `docs/touch-id.md`.
+
+`macos-bridgexpc-evidence.py` verifies the current thin x86_64 BridgeXPC
+framework's exact HELO/message header loads, binary-plist format load, HELO
+keys, and serialization import. It rejects the wrong architecture, duplicate
+or missing instruction evidence, and checksum drift. It performs no device or
+network access:
+
+```bash
+python tools/research/macos-bridgexpc-evidence.py /path/to/BridgeXPC \
+  --expect-sha256 EXPECTED_SHA256
+```
 
 `macos-rsd-port-evidence.py` verifies the companion x86_64 `remoted` evidence:
 the NCM-device listener class/method and its unique exact instruction storing

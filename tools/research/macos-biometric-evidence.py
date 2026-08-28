@@ -27,6 +27,9 @@ REQUIRED = (
     b"sendMessage:andWaitForReply:\0",
     b"handleEnvelope:\0",
     b"handleEventWithMessage:error:\0",
+    b"getBridgeVersion:\0",
+    b"getServiceOpened:\0",
+    b"performCommand:input:output:capacity:\0",
 )
 
 
@@ -49,6 +52,7 @@ def inspect(data: bytes) -> dict[str, str]:
         "directory": "RemoteServiceDiscovery",
         "connection": "BridgeXPCConnection",
         "transport": "BiometricKitBridgeTransport",
+        "logical_abi": "methods 0,1,3",
     }
 
 
