@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Gated, read-only BridgeXPC version query for the T2 BiometricKit service.
 
-Without --live this only emits offline fixtures.  Live mode never configures
-an interface and can issue only Bridge method 0; it has no method-3/SBIO path.
+Without --live this only emits offline fixtures.  The CLI live mode never
+configures an interface and can issue only Bridge method 0.  A separate typed
+socket helper supports read-only method 1; neither path has a method-3/SBIO
+call site.
 """
 
 from __future__ import annotations
@@ -56,16 +58,16 @@ def recv_frame(sock: socket.socket) -> tuple[protocol.BridgeFrameHeader, bytes]:
     return header, recv_exact(sock, header.body_size)
 
 
-def query_connected_socket(sock: socket.socket,
-                           reply_id: str | None = None) -> tuple[int, int]:
-    """Send only HELO and method 0, then accept one bounded message reply."""
+def exchange_connected_socket(sock: socket.socket, logical_message: list[object],
+                              reply_id: str | None = None) -> list[object]:
+    """Send HELO and one enveloped logical message; return its correlated reply."""
     helo = protocol.encode_helo_frame(CURRENT_OS_BUILD, CURRENT_BRIDGE_VERSION,
                                       CURRENT_PROCESS_NAME,
                                       max_body=BODY_CAP)
     if reply_id is None:
         reply_id = str(uuid.uuid4()).upper()
     query = protocol.encode_transport_request_frame(
-        [protocol.GET_BRIDGE_VERSION], reply_id, max_body=BODY_CAP)
+        logical_message, reply_id, max_body=BODY_CAP)
     # Catalina's -connected writes HELO, starts its read, and immediately
     # flushes requests queued before activation.  Preserve that wire order.
     sock.sendall(helo)
@@ -79,13 +81,31 @@ def query_connected_socket(sock: socket.socket,
             protocol.decode_helo_body(body, max_body=BODY_CAP)
             continue
         if header.kind == protocol.FRAME_MESSAGE:
-            logical_reply = protocol.decode_transport_reply_body(
+            return protocol.decode_transport_reply_body(
                 body, reply_id, max_body=BODY_CAP)
-            encoded_reply = plistlib.dumps(logical_reply, fmt=plistlib.FMT_BINARY,
-                                            sort_keys=False)
-            return protocol.decode_bridge_version_reply_body(
-                encoded_reply, max_body=BODY_CAP)
     raise QueryError("no message reply within the four-frame limit")
+
+
+def query_connected_socket(sock: socket.socket,
+                           reply_id: str | None = None) -> tuple[int, int]:
+    """Send only HELO and method 0, then validate its logical reply."""
+    logical_reply = exchange_connected_socket(
+        sock, [protocol.GET_BRIDGE_VERSION], reply_id)
+    encoded_reply = plistlib.dumps(logical_reply, fmt=plistlib.FMT_BINARY,
+                                    sort_keys=False)
+    return protocol.decode_bridge_version_reply_body(encoded_reply,
+                                                      max_body=BODY_CAP)
+
+
+def query_service_opened_connected_socket(
+        sock: socket.socket, reply_id: str | None = None) -> tuple[int, bool]:
+    """Send only HELO and read-only method 1, then validate its logical reply."""
+    logical_reply = exchange_connected_socket(
+        sock, [protocol.GET_SERVICE_OPENED], reply_id)
+    encoded_reply = plistlib.dumps(logical_reply, fmt=plistlib.FMT_BINARY,
+                                    sort_keys=False)
+    return protocol.decode_service_opened_reply_body(encoded_reply,
+                                                      max_body=BODY_CAP)
 
 
 def _read_sysfs(path: Path) -> str:

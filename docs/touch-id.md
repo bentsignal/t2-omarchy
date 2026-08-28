@@ -803,6 +803,13 @@ in this investigation. Earlier 62-byte timeout experiments remain documented
 above as the evidence trail, but their conclusion that the method request was
 complete is superseded.
 
+A second fresh coupled connection sent only enveloped read-only method 1
+(`getServiceOpened:`). It returned `(status=0, opened=true)`. Packet metadata
+showed a 110-byte request and 131-byte reply. Thus the daemon is not merely
+reachable: its BiometricKit service is active and reports itself open. The
+prototype exposes this query as a separate typed function; its command-line
+live path remains method-zero-only.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

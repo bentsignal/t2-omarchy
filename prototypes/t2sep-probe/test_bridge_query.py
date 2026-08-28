@@ -71,6 +71,24 @@ class PassiveQueryTests(unittest.TestCase):
                              FakeSocket(incoming, 1), reply_id),
                          (-1, 0))
 
+    def test_read_only_service_opened_query(self):
+        reply_id = "01234567-89AB-4CDE-8FAB-0123456789AB"
+        reply = plistlib.dumps([1, True, reply_id, [0, False]],
+                               fmt=plistlib.FMT_BINARY)
+        incoming = frame(query.protocol.FRAME_MESSAGE, reply)
+        sock = FakeSocket(incoming)
+        self.assertEqual(query.query_service_opened_connected_socket(
+            sock, reply_id), (0, False))
+        first_size = query.protocol.BRIDGE_FRAME_HEADER.size
+        first = query.protocol.decode_frame_header(bytes(sock.sent[:first_size]),
+                                                   max_body=query.BODY_CAP)
+        offset = first_size + first.body_size
+        second = query.protocol.decode_frame_header(
+            bytes(sock.sent[offset:offset + first_size]), max_body=query.BODY_CAP)
+        envelope = plistlib.loads(
+            bytes(sock.sent[offset + first_size:offset + first_size + second.body_size]))
+        self.assertEqual(envelope, [1, False, reply_id, [1]])
+
     def test_rejects_eof_malformed_reply_and_frame_flood(self):
         with self.assertRaises(query.QueryError):
             query.query_connected_socket(FakeSocket(b""))

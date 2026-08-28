@@ -278,6 +278,8 @@ ruling out premature directory teardown as the missing activation step. The
 corrected runner now sends `[1, false, UUID, [0]]`, strictly correlates
 `[1, true, UUID, [status, version]]`, and has returned `(0, 3)` from the live
 T2. The successful request and reply frames were 113 and 132 bytes.
+The same envelope around read-only method 1 subsequently returned
+`(status=0, opened=true)`; its request and reply frames were 110 and 131 bytes.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,
