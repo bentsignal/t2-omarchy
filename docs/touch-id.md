@@ -713,6 +713,20 @@ connection state; kind 2 calls `processIncomingMessage:`. The checksum-pinned
 reproducible. Therefore HELO negotiation or a BridgeXPC connection-state gate
 cannot explain Linux's silent method 0.
 
+The exact current `bkremoted` removes the daemon-version caveat as well.
+Objective-C relative-method metadata maps `getBridgeVersion:` to the arm64
+implementation at `0x100001958` and the service wrapper at `0x1000057f8`.
+The implementation checks only whether its output pointer is non-null, stores
+literal bridge version `3`, clears `_clientVersion`, and returns status zero.
+The wrapper boxes that signed status and unsigned version into the exact
+two-element array already expected by the Linux codec. `performMessage:`
+accepts method zero and dispatches it directly through its jump table. The
+checksum-pinned `bridgeos106-bkremoted-evidence.py` verifier records all three
+instruction sequences against the current daemon. Thus a valid method-zero
+message reaching the current daemon must produce `[0, 3]`; silence means the
+message has not reached that dispatcher, concentrating the remaining gap in
+the RSD service handoff before `bkremoted` rather than Touch ID state.
+
 Apple's XNU `xnu-12377.1.9` source closes `SO_INTCOPROC_ALLOW` as a
 peer-visible candidate.
 `sosetopt` gates the option on `PRIV_NET_RESTRICTED_INTCOPROC`, then sets only

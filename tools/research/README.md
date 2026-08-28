@@ -93,6 +93,17 @@ server has no enrollment, service-open, or method-10 prerequisite for method
 0; it does not claim that this old daemon is byte-identical to current
 bridgeOS.
 
+`bridgeos106-bkremoted-evidence.py` verifies the exact arm64 daemon recovered
+from the current bridgeOS 10.6 (`23P6068`) IPSW. It pins the unconditional
+status-zero/version-three implementation, its two-`NSNumber` reply wrapper,
+and direct method-zero jump-table dispatch:
+
+```bash
+python tools/research/bridgeos106-bkremoted-evidence.py /path/to/bkremoted \
+  --expect-sha256 \
+  29b99cb5ba41ef18122d1920986707d5fc7893bf097e343d41f4ec0a87b32630
+```
+
 `bridgeos-bridgexpc-evidence.py` verifies the corresponding historical
 armv7k BridgeXPC framework. It pins the connection transition from state 2 to
 state 3 followed by `writeHELO`, `readMessage`, and `flushQueue`; the send
