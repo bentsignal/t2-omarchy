@@ -29,6 +29,11 @@ DAEMON_STRINGS = (
     b"forExtendEnrollment\0",
     b"noBioLockout\0",
     b"matchResult:timestamp:\0",
+    b"enrollResult:withTimestamp:\0",
+    b"serviceStatus:version:ordinal:data:timestamp:\0",
+    b"activeBioOpsQueue\0",
+    b"firstObject\0",
+    b"switchToNextBioOperation:\0",
 )
 
 # These are address-independent instruction runs from Mesa-605.100.11 in
@@ -61,6 +66,10 @@ DAEMON_PATTERNS = {
         "ba0f000000b9000000004531c04531c9"),
     "free identity count command 0x41 with 4-byte user ID": bytes.fromhex(
         "41b9040000004c89f7ba41000000b9000000005350"),
+    "service event switch spans 0xe3ff8002 through 0xe3ff800b": bytes.fromhex(
+        "418d85fe7f001c83f8090f87"),
+    "enrollment result requires version 1 and at least 20 bytes": bytes.fromhex(
+        "4183fc010f8520090000488b"),
 }
 
 SUPPORT_STRINGS = (
@@ -123,6 +132,9 @@ def inspect(daemon: bytes, support: bytes) -> dict[str, object]:
         "remove_identity_command": 0x0D,
         "max_identity_count_command": 0x0F,
         "free_identity_count_command": 0x41,
+        "match_result_service_event": 0xE3FF8002,
+        "enroll_result_service_event": 0xE3FF8003,
+        "service_event_version": 1,
         "match_result_base_size": 0xC70,
         "match_result_lotl_count_offset": 0xC6C,
     }

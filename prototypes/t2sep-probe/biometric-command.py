@@ -34,6 +34,10 @@ CATALINA_MATCH_RESULT_LOTL_OFFSET = 0xC70
 MAX_LOTL_USER_IDS = 64
 IDENTITY = struct.Struct("<I16s")
 MAX_IDENTITIES = 64
+SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
+SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
+SERVICE_EVENT_MATCH_ACTIVITY = 0xE3FF800B
+SERVICE_EVENT_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -237,3 +241,39 @@ def decode_catalina_match_identity(blob: bytes) -> CatalinaMatchIdentity:
     lotl_user_ids = struct.unpack_from(f"<{lotl_count}I", blob,
                                        CATALINA_MATCH_RESULT_LOTL_OFFSET)
     return CatalinaMatchIdentity(user_id, uuid, lotl_user_ids)
+
+
+def decode_catalina_enroll_result_event(
+        *, status: int, version: int, data: bytes) -> BiometricIdentity:
+    """Decode Catalina's terminal identity-created service event.
+
+    The daemon accepts a longer NSData object but consumes only the first
+    20-byte identity. This research boundary requires the exact consumed size.
+    """
+    if status != SERVICE_EVENT_ENROLL_RESULT or version != SERVICE_EVENT_VERSION:
+        raise BiometricCommandError("not a supported enrollment-result event")
+    identities = decode_identity_list(data)
+    if len(identities) != 1:
+        raise BiometricCommandError("enrollment result must contain one identity")
+    return identities[0]
+
+
+def decode_catalina_match_result_event(
+        *, status: int, version: int, data: bytes) -> CatalinaMatchIdentity:
+    """Bind a raw match result to Catalina's proven service event/version."""
+    if status != SERVICE_EVENT_MATCH_RESULT or version != SERVICE_EVENT_VERSION:
+        raise BiometricCommandError("not a supported match-result event")
+    return decode_catalina_match_identity(data)
+
+
+def decode_terminal_biometric_event(
+        *, active_operation: str, status: int, version: int,
+        data: bytes) -> BiometricIdentity | CatalinaMatchIdentity:
+    """Decode a result only when it matches the sole host-tracked operation."""
+    if active_operation == "enroll":
+        return decode_catalina_enroll_result_event(
+            status=status, version=version, data=data)
+    if active_operation == "match":
+        return decode_catalina_match_result_event(
+            status=status, version=version, data=data)
+    raise BiometricCommandError("there is no supported active biometric operation")

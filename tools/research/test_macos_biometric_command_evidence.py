@@ -42,6 +42,9 @@ class CommandEvidenceTests(unittest.TestCase):
         self.assertEqual(result["remove_identity_command"], 0x0D)
         self.assertEqual(result["max_identity_count_command"], 0x0F)
         self.assertEqual(result["free_identity_count_command"], 0x41)
+        self.assertEqual(result["match_result_service_event"], 0xE3FF8002)
+        self.assertEqual(result["enroll_result_service_event"], 0xE3FF8003)
+        self.assertEqual(result["service_event_version"], 1)
 
     def test_rejects_wrong_architecture(self):
         bad = fixture(evidence.DAEMON_STRINGS, evidence.DAEMON_PATTERNS,

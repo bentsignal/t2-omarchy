@@ -162,6 +162,42 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         with self.assertRaises(command.BiometricCommandError):
             command.decode_catalina_match_identity(bytes(base))
 
+    def test_terminal_service_events_are_bound_to_type_and_version(self):
+        identity = command.BiometricIdentity(7, bytes(range(16)))
+        raw_identity = command.IDENTITY.pack(identity.user_id, identity.uuid)
+        self.assertEqual(command.decode_catalina_enroll_result_event(
+            status=0xE3FF8003, version=1, data=raw_identity), identity)
+
+        match = bytearray(command.CATALINA_MATCH_RESULT_BASE_SIZE)
+        struct.pack_into("<I", match, 0, identity.user_id)
+        match[4:20] = identity.uuid
+        self.assertEqual(command.decode_catalina_match_result_event(
+            status=0xE3FF8002, version=1, data=bytes(match)).user_id, 7)
+
+        for status, version, data in (
+            (0xE3FF8002, 1, raw_identity),
+            (0xE3FF8003, 2, raw_identity),
+            (0xE3FF8003, 1, raw_identity + b"x"),
+        ):
+            with self.subTest(status=status, version=version):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.decode_catalina_enroll_result_event(
+                        status=status, version=version, data=data)
+
+        self.assertEqual(command.decode_terminal_biometric_event(
+            active_operation="enroll", status=0xE3FF8003, version=1,
+            data=raw_identity), identity)
+        for operation, status, data in (
+            ("match", 0xE3FF8003, raw_identity),
+            ("enroll", 0xE3FF8002, bytes(match)),
+            ("", 0xE3FF8003, raw_identity),
+        ):
+            with self.subTest(operation=operation, status=status):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.decode_terminal_biometric_event(
+                        active_operation=operation, status=status,
+                        version=1, data=data)
+
 
 if __name__ == "__main__":
     unittest.main()

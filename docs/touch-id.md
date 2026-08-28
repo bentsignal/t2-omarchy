@@ -295,10 +295,9 @@ the research codec from becoming a generic privileged-command constructor.
 The same daemon calls presence detection as command `0x26` and cancellation as
 command `0x0c`, each with value zero and no input/output. These calls return
 only whether the operation started; match progress and identity results arrive
-as later asynchronous BiometricKit events. Catalina's Bridge transport requires
-an event envelope to be an array of exactly four objects and dispatches on a
-numeric first object. The complete operation/event correlation is not yet
-modeled.
+as later asynchronous BiometricKit service-status events. A separate
+BridgeXPC connection-control envelope is an array of exactly four objects, but
+it is not the biometric result discriminator.
 
 The Linux-native enrollment entry point is also now recovered. Ordinary,
 token-free enrollment is command `3`, version `1`, value zero, with this exact
@@ -333,6 +332,23 @@ delta is still only one condition: a live implementation must additionally
 correlate the asynchronous event with the active enrollment and require a
 known-success terminal status before persisting or exposing the new identity.
 
+Catalina's `serviceStatus:version:ordinal:data:timestamp:` dispatch is now
+partially mapped. Status `0xe3ff8002`, version `1`, carries a match result;
+status `0xe3ff8003`, version `1`, carries a terminal enrollment result whose
+first 20 bytes are the newly created identity. The daemon adds that identity to
+its list, notifies the enrollment client, and advances its operation queue.
+Status `0xe3ff800b`, version `1`, is a separate match-activity event with at
+least nine bytes. The offline boundary accepts only exact supported
+result/version pairs and does not interpret the activity event as success.
+The result handlers select the first object from the daemon's serialized
+`activeBioOpsQueue`; enrollment then calls `switchToNextBioOperation:`. They do
+not use the service callback's ordinal as a request identifier. Consequently,
+the narrow Linux model permits exactly one active biometric operation and
+accepts a terminal event only when its type matches that host-tracked
+operation. Cancellation, timeout, connection loss, an unexpected event type,
+or a second concurrent request must clear/fail the operation rather than reuse
+an event.
+
 The daemon's eventual match-result parser does expose a strict identity core.
 It requires at least `0xc70` bytes, reads a 32-bit user ID at offset zero and a
 16-byte identity UUID at offset four, then reads a lockout-list count at
@@ -344,9 +360,8 @@ stricter exact-length form and caps that list at 64 entries. A decoded pair is
 active request, establish a successful terminal status, and compare it with a
 trusted identity obtained from the sensor.
 
-The remaining enrollment progress/result and match event/status mapping, plus
-current bridgeOS compatibility, must be recovered before a live match can be
-interpreted safely.
+Current bridgeOS compatibility and the live transport still must be proven
+before a result can be interpreted on Linux.
 
 `macos-biometric-command-evidence.py` verifies these constants and instruction
 sequences directly in the retained binaries. The finding is exact for Catalina
