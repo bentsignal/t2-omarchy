@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""Offline codec for the recovered Intel BiometricKit BridgeXPC envelope.
+
+This models the logical Foundation-object message.  It deliberately does not
+implement BridgeXPC serialization or access a device.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import plistlib
+import struct
+from typing import TypeAlias
+
+
+class BridgeProtocolError(ValueError):
+    pass
+
+
+BridgeAtom: TypeAlias = int | bool | bytes | str | None
+
+GET_BRIDGE_VERSION = 0
+GET_SERVICE_OPENED = 1
+GET_SYSTEM_BOOT_TIME = 2
+PERFORM_COMMAND = 3
+SET_IOREGISTRY_PROPERTY = 4
+CALIBRATION_DATA_FROM_EEPROM = 5
+MACH_CONTINUOUS_TIME = 6
+GET_MACH_TIMEBASE_INFO = 7
+GET_OS_VERSION = 8
+SET_BRIDGE_CLIENT_VERSION = 10
+CALIBRATION_DATA_FROM_FDR = 11
+SET_OS_TRANSACTION_RETAINED = 12
+
+BIOMETRIC_REQUEST_MAGIC = 0x4D42
+BIOMETRIC_REQUEST_HEADER = struct.Struct("<HHHH")
+BRIDGE_FRAME_MAGIC = 0x0001B892
+BRIDGE_FRAME_HEADER = struct.Struct("<IIQ")
+FRAME_HELO = 1
+FRAME_MESSAGE = 2
+T2_LINK_LOCAL_ADDRESS = "fe80::aede:48ff:fe33:4455"
+BIOMETRIC_KIT_PORT = 52032
+
+
+@dataclass(frozen=True)
+class BiometricRequest:
+    command: int
+    version: int
+    value: int
+    payload: bytes
+
+
+@dataclass(frozen=True)
+class BridgeFrameHeader:
+    kind: int
+    body_size: int
+
+
+def biometric_sockaddr(interface_index: int) -> tuple[str, int, int, int]:
+    """Return the recovered IPv6 target tuple without creating a socket."""
+    interface_index = _unsigned(interface_index, 32, "interface index")
+    if interface_index == 0:
+        raise BridgeProtocolError("a link-local endpoint requires an interface index")
+    return T2_LINK_LOCAL_ADDRESS, BIOMETRIC_KIT_PORT, 0, interface_index
+
+
+def _unsigned(value: int, bits: int, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise BridgeProtocolError(f"{field} must be an integer")
+    if not 0 <= value < 1 << bits:
+        raise BridgeProtocolError(f"{field} does not fit in {bits} bits")
+    return value
+
+
+def encode_biometric_request(command: int, version: int, value: int,
+                             payload: bytes = b"") -> bytes:
+    """Encode biometrickitd's exact 8-byte header followed by request bytes."""
+    command = _unsigned(command, 16, "command")
+    version = _unsigned(version, 16, "version")
+    value = _unsigned(value, 16, "value")
+    if not isinstance(payload, bytes):
+        raise BridgeProtocolError("payload must be bytes")
+    return BIOMETRIC_REQUEST_HEADER.pack(
+        BIOMETRIC_REQUEST_MAGIC, command, version, value
+    ) + payload
+
+
+def decode_biometric_request(message: bytes, *, max_payload: int) -> BiometricRequest:
+    """Decode an inner request fail-closed and enforce a caller-selected cap."""
+    if not isinstance(message, bytes):
+        raise BridgeProtocolError("message must be bytes")
+    if not isinstance(max_payload, int) or isinstance(max_payload, bool) or max_payload < 0:
+        raise BridgeProtocolError("max_payload must be a nonnegative integer")
+    if len(message) < BIOMETRIC_REQUEST_HEADER.size:
+        raise BridgeProtocolError("biometric request is shorter than its header")
+    if len(message) - BIOMETRIC_REQUEST_HEADER.size > max_payload:
+        raise BridgeProtocolError("biometric request exceeds the payload cap")
+    magic, command, version, value = BIOMETRIC_REQUEST_HEADER.unpack_from(message)
+    if magic != BIOMETRIC_REQUEST_MAGIC:
+        raise BridgeProtocolError("invalid biometric request magic")
+    return BiometricRequest(command, version, value,
+                            message[BIOMETRIC_REQUEST_HEADER.size:])
+
+
+def perform_command_request(command: int, payload: bytes | None,
+                            output_capacity: int) -> tuple[BridgeAtom, ...]:
+    """Build Bridge method 3: [method, command, NSData/BTNil, capacity]."""
+    command = _unsigned(command, 32, "bridge command")
+    output_capacity = _unsigned(output_capacity, 64, "output capacity")
+    if payload is not None and not isinstance(payload, bytes):
+        raise BridgeProtocolError("payload must be bytes or None")
+    return (PERFORM_COMMAND, command, payload, output_capacity)
+
+
+def biometric_perform_request(command: int, version: int, value: int,
+                              payload: bytes = b"",
+                              output_capacity: int = 0) -> tuple[BridgeAtom, ...]:
+    """Wrap biometrickitd's inner request in its observed Bridge command 0."""
+    inner = encode_biometric_request(command, version, value, payload)
+    return perform_command_request(0, inner, output_capacity)
+
+
+def encode_frame_header(kind: int, body_size: int) -> bytes:
+    """Encode BridgeXPC's 16-byte little-endian TCP record header."""
+    kind = _unsigned(kind, 32, "frame kind")
+    if kind not in (FRAME_HELO, FRAME_MESSAGE):
+        raise BridgeProtocolError("unsupported frame kind")
+    body_size = _unsigned(body_size, 64, "body size")
+    return BRIDGE_FRAME_HEADER.pack(BRIDGE_FRAME_MAGIC, kind, body_size)
+
+
+def decode_frame_header(header: bytes, *, max_body: int) -> BridgeFrameHeader:
+    """Validate a complete header before a caller reads its advertised body."""
+    if not isinstance(header, bytes) or len(header) != BRIDGE_FRAME_HEADER.size:
+        raise BridgeProtocolError("BridgeXPC frame header must be exactly 16 bytes")
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    magic, kind, body_size = BRIDGE_FRAME_HEADER.unpack(header)
+    if magic != BRIDGE_FRAME_MAGIC:
+        raise BridgeProtocolError("invalid BridgeXPC frame magic")
+    if kind not in (FRAME_HELO, FRAME_MESSAGE):
+        raise BridgeProtocolError("unsupported frame kind")
+    if body_size > max_body:
+        raise BridgeProtocolError("BridgeXPC frame exceeds the body cap")
+    return BridgeFrameHeader(kind, body_size)
+
+
+def encode_perform_command_frame(request: tuple[BridgeAtom, ...],
+                                 *, max_body: int) -> bytes:
+    """Serialize a method-3 request as the binary-plist BridgeXPC message body."""
+    if not isinstance(request, tuple) or len(request) != 4 or request[0] != PERFORM_COMMAND:
+        raise BridgeProtocolError("request is not a method-3 BridgeXPC tuple")
+    _, command, payload, capacity = request
+    command = _unsigned(command, 32, "bridge command")
+    capacity = _unsigned(capacity, 64, "output capacity")
+    # The recovered biometric call always supplies NSData. BTNil's property-list
+    # representation is not yet recovered, so refuse to guess it here.
+    if not isinstance(payload, bytes):
+        raise BridgeProtocolError("framed method-3 input must be bytes")
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    body = plistlib.dumps([PERFORM_COMMAND, command, payload, capacity],
+                          fmt=plistlib.FMT_BINARY, sort_keys=False)
+    if len(body) > max_body:
+        raise BridgeProtocolError("serialized BridgeXPC message exceeds the body cap")
+    return encode_frame_header(FRAME_MESSAGE, len(body)) + body
+
+
+def decode_perform_command_reply(reply: tuple[BridgeAtom, ...],
+                                 *, max_output: int) -> tuple[int, bytes | None]:
+    """Validate method 3's observed [status NSNumber, data/BTNil] reply."""
+    if not isinstance(reply, tuple) or len(reply) != 2:
+        raise BridgeProtocolError("perform-command reply must contain two objects")
+    status, output = reply
+    status = _unsigned(status, 32, "status")
+    if output is not None and not isinstance(output, bytes):
+        raise BridgeProtocolError("reply output must be bytes or None")
+    if not isinstance(max_output, int) or isinstance(max_output, bool) or max_output < 0:
+        raise BridgeProtocolError("max_output must be a nonnegative integer")
+    if output is not None and len(output) > max_output:
+        raise BridgeProtocolError("reply output exceeds the caller's cap")
+    return status, output

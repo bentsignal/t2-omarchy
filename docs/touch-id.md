@@ -143,6 +143,98 @@ probe then issued Apple's stop sequence, freed both vectors, restored the PCI
 command word, and unloaded. No biometric endpoint command or xART operation
 was involved.
 
+## Recovered Intel biometric bridge path
+
+The Catalina 10.15.7 x86_64 `biometrickitd` changes the likely architecture
+for Intel Macs. It imports `BridgeXPC.framework`, constructs a
+`BiometricKitBridgeConnection`, and opens the remote service
+`com.apple.eos.BiometricKit`. This is direct evidence that the host daemon's
+high-level biometric path crosses BridgeXPC into bridgeOS. It does **not** yet
+prove whether bridgeOS ultimately reaches `sbio` through the same generic SEP
+transfer recovered below, and it does not provide BridgeXPC's byte-level USB
+serialization.
+
+The bridge connection sends Foundation-object arrays whose first element is a
+method number. Static disassembly recovers these method IDs:
+
+| ID | Method |
+| --- | --- |
+| `0` | get bridge version |
+| `1` | get service-open state |
+| `2` | get system boot time |
+| `3` | perform command |
+| `4` | set IORegistry property |
+| `5` | read calibration data from EEPROM |
+| `6` | get continuous Mach time |
+| `7` | get Mach timebase information |
+| `8` | get OS version |
+| `10` | set bridge client version |
+| `11` | read calibration data from FDR |
+| `12` | set OS-transaction retained state |
+
+Method `3` has the exact logical request
+`[3, command:uint32, input:NSData-or-BTNil, outputCapacity:uint64]` and expects
+`[status:NSNumber, output:NSData-or-BTNil]`. The host biometric wrapper invokes
+it with bridge command zero. Its input begins with four little-endian 16-bit
+fields followed by opaque input bytes:
+
+```text
+offset  size  field
+0       2     magic 0x4d42 (bytes 42 4d)
+2       2     biometric command
+4       2     command version
+6       2     input value
+8       ...   input data
+```
+
+`bridge-protocol.py` captures only this verified logical envelope. It enforces
+integer widths, the inner magic, explicit input/output caps, reply arity, and
+object types. It neither serializes Foundation objects nor opens BridgeXPC,
+USB, PCI, or SEP, so it is safe for offline fixtures. Recovering the lower
+BridgeXPC/AppleUSBiBridge framing is now the shortest path to replaying a
+read-only bridge query on Linux; sending raw SBIO application commands from
+the x86 host may bypass required bridgeOS state.
+
+The Catalina `BridgeXPC` framework resolves a named EmbeddedOS remote service
+to an IPv6 socket. Every record starts with this exact 16-byte little-endian
+header:
+
+```text
+offset  size  field
+0       4     magic 0x0001b892
+4       4     kind (1 = HELO JSON, 2 = binary-plist message)
+8       8     body length
+```
+
+The initial HELO body is JSON and advertises maximum protocol version `1`, the
+OS build, BridgeXPC framework version, and process name. Normal Foundation
+messages are serialized with `NSPropertyListBinaryFormat_v1_0` (format value
+`0xc8`), so their body starts as an Apple binary property list. The offline
+codec now produces and validates the exact record header and a binary-plist
+method-3 body. It intentionally refuses to serialize a missing input because
+the private `BTNil` representation has not been recovered, and it requires a
+caller-provided body cap before accepting an advertised length. The remaining
+Linux-specific gap is resolving and connecting to the T2 remote-service
+socket through the hardware transport exposed beneath EmbeddedOSSupportHost.
+
+That endpoint is now statically recovered too. Catalina's
+`EmbeddedOSSupportHost` uses the fixed T2 link-local address
+`fe80::aede:48ff:fe33:4455`, scoped to the iBridge NCM interface. Its service
+table assigns enum `kEOSServiceBiometricKit` (index `19`) host port `52032`
+(`0xcb40`); the sockaddr constructor byte-swaps that value into `sin6_port`.
+On this Linux installation the already-loaded `t2bce_vhci` exposes USB device
+`05ac:8233` (“Apple T2 Controller”) through `cdc_ncm` as `enp4s0f1u1`. It has
+carrier, MAC `ac:de:48:00:11:22`, and no configured IP address. Its sysfs path
+descends directly from PCI function `04:00.1`, confirming it is the internal
+T2 link rather than an external Ethernet adapter.
+
+`bridge-protocol.py` can form the standard Python IPv6 tuple
+`(address, 52032, 0, interface_index)` entirely offline. It does not create or
+connect a socket. Before any live query, Linux still needs a narrowly scoped
+link-local configuration on that interface, a bounded connect/read timeout,
+HELO negotiation, and strict response validation. Those actions are deferred
+because they change live network/device state.
+
 ## SBIO and the Intel xART split
 
 Static analysis of `AppleMesaSEPDriver` and `AppleSEPGenericTransfer` confirms

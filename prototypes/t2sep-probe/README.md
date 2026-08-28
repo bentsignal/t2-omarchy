@@ -142,8 +142,16 @@ Its parser rejects bad versions, reserved bits, inconsistent lengths, and
 out-of-range chunks. Run both offline suites with:
 
 ```bash
-python -m unittest test_decode_message.py test_generic_transfer.py
+python -m unittest test_decode_message.py test_generic_transfer.py test_bridge_protocol.py
 ```
+
+`bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
+from the x86_64 Catalina biometric daemon. It encodes the verified logical
+BridgeXPC method-3 array and the daemon's eight-byte inner BiometricKit header,
+plus BridgeXPC's 16-byte socket record header and normal-message binary plist.
+It validates integer widths, both magic values, types, arity, and
+caller-supplied size limits. It refuses to guess the private `BTNil`
+serialization and does not connect to BridgeXPC, USB, PCI, or SEP.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,
