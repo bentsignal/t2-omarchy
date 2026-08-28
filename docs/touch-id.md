@@ -835,7 +835,10 @@ record decoded to inner status `0xe3ff8001`, version 1, ordinal 59, and zero
 data bytes. The decoder enforces five-object arity, exact channel/method,
 unsigned timestamps, a 64 KiB data cap, and exact `40 + dataSize` length. The
 presence probe reports only types, integer metadata, and data length—never raw
-event bytes—and always cancels in a `finally` block.
+event bytes—collects at most two records, and always cancels in a `finally`
+block. A first coordinated-touch attempt saw only the initial
+`0xe3ff8001` record during its five-second window, so physical touch-event
+confirmation remains the next manual test.
 
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.

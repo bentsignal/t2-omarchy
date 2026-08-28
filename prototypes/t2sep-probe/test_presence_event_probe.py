@@ -39,10 +39,15 @@ class PresenceProbeTests(unittest.TestCase):
         record = bytearray(40)
         struct.pack_into("<II", record, 8, 0xE3FF8001, 1)
         struct.pack_into("<Q", record, 24, 59)
+        second_record = bytearray(record)
+        struct.pack_into("<II", second_record, 8, 0xE3FF8004, 1)
+        struct.pack_into("<Q", second_record, 24, 60)
         replies = (
             [1, True, start_id, [0, protocol.NO_REPLY_UUID.lower()]],
             [1, False, protocol.NO_REPLY_UUID.lower(),
              [9, 0xE3FF8000, bytes(record), 1, 2]],
+            [1, False, protocol.NO_REPLY_UUID.lower(),
+             [9, 0xE3FF8000, bytes(second_record), 3, 4]],
             [1, True, cancel_id, [0, protocol.NO_REPLY_UUID.lower()]],
         )
         incoming = b"".join(frame(protocol.FRAME_MESSAGE, plistlib.dumps(item))
@@ -63,6 +68,9 @@ class PresenceProbeTests(unittest.TestCase):
         self.assertEqual((result.event_status, result.event_version,
                           result.event_ordinal, result.event_data_length),
                          (0xE3FF8001, 1, 59, 0))
+        self.assertEqual(result.service_events,
+                         ((0xE3FF8001, 1, 59, 0),
+                          (0xE3FF8004, 1, 60, 0)))
 
 
 if __name__ == "__main__":

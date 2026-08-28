@@ -35,6 +35,7 @@ class PresenceResult:
     event_version: int | None
     event_ordinal: int | None
     event_data_length: int | None
+    service_events: tuple[tuple[int, int, int, int], ...]
     cancel_status: int
 
 
@@ -57,27 +58,34 @@ def probe_socket(sock) -> PresenceResult:
     event_lengths = None
     event_integers = None
     event_status = event_version = event_ordinal = event_data_length = None
+    service_events = []
     cancel_status = -1
     try:
         try:
-            event = session.receive_event()
-            event_types = tuple(type(item).__name__ for item in event.message)
-            event_lengths = tuple(len(item) if isinstance(item, (bytes, str, list))
-                                  else None for item in event.message)
-            event_integers = tuple(item if type(item) is int else None
-                                   for item in event.message)
-            decoded = biometric.decode_bridge_service_event(event.message)
-            event_status = decoded.status
-            event_version = decoded.version
-            event_ordinal = decoded.ordinal
-            event_data_length = len(decoded.data)
+            for _ in range(2):
+                event = session.receive_event()
+                decoded = biometric.decode_bridge_service_event(event.message)
+                service_events.append((decoded.status, decoded.version,
+                                       decoded.ordinal, len(decoded.data)))
+                if event_types is None:
+                    event_types = tuple(type(item).__name__ for item in event.message)
+                    event_lengths = tuple(
+                        len(item) if isinstance(item, (bytes, str, list)) else None
+                        for item in event.message)
+                    event_integers = tuple(item if type(item) is int else None
+                                           for item in event.message)
+                    event_status = decoded.status
+                    event_version = decoded.version
+                    event_ordinal = decoded.ordinal
+                    event_data_length = len(decoded.data)
         except (socket.timeout, TimeoutError):
             pass
     finally:
         cancel_status, _ = _perform(session, biometric.cancel_fields())
     return PresenceResult(start_status, event_types, event_lengths,
                           event_integers, event_status, event_version,
-                          event_ordinal, event_data_length, cancel_status)
+                          event_ordinal, event_data_length,
+                          tuple(service_events), cancel_status)
 
 
 def live_probe(interface: str = "enp4s0f1u1", timeout: float = 5.0) -> PresenceResult:

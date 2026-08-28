@@ -291,7 +291,9 @@ queues server-initiated envelopes that race a synchronous call. The gated
 `presence-event-probe.py` verified a status-zero presence start, method-9
 service event (`0xe3ff8001`, version 1, ordinal 59, no data), and status-zero
 same-session cancellation. It caps and structurally decodes the 40-byte service
-record but never prints its raw data.
+record, collects at most two events, but never prints raw data. The first
+five-second physical-touch window produced only the initial status, so a
+coordinated retry is still required.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,
