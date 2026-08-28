@@ -153,7 +153,7 @@ def verify_t2_interface(name: str) -> int:
     return socket.if_nametoindex(name)
 
 
-def live_query(interface: str, timeout: float) -> int:
+def live_capture(interface: str, timeout: float) -> PassiveDirectoryCapture:
     if not LIVE_DIRECTORY_CAPTURE_ENABLED:
         raise QueryError("live RSD query disabled: supervised capture not enabled")
     expected = (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
@@ -175,7 +175,12 @@ def live_query(interface: str, timeout: float) -> int:
     with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         sock.connect(target)
-        return query_connected_socket(sock, uuid.uuid4())
+        return capture_connected_socket(sock, uuid.uuid4())
+
+
+def live_query(interface: str, timeout: float) -> int:
+    """Compatibility wrapper returning only the live advertised port."""
+    return live_capture(interface, timeout).advertised_port
 
 
 def main() -> None:

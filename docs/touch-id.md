@@ -406,6 +406,27 @@ is just a compatibility wrapper. A future supervised experiment can therefore
 feed the captured transcript directly into the offline plan builder and prove
 that the endpoint came from the peer's named-service directory.
 
+The first supervised Linux attempt on 2026-08-28 did not reach RSD. A temporary
+non-autoconnecting NetworkManager profile assigned the verified local address
+`fe80::aede:48ff:fe00:1122/64`, and route selection correctly chose it for the
+derived peer `fe80::aede:48ff:fe00:11dd`. The TCP connection timed out because
+neighbor discovery never left the host: `ip -s link` showed zero transmitted
+packets and increasing TX errors. Kernel history tied this to the immediately
+preceding T2BCE preserved-state resume:
+
+```text
+t2bce_vhci: [01] pause timeout waiting for 1 outputs
+cdc_ncm ... NETDEV WATCHDOG: transmit queue 0 timed out
+```
+
+Cycling only the NetworkManager connection did not recover the wedged USB
+request. No RSD bytes, BridgeXPC frame, or biometric command reached the T2.
+The next supervised prerequisite is therefore a narrow unbind/rebind of USB
+interface `7-1:1.0` (or a reboot), followed by proof that CDC-NCM TX packets
+increase before retrying the passive directory capture. This is a T2BCE
+suspend/resume transport failure, not evidence against the recovered RSD
+address or protocol.
+
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service
 Discovery protocol identify TCP port `58783`; pymobiledevice3 attributes it to

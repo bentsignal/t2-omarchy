@@ -118,6 +118,12 @@ class RSDQueryTests(unittest.TestCase):
         verify.assert_not_called()
         socket_constructor.assert_not_called()
 
+    def test_live_query_is_only_a_capture_wrapper(self):
+        capture = query.PassiveDirectoryCapture(49152, b"evidence")
+        with mock.patch.object(query, "live_capture", return_value=capture) as live:
+            self.assertEqual(query.live_query("t2", 1.0), 49152)
+        live.assert_called_once_with("t2", 1.0)
+
     def test_malformed_live_verification_still_precedes_all_io(self):
         for malformed in ("yes", (), ("address", 58783, "evidence"),
                           (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,

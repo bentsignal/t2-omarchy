@@ -253,6 +253,13 @@ switch is deliberately changed, both source gates, two CLI gates, exact internal
 T2 USB/PCI ancestry, carrier, a maximum five-second deadline, and the
 transcript validator's byte/frame limits must all pass.
 
+The initial supervised attempt exposed a prerequisite below this runner: after
+a T2BCE stateful sleep/resume, CDC-NCM reported zero successful TX packets,
+increasing TX errors, `NETDEV WATCHDOG`, and a VHCI output-pause timeout. No
+RSD frame left Linux. Connection-profile cycling did not clear the stale USB
+request; rebind the T2 NCM interface or reboot and confirm TX advances before
+repeating the passive capture. The live kill switch remains disabled in source.
+
 `discovered-bridge-plan.py` is the socket-free handoff between those layers.
 Its preferred entry point consumes the complete bounded passive RSD transcript
 itself, requires that the strict state machine prove the named BiometricKit
