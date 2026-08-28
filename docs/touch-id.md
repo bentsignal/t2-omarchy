@@ -434,6 +434,14 @@ This proves the NCM transport and endpoint, while showing that neither
 listener is active during this Linux boot. The next experiment must capture
 macOS startup traffic to identify the activation sequence.
 
+`tools/research/capture-live-macos-t2.sh` performs that experiment for a
+bounded 60 seconds on macOS. It captures only interfaces whose current MAC is
+in Apple's `ac:de:48` T2 range, plus `remoted`/`biometrickitd` unified logs and
+listener snapshots; it does not modify enrollment. Its companion
+`analyze-macos-t2-capture.py` is socket-free, caps every input and record
+count, rejects symlinks and malformed pcaps, and reports wire addresses,
+candidate-port flows, TCP resets, listener evidence, and activation log lines.
+
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service
 Discovery protocol identify TCP port `58783`; pymobiledevice3 attributes it to
