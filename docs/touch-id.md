@@ -434,8 +434,13 @@ commands `2` and `3`. `tag_control_request()` and
 `validate_control_reply()` now model the correlation and status rules, while
 requiring the caller to supply independently verified reply opcode and target.
 Consequently an OOL registration cannot yet be marked committed from a guessed
-ack shape. A future bounded hardware transcript must establish those two
-fields before DMA registration is wired into the kernel path.
+ack shape. The kernel prototype now has a default-off bounded capture path for
+establishing those two fields. It requires successful passive `sbio` discovery
+and a separate confirmation value, caps each response wait at five seconds,
+and logs opcode/target without treating guessed values as success criteria.
+The coherent mappings remain pinned across every outcome until CPU stop, after
+which they are scrubbed and freed. This path is compile-tested only; it has not
+yet been executed against the T2.
 
 Linux currently reports both `dma_mask_bits` and `consistent_dma_mask_bits`
 as 32 for `0000:04:00.2`, consistent with this T2 wire format. A future live

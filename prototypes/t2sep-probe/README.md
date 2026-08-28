@@ -178,7 +178,7 @@ python -m unittest test_decode_message.py test_generic_transfer.py \
   test_intel_fifo.py test_endpoint_lifecycle.py \
   test_endpoint_router.py \
   test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py \
-  test_rsd_query.py test_verify_discovery_log.py
+  test_rsd_query.py test_verify_discovery_log.py test_kernel_ool_safety.py
 ```
 
 `bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
@@ -235,8 +235,7 @@ deadline, and the transcript validator's byte/frame limits.
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,
 the full DMA range's 32-bit page-frame fit, and a well-formed endpoint's
-advertised send/receive page limits. Nothing calls the encoder from the kernel
-module; it cannot allocate or register DMA memory.
+advertised send/receive page limits.
 
 The same module models AppleSEPControl's nonzero byte tags and strict reply
 status. The known NOP acknowledgement is fixed to its observed opcode/target.
@@ -270,3 +269,20 @@ failure words, stale/mixed sessions, truncation, reordered or altered details,
 summary disagreement, and transport-error candidate bits. Build and review
 this runner without executing it until a privileged hardware test is
 explicitly intended.
+
+The kernel prototype now contains a separate, default-off acknowledgement
+capture stage for control opcodes 2 and 3. It is deliberately not exposed by
+an automatic runner. Entry requires the complete CPU-start, two-MSI, validated
+NOP, and successful passive-discovery chain plus the independent 64-bit
+`ool_ack_confirmation` value documented by `modinfo`. Only then does it set a
+32-bit coherent DMA mask, allocate the recovered 16 KiB/300 KiB `sbio`
+buffers, and send one tagged registration per direction. Each response wait
+is capped at five seconds and accepts only endpoint zero, the matching tag,
+zero remote status, and no transport error flags; opcode and target are logged
+as observations rather than guessed validation constants. On success or any
+failure, both mappings remain pinned until the exact CPU-stop write completes,
+then are explicitly scrubbed and freed. This path has been compiled and tested
+offline but has not been loaded or executed against hardware.
+
+`test_kernel_ool_safety.py` guards the confirmation/discovery gate, bounded
+waits, tag/status checks, and stop-before-scrub-before-free ordering.

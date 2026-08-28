@@ -11,6 +11,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
+#include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 
@@ -89,6 +90,16 @@ module_param(apple_collect_discovery, bool, 0400);
 MODULE_PARM_DESC(apple_collect_discovery,
 	"After a validated NOP, collect a bounded stream of passive endpoint 0xfd advertisements");
 
+static bool apple_capture_ool_acks;
+module_param(apple_capture_ool_acks, bool, 0400);
+MODULE_PARM_DESC(apple_capture_ool_acks,
+	"After validated sbio discovery, register bounded coherent OOL buffers and capture acknowledgements");
+
+static ulong ool_ack_confirmation;
+module_param(ool_ack_confirmation, ulong, 0400);
+MODULE_PARM_DESC(ool_ack_confirmation,
+	"Required explicit confirmation value 0x5345504f4f4c4143 for OOL acknowledgement capture");
+
 struct t2sep_irq_probe {
 	atomic_t count[2];
 };
@@ -99,6 +110,9 @@ struct t2sep_irq_probe {
 #define T2SEP_SBIO_NAME 0x6f696273
 #define T2SEP_SBIO_IN_PAGES 4
 #define T2SEP_SBIO_OUT_PAGES 75
+#define T2SEP_OOL_CONFIRMATION 0x5345504f4f4c4143UL
+#define T2SEP_SBIO_IN_SIZE (T2SEP_SBIO_IN_PAGES * PAGE_SIZE)
+#define T2SEP_SBIO_OUT_SIZE (T2SEP_SBIO_OUT_PAGES * PAGE_SIZE)
 
 struct t2sep_discovery_entry {
 	bool identity;
@@ -356,13 +370,78 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 	return ret;
 }
 
-static void t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
+static int t2sep_send_intel_message(void __iomem *bar4, const u32 words[3])
+{
+	u32 outbox = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+
+	if (outbox & T2SEP_INTEL_OUTBOX_FULL)
+		return -EBUSY;
+	iowrite32(words[0], bar4 + 0x820);
+	iowrite32(words[1], bar4 + 0x824);
+	iowrite32(words[2], bar4 + 0x828);
+	iowrite32(0, bar4 + 0x82c);
+	ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+	return 0;
+}
+
+static int t2sep_wait_intel_message(void __iomem *bar4, u32 words[4])
+{
+	int i;
+
+	for (i = 0; i < 500; i++) {
+		int ret = t2sep_read_intel_message(bar4, words);
+
+		if (ret != -EAGAIN)
+			return ret;
+		msleep(10);
+	}
+	return -ETIMEDOUT;
+}
+
+static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
+				      void __iomem *bar4, u8 opcode,
+				      u8 tag, dma_addr_t dma, size_t size)
+{
+	u32 request[3] = {
+		T2SEP_SBIO_ENDPOINT << 24 | opcode << 16 | tag << 8,
+		lower_32_bits(dma >> PAGE_SHIFT),
+		size,
+	};
+	u32 response[4];
+	int ret;
+
+	ret = t2sep_send_intel_message(bar4, request);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "OOL registration request: opcode=%u tag=%u words=%08x %08x %08x 00000000\n",
+		 opcode, tag, request[0], request[1], request[2]);
+	ret = t2sep_wait_intel_message(bar4, response);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "OOL acknowledgement: request_opcode=%u tag=%u raw=%08x %08x %08x %08x decoded_endpoint=%u decoded_tag=%u decoded_opcode=%u decoded_target=%u\n",
+		 opcode, tag, response[0], response[1], response[2], response[3],
+		 response[0] & 0xff, (response[0] >> 8) & 0xff,
+		 (response[0] >> 16) & 0xff, (response[0] >> 24) & 0xff);
+	if ((response[0] & 0xff) != 0 || ((response[0] >> 8) & 0xff) != tag ||
+	    response[1] != 0)
+		return -EPROTO;
+	return 0;
+}
+
+static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 {
 	u32 inbox_before = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
 	u32 outbox_before = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
 	u32 inbox = inbox_before;
 	u32 outbox = outbox_before;
 	bool nop_valid = false;
+	void *in_buffer = NULL;
+	void *out_buffer = NULL;
+	dma_addr_t in_dma = 0;
+	dma_addr_t out_dma = 0;
+	int ret = 0;
 	int i;
 
 	/* Exact ordering from AppleSEPIntelIOP::_startCPUGated(). */
@@ -445,12 +524,45 @@ static void t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4
 	}
 	if (apple_collect_discovery) {
 		if (nop_valid)
-			t2sep_collect_discovery(pdev, bar4);
-		else
+			ret = t2sep_collect_discovery(pdev, bar4);
+		else {
 			dev_err(&pdev->dev,
 				"discovery skipped because NOP did not validate\n");
+			ret = -EPROTO;
+		}
 	}
 
+	if (apple_capture_ool_acks && !ret) {
+		ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+		if (ret)
+			goto out_stop;
+		in_buffer = dma_alloc_coherent(&pdev->dev, T2SEP_SBIO_IN_SIZE,
+					       &in_dma, GFP_KERNEL);
+		out_buffer = dma_alloc_coherent(&pdev->dev, T2SEP_SBIO_OUT_SIZE,
+						&out_dma, GFP_KERNEL);
+		if (!in_buffer || !out_buffer) {
+			ret = -ENOMEM;
+			goto out_stop;
+		}
+		memset(in_buffer, 0, T2SEP_SBIO_IN_SIZE);
+		memset(out_buffer, 0, T2SEP_SBIO_OUT_SIZE);
+		if (!IS_ALIGNED(in_dma, PAGE_SIZE) || !IS_ALIGNED(out_dma, PAGE_SIZE)) {
+			dev_err(&pdev->dev, "OOL DMA addresses are not page aligned\n");
+			ret = -ERANGE;
+			goto out_stop;
+		}
+		dev_info(&pdev->dev,
+			 "pinned OOL buffers: in_dma=%pad in_size=%zu out_dma=%pad out_size=%zu\n",
+			 &in_dma, (size_t)T2SEP_SBIO_IN_SIZE,
+			 &out_dma, (size_t)T2SEP_SBIO_OUT_SIZE);
+		ret = t2sep_capture_one_ool_ack(pdev, bar4, 2, 2, in_dma,
+						 T2SEP_SBIO_IN_SIZE);
+		if (!ret)
+			ret = t2sep_capture_one_ool_ack(pdev, bar4, 3, 3, out_dma,
+							 T2SEP_SBIO_OUT_SIZE);
+	}
+
+out_stop:
 	/* Exact CPU-stop write from AppleSEPIntelIOP::_stopCPUGated(). */
 	iowrite32(5, bar4 + T2SEP_INTEL_CPU_STOP);
 	ioread32(bar4 + T2SEP_INTEL_CPU_STOP);
@@ -458,6 +570,21 @@ static void t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4
 		 "issued Apple CPU-stop value 5 at +0x8024; payload FIFOs %s\n",
 		 apple_send_control_nop ? "accessed only by explicit bounded gates" :
 					  "untouched");
+	if (in_buffer) {
+		memzero_explicit(in_buffer, T2SEP_SBIO_IN_SIZE);
+		dma_free_coherent(&pdev->dev, T2SEP_SBIO_IN_SIZE,
+				  in_buffer, in_dma);
+	}
+	if (out_buffer) {
+		memzero_explicit(out_buffer, T2SEP_SBIO_OUT_SIZE);
+		dma_free_coherent(&pdev->dev, T2SEP_SBIO_OUT_SIZE,
+				  out_buffer, out_dma);
+	}
+	if (apple_capture_ool_acks)
+		dev_info(&pdev->dev,
+			 "OOL buffers scrubbed and released after CPU stop; result=%d\n",
+			 ret);
+	return ret;
 }
 
 static void t2sep_scan_aperture(struct pci_dev *pdev, int bar)
@@ -514,6 +641,14 @@ static int t2sep_probe(struct pci_dev *pdev,
 	     !apple_send_control_nop)) {
 		dev_err(&pdev->dev,
 			"discovery requires CPU start, two MSI vectors, and validated control NOP\n");
+		return -EINVAL;
+	}
+	if (apple_capture_ool_acks &&
+	    (!apple_collect_discovery ||
+	     ool_ack_confirmation != T2SEP_OOL_CONFIRMATION)) {
+		dev_err(&pdev->dev,
+			"OOL capture requires validated discovery and explicit confirmation 0x%lx\n",
+			T2SEP_OOL_CONFIRMATION);
 		return -EINVAL;
 	}
 
@@ -686,10 +821,16 @@ static int t2sep_probe(struct pci_dev *pdev,
 			 "Apple layout payload FIFOs were not accessed%s\n",
 			 apple_start_cpu_probe ? "" : "; no MMIO writes performed");
 
-		if (apple_start_cpu_probe)
-			t2sep_apple_start_cpu_probe(pdev, bar4);
+		if (apple_start_cpu_probe) {
+			ret = t2sep_apple_start_cpu_probe(pdev, bar4);
+			if (ret)
+				dev_err(&pdev->dev,
+					"bounded Apple transport probe failed: %d\n", ret);
+		}
 
 		pci_iounmap(pdev, bar4);
+		if (ret)
+			goto out_disable;
 	}
 
 	ret = 0;
