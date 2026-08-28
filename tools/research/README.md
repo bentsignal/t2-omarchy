@@ -46,6 +46,20 @@ The required selectors include current bridge methods 0, 1, and 3. Their
 disassembled bodies establish the logical request and reply shapes documented
 in `docs/touch-id.md`.
 
+`macos-biometric-command-evidence.py` verifies the older Catalina 19H15 Intel
+operation ABI against both `biometrickitd` and `BiometricSupport`. It requires
+unique address-independent instruction runs for the zeroed 68-byte match
+input, match command `4`, presence command `0x26`, cancel command `0x0c`, and
+the legacy wrapper's command version `1`. The companion framework establishes
+the initialized `0xffffffff` user IDs and zero-initialized processed flags.
+It reads ordinary files only and never contacts the sensor:
+
+```bash
+python tools/research/macos-biometric-command-evidence.py \
+  /path/to/usr/libexec/biometrickitd \
+  /path/to/BiometricSupport.framework/Versions/A/BiometricSupport
+```
+
 `macos-bridgexpc-evidence.py` verifies the current thin x86_64 BridgeXPC
 framework's exact HELO/message header loads, binary-plist format load, HELO
 keys, and serialization import. It rejects the wrong architecture, duplicate

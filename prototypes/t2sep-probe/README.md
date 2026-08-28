@@ -201,6 +201,21 @@ It validates integer widths, both magic values, types, arity, and
 caller-supplied size limits. It refuses to guess the private `BTNil`
 serialization and does not connect to BridgeXPC, USB, PCI, or SEP.
 
+`biometric-command.py` adds the exact Catalina 19H15 operation layer without
+adding any I/O. The ordinary match request is command `4`, version `1`, value
+zero, a 68-byte input, and zero output capacity. Its public encoder permits
+only zero processed flags and an all-zero 60-byte special-mode union; therefore
+credential-set, enrollment-extension, capture-only, payment, and biometric
+lockout-bypass requests cannot be represented. The default user ID is Apple's
+initialized value `0xffffffff`. Presence detection (`0x26`) and cancellation
+(`0x0c`) are retained as offline field tuples. None of these commands is wired
+into `bridge-query.py` or any live runner.
+The same module has a deliberately partial Catalina async-result decoder for
+the proven user ID, 16-byte UUID, and bounded lockout-list IDs. It requires an
+exact self-consistent length and explicitly does not treat parsing as proof of
+authentication; event/request correlation, terminal status, and trusted
+identity enumeration are still mandatory.
+
 `bridge-query.py` is a separately gated runner for the first passive bridge
 query. With no arguments it only prints deterministic HELO and method-0 frame
 fixtures. Its live code has no method-3 or SBIO encoder: it verifies the

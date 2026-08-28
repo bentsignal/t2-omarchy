@@ -133,6 +133,13 @@ The important architectural rule is that raw fingerprint images and templates
 must stay inside Apple's Secure Enclave. Linux should relay authenticated
 commands and consume a match result, not attempt to read fingerprint pixels.
 
+The finished workflow must be Linux-native. A user starting from Omarchy on a
+T2 Mac should be able to enroll a finger through `fprintd`, store the resulting
+machine-bound template inside the T2/SEP, and use it for login, unlock, `sudo`,
+and Polkit without installing or booting macOS. This machine's macOS install and
+enrolled finger are reverse-engineering fixtures only; depending on an Apple-
+created template would not satisfy the project goal.
+
 ## Recovered Intel T2 register layout
 
 The x86_64 slice of `AppleSEPManager` from Apple's macOS 14.5 (23F79) Kernel
@@ -260,6 +267,57 @@ object types. Its later framing helpers serialize the supported subset as a
 binary property list, but nothing in the module opens BridgeXPC, USB, PCI, or
 SEP. Sending raw SBIO application commands from the x86 host may bypass
 required bridgeOS state.
+
+### Recovered match, presence, and cancel commands
+
+Static disassembly of Catalina 19H15 `biometrickitd` and its
+`BiometricSupport` framework now recovers the first complete operation request.
+`BiometricMatchOperation` initializes both user IDs to `0xffffffff`; Objective-C
+allocation zero-initializes `processedFlags`. The daemon zeroes a 68-byte input,
+writes the operation's processed flags and user ID into its first two
+little-endian words, and sends command `4`, value zero, with no output buffer.
+The generic wrapper supplies command version `1`:
+
+```text
+offset  size  ordinary-match field
+0       4     processedFlags = 0
+4       4     userID = 0xffffffff by default
+8       60    zero (special-mode union)
+```
+
+That trailing union can instead carry an ACM credential-set context,
+extend-enrollment identity/authentication data, or biometric-lockout-bypass
+credentials. Those are not ordinary matching and are intentionally forbidden
+by `biometric-command.py`. The module accepts only flags zero and a completely
+zero special union. This is stricter than Apple's internal object and prevents
+the research codec from becoming a generic privileged-command constructor.
+
+The same daemon calls presence detection as command `0x26` and cancellation as
+command `0x0c`, each with value zero and no input/output. These calls return
+only whether the operation started; match progress and identity results arrive
+as later asynchronous BiometricKit events. Catalina's Bridge transport requires
+an event envelope to be an array of exactly four objects and dispatches on a
+numeric first object. The complete operation/event correlation is not yet
+modeled.
+
+The daemon's eventual match-result parser does expose a strict identity core.
+It requires at least `0xc70` bytes, reads a 32-bit user ID at offset zero and a
+16-byte identity UUID at offset four, then reads a lockout-list count at
+`0xc6c`. It requires at least `0xc70 + 4 * count` bytes and resolves a match by
+looking up the returned user-ID/UUID pair in its separately maintained identity
+list. User ID `0xffffffff` is the no-identity value. The offline codec accepts a
+stricter exact-length form and caps that list at 64 entries. A decoded pair is
+**not authentication proof by itself**: Linux must first bind the event to the
+active request, establish a successful terminal status, and compare it with a
+trusted identity obtained from the sensor.
+
+The remaining event-kind/status mapping and current bridgeOS compatibility must
+be recovered before a live match can be interpreted safely.
+
+`macos-biometric-command-evidence.py` verifies these constants and instruction
+sequences directly in the retained binaries. The finding is exact for Catalina
+19H15 but is not yet a claim that macOS 26.6.2 or its current bridgeOS retained
+the same operation ABI. No command is connected to the live query runner.
 
 The Catalina `BridgeXPC` framework resolves a named EmbeddedOS remote service
 to an IPv6 socket. Every record starts with this exact 16-byte little-endian
@@ -885,15 +943,17 @@ never acknowledges or advances an unknown state machine.
 4. Build an out-of-tree, model-allowlisted PCI probe for `106b:1802`. Milestone
    zero is probe/remove plus BAR sizing and power/interrupt reporting, with no
    MMIO writes. Milestone one is a known-safe status/mailbox read.
-5. Capture and compare a genuine macOS boot/enrollment/match exchange on a
-   disposable or fully backed-up test installation. Filter for SBIO rather
-   than tracing all SEP traffic.
+5. Capture and compare genuine macOS boot, enrollment, and match exchanges on
+   a disposable or fully backed-up test installation. Recover enrollment as
+   well as matching because the deliverable cannot require macOS-created
+   templates. Filter for SBIO rather than tracing all SEP traffic.
 6. Implement the transport and a single non-mutating query before enrollment.
    Only after the response format is verified should sensor capture, match,
    enrollment, and cancellation be attempted.
-7. Expose successful matches through a narrow userspace daemon/libfprint
-   backend. Add PAM last, with fingerprint marked `sufficient` and ordinary
-   password authentication retained as an immediate fallback.
+7. Implement Linux-native enrollment and template enumeration/deletion through
+   a narrow userspace daemon/libfprint backend, then expose matching. Add PAM
+   last, with fingerprint marked `sufficient` and ordinary password
+   authentication retained as an immediate fallback.
 
 ## Post-macOS checkpoint
 
