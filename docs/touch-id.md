@@ -435,6 +435,20 @@ remote-error parsing so callers cannot accidentally validate those layers in
 isolation. Once complete it rejects every additional record, including an
 empty duplicate continuation.
 
+The outbound half is also recovered rather than inferred. Apple's
+`transact()` calls `_gt_write_first_packet` and announces that packet with
+`0xfc`. For a transaction larger than one OOL-buffer payload, SEP sends a
+`0xfe` request; the handler writes the next packet and announces it with
+`0xfd`. It sends no continuation notification after the byte offset reaches
+the declared total. `OutboundTransaction` models precisely this pull-based
+exchange offline: each chunk is at most `OOL capacity - 28`, the first offset
+is zero, later offsets are contiguous, outgoing 16-bit sequence values wrap,
+and peer requests have their own ordered sequence stream. It rejects a request
+before the first packet, any type other than `0xfe`, a changed mailbox command,
+a skipped/repeated peer sequence, and every request after completion. The
+planner returns immutable packet and notification bytes and has no hardware
+I/O path.
+
 The passive discovery model and the not-yet-run kernel collector now enforce
 the same stricter table grammar: exactly four 32-bit words; discovery endpoint
 `0xfd`; zero tag/reserved fields; no transport error/fatal flags; service IDs

@@ -34,6 +34,12 @@ class Notification:
     message_type: int
 
 
+@dataclass(frozen=True)
+class OutboundRecord:
+    notification_word: int
+    packet: bytes
+
+
 class SequenceTracker:
     """Validate the 16-bit per-direction notification sequence, including wrap."""
 
@@ -197,6 +203,70 @@ class InboundTransaction:
         # Reassembler decodes again intentionally: its public boundary must
         # remain independently safe when used without this coupled wrapper.
         return self.reassembler.add(notification.message_type, raw)
+
+
+class OutboundTransaction:
+    """Offline planner for Apple's host-to-SEP generic-transfer handshake.
+
+    ``first`` emits the initial 0xfc record.  Further 0xfd records are emitted
+    only in response to an ordered 0xfe notification from SEP.  This class
+    plans immutable bytes; it performs no DMA, mailbox, or device access.
+    """
+
+    def __init__(self, payload: bytes, command: int, flags: int,
+                 buffer_capacity: int, initial_sequence: int = 0):
+        if not isinstance(payload, bytes):
+            raise ProtocolError("payload must be bytes")
+        _u32("command", command)
+        _u32("flags", flags)
+        _u32("buffer capacity", buffer_capacity)
+        if buffer_capacity <= HEADER_SIZE:
+            raise ProtocolError("buffer capacity must exceed the 28-byte header")
+        if len(payload) > 0xFFFFFFFF:
+            raise ProtocolError("payload exceeds the protocol length field")
+        if (isinstance(initial_sequence, bool)
+                or not isinstance(initial_sequence, int)
+                or not 0 <= initial_sequence <= 0xFFFF):
+            raise ProtocolError("initial sequence is not an unsigned 16-bit value")
+        self._payload = payload
+        self.command = command
+        self.flags = flags
+        self.capacity = buffer_capacity - HEADER_SIZE
+        self._next_sequence = initial_sequence
+        self._offset = 0
+        self._started = False
+        self.complete = False
+        self.requests = SequenceTracker()
+
+    def _emit(self, message_type: int) -> OutboundRecord:
+        remaining = len(self._payload) - self._offset
+        chunk_length = min(remaining, self.capacity)
+        packet = Packet(len(self._payload), self._offset, self.flags, self.command,
+                        self._payload[self._offset:self._offset + chunk_length]).encode()
+        word = encode_mailbox_notification(self._next_sequence, self.command, message_type)
+        self._next_sequence = (self._next_sequence + 1) & 0xFFFF
+        self._offset += chunk_length
+        self.complete = self._offset == len(self._payload)
+        return OutboundRecord(word, packet)
+
+    def first(self) -> OutboundRecord:
+        if self._started:
+            raise ProtocolError("first outbound packet was already emitted")
+        self._started = True
+        return self._emit(MESSAGE_FIRST)
+
+    def accept_next_request(self, notification_word: int) -> OutboundRecord:
+        if not self._started:
+            raise ProtocolError("outbound transaction has not started")
+        if self.complete:
+            raise ProtocolError("outbound transaction received request after completion")
+        notification = decode_generic_notification(notification_word)
+        if notification.message_type != MESSAGE_NEXT_OUT:
+            raise ProtocolError("outbound continuation requires message type 0xfe")
+        if notification.command != self.command:
+            raise ProtocolError("continuation request changed transaction command")
+        self.requests.accept(notification)
+        return self._emit(MESSAGE_NEXT_IN)
 
 
 def main() -> None:

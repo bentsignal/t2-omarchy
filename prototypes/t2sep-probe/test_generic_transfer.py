@@ -136,6 +136,73 @@ class GenericTransferTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, 0xE00002C2)
 
+    def test_outbound_planner_uses_recovered_handshake_and_capacity(self):
+        transaction = gt.OutboundTransaction(b"abcdefghij", 0x73, 2, 32, 0xFFFF)
+        first = transaction.first()
+        self.assertEqual(gt.decode_mailbox_notification(first.notification_word),
+                         (0xFFFF, 0x73, gt.MESSAGE_FIRST, 0))
+        self.assertEqual(gt.decode_packet(first.packet),
+                         gt.Packet(10, 0, 2, 0x73, b"abcd"))
+        self.assertFalse(transaction.complete)
+
+        second = transaction.accept_next_request(
+            gt.encode_mailbox_notification(10, 0x73, gt.MESSAGE_NEXT_OUT))
+        self.assertEqual(gt.decode_mailbox_notification(second.notification_word),
+                         (0, 0x73, gt.MESSAGE_NEXT_IN, 0))
+        self.assertEqual(gt.decode_packet(second.packet).payload, b"efgh")
+        final = transaction.accept_next_request(
+            gt.encode_mailbox_notification(11, 0x73, gt.MESSAGE_NEXT_OUT))
+        self.assertEqual(gt.decode_packet(final.packet),
+                         gt.Packet(10, 8, 2, 0x73, b"ij"))
+        self.assertTrue(transaction.complete)
+
+    def test_outbound_planner_rejects_invalid_state_and_requests(self):
+        transaction = gt.OutboundTransaction(b"abcde", 7, 0, 32)
+        with self.assertRaisesRegex(gt.ProtocolError, "not started"):
+            transaction.accept_next_request(
+                gt.encode_mailbox_notification(1, 7, gt.MESSAGE_NEXT_OUT))
+        transaction.first()
+        with self.assertRaisesRegex(gt.ProtocolError, "already"):
+            transaction.first()
+        with self.assertRaisesRegex(gt.ProtocolError, "message type"):
+            transaction.accept_next_request(
+                gt.encode_mailbox_notification(1, 7, gt.MESSAGE_NEXT_IN))
+
+        changed = gt.OutboundTransaction(b"abcde", 7, 0, 32)
+        changed.first()
+        with self.assertRaisesRegex(gt.ProtocolError, "command"):
+            changed.accept_next_request(
+                gt.encode_mailbox_notification(1, 8, gt.MESSAGE_NEXT_OUT))
+
+    def test_outbound_planner_rejects_sequence_and_post_completion(self):
+        transaction = gt.OutboundTransaction(b"abcdefghij", 7, 0, 32)
+        transaction.first()
+        transaction.accept_next_request(
+            gt.encode_mailbox_notification(4, 7, gt.MESSAGE_NEXT_OUT))
+        with self.assertRaisesRegex(gt.ProtocolError, "sequence"):
+            transaction.accept_next_request(
+                gt.encode_mailbox_notification(6, 7, gt.MESSAGE_NEXT_OUT))
+
+        complete = gt.OutboundTransaction(b"data", 7, 0, 64)
+        complete.first()
+        with self.assertRaisesRegex(gt.ProtocolError, "after completion"):
+            complete.accept_next_request(
+                gt.encode_mailbox_notification(1, 7, gt.MESSAGE_NEXT_OUT))
+
+    def test_outbound_planner_validates_inputs_and_copies_packet_bytes(self):
+        for capacity in (0, 28):
+            with self.assertRaises(gt.ProtocolError):
+                gt.OutboundTransaction(b"x", 1, 0, capacity)
+        for bad in (True, -1, 0x10000):
+            with self.assertRaises(gt.ProtocolError):
+                gt.OutboundTransaction(b"x", 1, 0, 29, bad)
+        with self.assertRaises(gt.ProtocolError):
+            gt.OutboundTransaction(bytearray(b"x"), 1, 0, 29)
+
+        source = b"abc"
+        record = gt.OutboundTransaction(source, 1, 0, 64).first()
+        self.assertEqual(gt.decode_packet(record.packet).payload, b"abc")
+
     def test_strict_python_types_fail_with_protocol_errors(self):
         invalid_packets = (bytearray(28), "packet", None)
         for raw in invalid_packets:
