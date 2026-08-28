@@ -21,7 +21,7 @@ an entire loop in one scope allows retained memory to accumulate across loop
 iterations and defeats that isolation.
 
 `capture-macos-bridge.sh` is a read-only collector for the small set of
-installed Sonoma artifacts needed to resolve the remaining current-version
+installed macOS artifacts needed to resolve the remaining current-version
 bridge question. Run it from macOS with an output directory on a volume that
 Linux can later read:
 
@@ -34,6 +34,15 @@ volume, start a biometric operation, or connect to the T2. It copies the host
 biometric and `remoted` daemons when readable, their launchd plists, framework
 version plists, dependency/signature metadata, OS build information, and
 checksums.
+
+`macos-biometric-evidence.py` verifies the coupled current Intel route in an
+extracted thin x86_64 `biometrickitd`: RemoteServiceDiscovery, BridgeXPC, the
+named BiometricKit services, and the two connection selectors. It performs no
+device or network access and can pin a known installed-slice SHA-256.
+
+`macos-rsd-port-evidence.py` verifies the companion x86_64 `remoted` evidence:
+the NCM-device listener class/method and its unique exact instruction storing
+port `58783`. It likewise performs no device or network access.
 
 `pbzx-stream.py` incrementally decodes the PBZX payload inside older macOS
 installer packages. It exists because a whole-payload decoder expanded a

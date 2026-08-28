@@ -2,7 +2,7 @@
 """Hard-gated passive RSD directory query for the internal T2 link.
 
 Default execution prints deterministic offline fixtures.  Live execution is
-mechanically disabled until current Sonoma evidence verifies the candidate T2
+mechanically disabled until current installed-macOS evidence verifies the T2
 RSD address and port.  Even after that source gate is filled, the only request
 implemented here is the RemoteXPC service-directory handshake.
 """
@@ -30,10 +30,16 @@ FRAME_CAP = 64 * 1024
 FRAME_LIMIT = 16
 TOTAL_CAP = 256 * 1024
 CONFIRMATION = "I_UNDERSTAND_THIS_ONLY_READS_THE_T2_RSD_DIRECTORY"
-# Must become (address, port, evidence-note) only after installed Sonoma remoted
-# or a passive trace verifies BOTH candidate address and port on this T2. The
-# live path also requires that tuple to equal the codec's reviewed candidates.
-CURRENT_RSD_ENDPOINT_VERIFICATION = None
+# macOS 26.6.2 build 25G83 x86_64 remoted, SHA-256
+# 88e78e65b77e3c2338ca95c9ab201bfa0be90ce81e58ece1c4d1ad11273f4056,
+# RSDRemoteNCMDeviceDevice::createPortListener at 0x10001628a stores 0xe59f.
+CURRENT_RSD_PORT_VERIFICATION = (
+    protocol.RSD_PORT_CANDIDATE,
+    "installed macOS 26.6.2 remoted NCM-device listener",
+)
+# Must become (address, evidence-note) only after current installed-macOS or a
+# passive trace verifies the T2 peer address. No live path exists with this unset.
+CURRENT_T2_ADDRESS_VERIFICATION = None
 
 
 class QueryError(RuntimeError):
@@ -126,14 +132,18 @@ def verify_t2_interface(name: str) -> int:
 
 
 def live_query(interface: str, timeout: float) -> int:
-    if CURRENT_RSD_ENDPOINT_VERIFICATION is None:
-        raise QueryError("live RSD query disabled: verify current Sonoma T2 endpoint")
+    if CURRENT_T2_ADDRESS_VERIFICATION is None:
+        raise QueryError("live RSD query disabled: verify current T2 peer address")
     expected = (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
                 protocol.RSD_PORT_CANDIDATE)
-    verification = CURRENT_RSD_ENDPOINT_VERIFICATION
-    if (not isinstance(verification, tuple) or len(verification) != 3
-            or verification[:2] != expected
-            or not isinstance(verification[2], str) or not verification[2]):
+    address_verification = CURRENT_T2_ADDRESS_VERIFICATION
+    port_verification = CURRENT_RSD_PORT_VERIFICATION
+    if (not isinstance(address_verification, tuple) or len(address_verification) != 2
+            or address_verification[0] != expected[0]
+            or not isinstance(address_verification[1], str) or not address_verification[1]
+            or not isinstance(port_verification, tuple) or len(port_verification) != 2
+            or port_verification[0] != expected[1]
+            or not isinstance(port_verification[1], str) or not port_verification[1]):
         raise QueryError("live RSD query disabled: malformed endpoint verification")
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
             or not math.isfinite(timeout) or not 0 < timeout <= 5):

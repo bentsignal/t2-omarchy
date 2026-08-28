@@ -314,11 +314,36 @@ The same check found an 808 KB final `usr/libexec/remoted` in the BOM but no
 standalone copy in any individual payload, so it has the same reconstruction
 boundary. The macOS collector therefore captures both daemons.
 
-Consequently the live runner remains fail-closed: `CURRENT_PORT_VERIFICATION`
-is unset. The next safe evidence source is a read-only copy of the installed
-Sonoma daemon/framework or a dyld shared-cache extraction performed in macOS.
-Until that confirms the current service discovery result, the Linux runner
-cannot open a socket and cannot fall through to a biometric command.
+That installer-era evidence gap is now resolved by the post-enrollment APFS
+image. Its sealed System snapshot identifies the actual installation as macOS
+26.6.2 build `25G83`, not Sonoma. A disposable, read-only `apfs-fuse` build was
+used only to bypass its obsolete container-keybag parser; System, Preboot, and
+Recovery are unencrypted, while the FileVault Data volume was not opened.
+
+The installed universal `usr/libexec/biometrickitd` has SHA-256
+`636dd137dace867359f389437c198d8c4cd9dc12896e9017d94cb6c567e84e4b`;
+its extracted x86_64 slice is
+`248d4521007f95c916ae682c1a3d13d1c431626f4be4e84a0758d6dfbc94ce20`.
+That slice links RemoteServiceDiscovery version `219.160.4` and BridgeXPC
+version `39.0.0`, imports `_remote_device_copy_service` and
+`BridgeXPCConnection`, contains both `com.apple.eos.BiometricKit` and its
+`.ta` companion, and contains selectors `initForRemoteService:` and
+`activateConnection:`. Disassembly around `0x100049df6..0x100049f4c` proves
+the order: copy the named RSD service, initialize a BridgeXPC connection from
+that remote-service object, then activate the connection. This is stronger
+current evidence than Catalina's fixed table and establishes the host-side
+named-service route.
+
+`macos-biometric-evidence.py` makes those coupled facts reproducible against a
+thin x86_64 slice and optionally pins its SHA-256. It rejects the wrong
+architecture or any missing framework, import, service name, or selector.
+
+The live runner nevertheless remains fail-closed: `CURRENT_PORT_VERIFICATION`
+is unset. The current daemon deliberately obtains the endpoint dynamically
+from RSD and does not prove Catalina's fixed port `52032`.
+Until a passive directory capture confirms the current T2 listener and its
+advertised port, the Linux runner cannot open a socket or fall through to a
+biometric command.
 It contains no method-3 or SBIO send path. Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
@@ -381,19 +406,30 @@ five-second maximum timeout, 16-frame limit, 64 KiB frame/XPC caps, 256 KiB
 transcript cap, exact internal USB/PCI ancestry, and a traversal-safe interface
 name.
 
-Normal `rsd-query.py` execution prints deterministic offline fixtures. Its live
-branch checks `CURRENT_RSD_ENDPOINT_VERIFICATION` before interface inspection
-or socket construction; that constant is `None`. Even a non-`None` value is
-rejected unless it is an exact `(candidate address, candidate port, nonempty
-evidence note)` tuple. Tests prove absent/malformed gates and invalid timeouts
-cannot reach sysfs or construct a socket.
+Normal `rsd-query.py` execution prints deterministic offline fixtures. Current
+macOS `remoted` resolves one half of its former combined endpoint gate:
+`RSDRemoteNCMDeviceDevice::createPortListener` at `0x10001628a` stores the
+literal `0xe59f`, decimal `58783`, before creating the listener. The verified
+x86_64 slice SHA-256 is
+`88e78e65b77e3c2338ca95c9ab201bfa0be90ce81e58ece1c4d1ad11273f4056`.
+`macos-rsd-port-evidence.py` independently requires the x86_64 Mach-O, class,
+method, and unique exact `movw` port store.
 
-This does **not** establish that T2 bridgeOS exposes its `remoted` listener on
-`58783`, nor that its directory advertises `com.apple.eos.BiometricKit`.
+The runner now records that port evidence separately in
+`CURRENT_RSD_PORT_VERIFICATION`, but its live branch first checks
+`CURRENT_T2_ADDRESS_VERIFICATION`, which remains `None`. A malformed address
+or port evidence tuple is also rejected before interface inspection or socket
+construction. Tests prove absent/malformed gates and invalid timeouts cannot
+reach sysfs or construct a socket. This preserves the live prohibition while
+avoiding the false claim that the current Apple port is still unknown.
+
+This establishes Apple’s current NCM-device listener port as `58783`, but does
+**not** establish the current T2 peer address or that its directory currently
+advertises the host-requested `com.apple.eos.BiometricKit` service.
 Neither the candidate codec nor the currently disabled runner has connected to
 that port. A future live experiment may only become possible after the
-installed Sonoma artifacts or passive network evidence confirms this specific
-T2 route.
+installed-macOS endpoint evidence or passive network evidence confirms this
+specific T2 route.
 
 ## SBIO and the Intel xART split
 

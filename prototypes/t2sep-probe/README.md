@@ -215,13 +215,15 @@ JSON must have the recovered four keys and valid types; invalid interface names
 and nonfinite/out-of-range timeouts are rejected before sysfs or socket access.
 
 `rsd-protocol.py` models the newer `remoted` directory route as an offline
-candidate only. Independent implementations agree on HTTP/2 plus RemoteXPC
-framing and candidate RSD port `58783`; the local encoder has been checked
-byte-for-byte against one of them. The module can encode the passive directory
-handshake and strictly decode a named advertised service port, but contains no
-socket calls. Port `58783` and the presence of `com.apple.eos.BiometricKit`
-remain unverified for this T2 bridgeOS, so this codec is not wired into
-`bridge-query.py` and does not weaken its hard live gate.
+candidate only. The installed macOS 26.6.2 x86_64 `biometrickitd` now proves
+that the host asks RemoteServiceDiscovery for `com.apple.eos.BiometricKit`,
+constructs a `BridgeXPCConnection` with `initForRemoteService:`, and activates
+it. Independent implementations agree on HTTP/2 plus RemoteXPC framing and
+candidate RSD port `58783`; the local encoder has been checked byte-for-byte
+against one of them. The module can encode the passive directory handshake and
+strictly decode the named advertised service port, but contains no socket
+calls. Port `58783` and the T2 directory's current answer remain unverified,
+so this evidence does not weaken the hard live gate.
 
 Its `PassiveRSDTranscript` state machine validates a complete server transcript
 from fragmented offline bytes. It caps bytes, frames, controls, and XPC sizes;
@@ -237,10 +239,13 @@ prints deterministic fixtures. Its fake-socket-tested engine sends transport
 setup, waits for validated peer SETTINGS, then sends the SETTINGS ACK and
 device handshake; it never constructs a service-open message. The live branch
 is checked before sysfs or socket access and remains mechanically disabled by
-`CURRENT_RSD_ENDPOINT_VERIFICATION = None`. Filling that gate later requires
-an exact candidate address/port tuple plus a nonempty evidence note, two CLI
-gates, exact internal T2 USB/PCI ancestry, carrier, a maximum five-second
-deadline, and the transcript validator's byte/frame limits.
+The installed macOS 26.6.2 x86_64 `remoted` now proves listener port `58783`,
+recorded separately in `CURRENT_RSD_PORT_VERIFICATION`. The peer-address gate
+`CURRENT_T2_ADDRESS_VERIFICATION` remains `None`, so live execution is still
+mechanically impossible. Filling it later requires the exact candidate address
+plus a nonempty evidence note; both source gates, two CLI gates, exact internal
+T2 USB/PCI ancestry, carrier, a maximum five-second deadline, and the
+transcript validator's byte/frame limits must all pass.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,
