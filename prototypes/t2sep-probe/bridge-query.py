@@ -61,7 +61,10 @@ def query_connected_socket(sock: socket.socket) -> tuple[int, int]:
                                       CURRENT_PROCESS_NAME,
                                       max_body=BODY_CAP)
     query = protocol.encode_bridge_version_query_frame(max_body=BODY_CAP)
-    sock.sendall(helo + query)
+    # Preserve the observed BridgeXPC handshake boundary. The current client
+    # sends its HELO before releasing the first queued method request.
+    sock.sendall(helo)
+    sock.sendall(query)
 
     for _ in range(4):
         header, body = recv_frame(sock)

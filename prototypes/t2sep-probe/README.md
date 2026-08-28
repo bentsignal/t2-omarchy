@@ -234,6 +234,13 @@ A supervised Linux attempt reached the advertised TCP listener but received no
 BridgeXPC reply within three seconds, even with the exact current 119-byte HELO.
 Its source gate was restored to false; the result points to an activation or
 pre-BridgeXPC transport step still to recover.
+Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
+bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
+services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,
+version 39) rather than the generic two-plist check-in response. It reset as
+soon as Linux sent a client HELO, even when that HELO mirrored the peer. The
+check-in-shaped write is therefore retained only as evidence of a missing
+activation/framing boundary, not treated as a proven BiometricKit handshake.
 The source gate must be an exact port plus nonempty evidence tuple. Peer HELO
 JSON must have the recovered four keys and valid types; invalid interface names
 and nonfinite/out-of-range timeouts are rejected before sysfs or socket access.

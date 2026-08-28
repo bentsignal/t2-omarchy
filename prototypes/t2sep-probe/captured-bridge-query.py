@@ -13,7 +13,9 @@ import importlib.util
 import json
 import math
 from pathlib import Path
+import plistlib
 import socket
+import struct
 import sys
 
 
@@ -34,10 +36,78 @@ bridge_query = _load("captured_bridge_query_transport", "bridge-query.py")
 CAPTURE_CAP = 1024 * 1024
 CONFIRMATION = "I_UNDERSTAND_THIS_ONLY_READS_THE_T2_BRIDGE_VERSION"
 LIVE_CAPTURED_BRIDGE_QUERY_ENABLED = False
+CHECKIN_CAP = 64 * 1024
 
 
 class CapturedBridgeError(RuntimeError):
     pass
+
+
+def _recv_exact(sock: socket.socket, size: int) -> bytes:
+    result = bytearray()
+    while len(result) < size:
+        chunk = sock.recv(size - len(result))
+        if not chunk:
+            raise CapturedBridgeError("peer closed during RSD check-in")
+        result += chunk
+    return bytes(result)
+
+
+def _recv_prefixed_plist(sock: socket.socket, prefix: bytes | None = None) -> dict:
+    prefix = _recv_exact(sock, 4) if prefix is None else prefix
+    if not isinstance(prefix, bytes) or len(prefix) != 4:
+        raise CapturedBridgeError("RSD check-in prefix is invalid")
+    size = struct.unpack(">I", prefix)[0]
+    if not 1 <= size <= CHECKIN_CAP:
+        raise CapturedBridgeError(
+            f"RSD check-in plist size is invalid (prefix={prefix.hex()})")
+    try:
+        value = plistlib.loads(_recv_exact(sock, size))
+    except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+        raise CapturedBridgeError("RSD check-in reply is not a plist") from error
+    if not isinstance(value, dict):
+        raise CapturedBridgeError("RSD check-in reply is not a dictionary")
+    return value
+
+
+def perform_rsd_checkin(sock: socket.socket) -> dict | None:
+    """Perform only the check-in required by UsesRemoteXPC=false services."""
+    request = {
+        "Label": "biometrickitd",
+        "ProtocolVersion": "2",
+        "Request": "RSDCheckin",
+    }
+    payload = plistlib.dumps(request, fmt=plistlib.FMT_XML, sort_keys=False)
+    if len(payload) > CHECKIN_CAP:
+        raise CapturedBridgeError("RSD check-in request exceeds its cap")
+    sock.sendall(struct.pack(">I", len(payload)) + payload)
+    prefix = _recv_exact(sock, 4)
+    bridge_prefix = struct.pack(
+        "<HH", bridge_query.protocol.BRIDGE_FRAME_MAGIC,
+        bridge_query.protocol.BRIDGE_PROTOCOL_VERSION)
+    if prefix == bridge_prefix:
+        header_bytes = prefix + _recv_exact(
+            sock, bridge_query.protocol.BRIDGE_FRAME_HEADER.size - len(prefix))
+        try:
+            header = bridge_query.protocol.decode_frame_header(
+                header_bytes, max_body=bridge_query.BODY_CAP)
+            if header.kind != bridge_query.protocol.FRAME_HELO:
+                raise CapturedBridgeError(
+                    "checked-in service emitted a non-HELO BridgeXPC frame")
+            body = _recv_exact(sock, header.body_size)
+            peer_helo = bridge_query.protocol.decode_helo_body(
+                body, max_body=bridge_query.BODY_CAP)
+        except bridge_query.protocol.BridgeProtocolError as error:
+            raise CapturedBridgeError(
+                "checked-in service emitted an invalid BridgeXPC HELO") from error
+        return peer_helo
+    first = _recv_prefixed_plist(sock, prefix)
+    if first.get("Request") != "RSDCheckin" or first.get("Error") is not None:
+        raise CapturedBridgeError("peer rejected RSD check-in")
+    second = _recv_prefixed_plist(sock)
+    if second.get("Request") != "StartService" or second.get("Error") is not None:
+        raise CapturedBridgeError("peer did not start the checked-in service")
+    return None
 
 
 def _unique_object(pairs):
@@ -104,6 +174,7 @@ def live_query(capture_path: Path, interface: str, timeout: float) -> tuple[int,
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
             sock.connect(target)
+            perform_rsd_checkin(sock)
             return bridge_query.query_connected_socket(sock)
     except (OSError, rsd_query.QueryError, bridge_query.QueryError) as error:
         raise CapturedBridgeError("bounded BridgeXPC version query failed") from error

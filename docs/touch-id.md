@@ -531,6 +531,19 @@ bound after an exact current 119-byte HELO and method-0 version request. This
 narrows the remaining gap to service activation or pre-BridgeXPC transport;
 it does not justify sending method 3. The capture-bound runner is disabled in
 source after the supervised attempt and contains no method-3 or SBIO send path.
+
+The advertised entry says `UsesRemoteXPC: false`, `EncryptSocketData: false`,
+and carries entitlement `com.apple.private.bmk.remote.allow`. Following the
+public RSD client's lockdown-style path, Linux sent one length-prefixed XML
+`RSDCheckin`. The T2 immediately emitted a valid BridgeXPC HELO identifying
+`bkremoted`, bridgeOS build `23P6068`, and BridgeXPC version `39`. It did not
+emit the generic `RSDCheckin`/`StartService` plist pair. Sending either the
+macOS-sized client HELO or a HELO mirroring the peer then caused an immediate
+TCP reset, before method 0. This is strong evidence that the check-in-shaped
+write wakes or advances the listener, but it is not yet proof that generic
+RSD check-in is the correct activation record. The next experiment must recover
+the exact macOS handoff/first-write boundary rather than guessing another
+biometric command.
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

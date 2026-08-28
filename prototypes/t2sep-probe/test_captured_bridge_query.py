@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import plistlib
 import struct
 import sys
 import tempfile
@@ -54,6 +55,75 @@ class CapturedBridgeQueryTests(unittest.TestCase):
             port, wire = query.validate_capture(path)
             self.assertEqual(port, 49165)
             self.assertEqual(wire, transcript())
+
+    def test_checkin_uses_bounded_big_endian_plists(self):
+        class Socket:
+            def __init__(self):
+                self.sent = bytearray()
+                replies = []
+                for value in ({"Request": "RSDCheckin"},
+                              {"Request": "StartService"}):
+                    body = plistlib.dumps(value)
+                    replies.append(struct.pack(">I", len(body)) + body)
+                self.incoming = bytearray(b"".join(replies))
+
+            def sendall(self, data):
+                self.sent += data
+
+            def recv(self, size):
+                result = self.incoming[:min(size, 7)]
+                del self.incoming[:len(result)]
+                return bytes(result)
+
+        sock = Socket()
+        query.perform_rsd_checkin(sock)
+        size = struct.unpack(">I", sock.sent[:4])[0]
+        request = plistlib.loads(sock.sent[4:4 + size])
+        self.assertEqual(request, {"Label": "biometrickitd",
+                                   "ProtocolVersion": "2",
+                                   "Request": "RSDCheckin"})
+
+    def test_checkin_accepts_immediate_valid_bridge_helo(self):
+        class Socket:
+            def __init__(self, incoming):
+                self.incoming = bytearray(incoming)
+
+            def sendall(self, _data):
+                pass
+
+            def recv(self, size):
+                result = self.incoming[:min(size, 5)]
+                del self.incoming[:len(result)]
+                return bytes(result)
+
+        helo = query.bridge_query.protocol.encode_helo_frame(
+            "bridgeOS", 39, "biometrickitd",
+            max_body=query.bridge_query.BODY_CAP)
+        self.assertEqual(query.perform_rsd_checkin(Socket(helo))["OSBuild"],
+                         "bridgeOS")
+
+    def test_checkin_rejects_error_wrong_phase_and_oversize(self):
+        class Socket:
+            def __init__(self, incoming):
+                self.incoming = bytearray(incoming)
+
+            def sendall(self, _data):
+                pass
+
+            def recv(self, size):
+                result = self.incoming[:size]
+                del self.incoming[:len(result)]
+                return bytes(result)
+
+        for value in ({"Request": "RSDCheckin", "Error": "Denied"},
+                      {"Request": "Wrong"}):
+            body = plistlib.dumps(value)
+            with self.assertRaises(query.CapturedBridgeError):
+                query.perform_rsd_checkin(
+                    Socket(struct.pack(">I", len(body)) + body))
+        with self.assertRaisesRegex(query.CapturedBridgeError, "size"):
+            query.perform_rsd_checkin(
+                Socket(struct.pack(">I", query.CHECKIN_CAP + 1)))
 
     def test_rejects_tamper_permissions_and_failed_capture(self):
         with tempfile.TemporaryDirectory() as directory:
