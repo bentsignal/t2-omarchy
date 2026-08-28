@@ -169,6 +169,14 @@ parsing. A transfer is complete only when the accumulated byte count equals
 the header's total length. The offline codec now includes a bounded reassembler
 that rejects a nonzero first offset, changed metadata, gaps, overlap, duplicate
 chunks, zero-progress continuations, and totals above its caller-supplied cap.
+The strict notification decoder additionally requires a zero low byte and one
+of the four recovered generic-transfer types. A separate sequence tracker can
+reject skipped, repeated, or backward 16-bit sequence values while permitting
+the defined wrap from `0xffff` to zero.
+For inbound data, the mailbox command must also equal the command in the DMA
+packet header. Error notification `0xff` uses word four (byte offset 16) of a
+buffer larger than the common header as its 32-bit status. Both rules are now
+represented by offline validators.
 
 `AppleMesaSEPDriver::initSbioCommunication()` also establishes the first SBIO
 transaction in Apple's ordering: after generic-transfer setup, it sends
@@ -177,6 +185,24 @@ reply payload. This resembles protocol-version initialization, but that
 meaning is not yet proven. It must not be sent live until passive `sbio`
 discovery, OOL limits, DMA registration lifetime, and completion semantics
 have all been validated.
+
+The early command sequence can now be separated by risk instead of treating
+every small request as a harmless query:
+
+| Command | Recovered use | Shape | Live-test classification |
+| --- | --- | --- | --- |
+| `0x73` | `initSbioCommunication()` | 4-byte value `3`, no output, flags `0` | required initialization; meaning still inferred |
+| `0x17` | `prepareSession()` | 16-byte sensor-derived input, no output, flags `1` | session mutation; do not probe |
+| `0x15` / `0x16` | `performKeyExchange()` | 4-byte input to 40-byte output, then 40-byte input | cryptographic session mutation; do not probe |
+| `0x1b` | `prepareNotPairedSession()` | 4-byte state input, variable output, flags `1` | pairing/session state; do not probe |
+| `0x42` | `initializeSequenceCounter()` | no input, 12- or 64-byte output, flags `1` | likely nonce/counter material; not safely repeatable |
+| `0x18` | `initializeSequenceCounter()` | 64-byte sensor-processed input, no output, flags `1` | sequence-state mutation; do not probe |
+| `0x48` | `sendDeviceSerialNumberToSbio()` | 12-byte input, flags `1` | identity/session mutation; do not probe |
+
+Thus `0x42` is not an acceptable first “read-only” experiment merely because
+it has no input: its output is immediately transformed by the sensor and fed
+back through `0x18` as sequence state. No SBIO application command beyond the
+required `0x73` initialization is currently classified safe for live use.
 
 The generic-transfer endpoint setup is likewise ordered and stateful.
 `enableEndpoint()` obtains the named service through `AppleSEPDeviceService`,

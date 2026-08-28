@@ -51,6 +51,35 @@ class GenericTransferTests(unittest.TestCase):
     def test_rejects_mailbox_overflow(self):
         with self.assertRaises(gt.ProtocolError): gt.encode_mailbox_notification(0x10000, 0)
 
+    def test_strict_notification_decoder(self):
+        word = gt.encode_mailbox_notification(4, 0x73, gt.MESSAGE_NEXT_IN)
+        self.assertEqual(gt.decode_generic_notification(word), gt.Notification(4, 0x73, 0xFD))
+        with self.assertRaises(gt.ProtocolError): gt.decode_generic_notification(word | 1)
+        with self.assertRaises(gt.ProtocolError): gt.decode_generic_notification((word & ~0xFF00) | 0x8000)
+
+    def test_sequence_tracker_and_wrap(self):
+        tracker = gt.SequenceTracker()
+        tracker.accept(gt.Notification(0xFFFF, 0x73, gt.MESSAGE_FIRST))
+        tracker.accept(gt.Notification(0, 0x73, gt.MESSAGE_NEXT_IN))
+        with self.assertRaises(gt.ProtocolError):
+            tracker.accept(gt.Notification(0, 0x73, gt.MESSAGE_NEXT_IN))
+
+    def test_notification_and_packet_command_must_match(self):
+        raw = gt.Packet(4, 0, 0, 0x73, b"data").encode()
+        word = gt.encode_mailbox_notification(1, 0x73)
+        notification, packet = gt.decode_notified_packet(word, raw)
+        self.assertEqual((notification.command, packet.command), (0x73, 0x73))
+        with self.assertRaises(gt.ProtocolError):
+            gt.decode_notified_packet(gt.encode_mailbox_notification(1, 0x74), raw)
+        with self.assertRaises(gt.ProtocolError):
+            gt.decode_notified_packet(gt.encode_mailbox_notification(1, 0x73, gt.MESSAGE_NEXT_OUT), raw)
+
+    def test_error_code_location_and_minimum_size(self):
+        raw = bytearray(29)
+        struct.pack_into("<I", raw, 16, 0xE00002C2)
+        self.assertEqual(gt.decode_error_code(raw), 0xE00002C2)
+        with self.assertRaises(gt.ProtocolError): gt.decode_error_code(bytes(28))
+
     def test_reassembles_ordered_packets(self):
         stream = gt.Reassembler(8)
         self.assertIsNone(stream.add(gt.MESSAGE_FIRST, gt.Packet(8, 0, 0, 0x73, b"abcd").encode()))
