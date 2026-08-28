@@ -442,6 +442,13 @@ The coherent mappings remain pinned across every outcome until CPU stop, after
 which they are scrubbed and freed. This path is compile-tested only; it has not
 yet been executed against the T2.
 
+The offline `sbio-bootstrap.py` composition makes that evidence dependency
+mechanical. Its caller must complete strict discovery, prepare both tagged OOL
+requests, and supply independently observed reply opcode/target fields. Both
+replies validate before either ownership transition is committed. Only then
+does it expose the already-fixtured command `0x73`, value `3`, empty-response
+generic-transfer initialization session. Skipping or repeating a phase fails.
+
 Linux currently reports both `dma_mask_bits` and `consistent_dma_mask_bits`
 as 32 for `0000:04:00.2`, consistent with this T2 wire format. A future live
 implementation must explicitly establish a 32-bit coherent DMA mask, use the
