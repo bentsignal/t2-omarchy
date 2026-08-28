@@ -20,6 +20,20 @@ Each archive payload must be launched through the helper separately. Wrapping
 an entire loop in one scope allows retained memory to accumulate across loop
 iterations and defeats that isolation.
 
+`capture-macos-bridge.sh` is a read-only collector for the small set of
+installed Sonoma artifacts needed to resolve the remaining current-version
+bridge question. Run it from macOS with an output directory on a volume that
+Linux can later read:
+
+```bash
+tools/research/capture-macos-bridge.sh /path/to/output-directory
+```
+
+It does not use `sudo`, inspect fingerprint templates, modify the sealed system
+volume, start a biometric operation, or connect to the T2. It copies the host
+daemon when readable, framework version plists, dependency/signature metadata,
+OS build information, and checksums.
+
 `pbzx-stream.py` incrementally decodes the PBZX payload inside older macOS
 installer packages. It exists because a whole-payload decoder expanded a
 roughly 15 GB archive in memory and caused `systemd-oomd` to kill the terminal
