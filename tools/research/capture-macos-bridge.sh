@@ -11,6 +11,17 @@ if (( $# != 1 )); then
 fi
 
 capture_dir=$1
+if [[ -e $capture_dir ]]; then
+  if [[ ! -d $capture_dir ]]; then
+    echo "output exists and is not a directory: $capture_dir" >&2
+    exit 2
+  fi
+  existing_entry=$(find "$capture_dir" -mindepth 1 -maxdepth 1 -print -quit)
+  if [[ -n $existing_entry ]]; then
+    echo "output directory must be empty: $capture_dir" >&2
+    exit 2
+  fi
+fi
 mkdir -p "$capture_dir/files"
 
 sw_vers >"$capture_dir/sw_vers.txt"

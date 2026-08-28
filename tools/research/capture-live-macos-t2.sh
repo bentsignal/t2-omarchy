@@ -12,6 +12,17 @@ fi
 
 capture_dir=$1
 duration_seconds=60
+if [[ -e $capture_dir ]]; then
+  if [[ ! -d $capture_dir ]]; then
+    echo "output exists and is not a directory: $capture_dir" >&2
+    exit 2
+  fi
+  existing_entry=$(find "$capture_dir" -mindepth 1 -maxdepth 1 -print -quit)
+  if [[ -n $existing_entry ]]; then
+    echo "output directory must be empty: $capture_dir" >&2
+    exit 2
+  fi
+fi
 mkdir -p "$capture_dir"
 chmod 700 "$capture_dir"
 
@@ -43,6 +54,19 @@ sudo lsof -nP -iTCP -sTCP:LISTEN \
   >"$capture_dir/tcp-processes-before.txt" 2>&1 || true
 
 pids=""
+log_pid=""
+cleanup() {
+  if [[ -n $pids ]]; then
+    kill -INT $pids 2>/dev/null || true
+    wait $pids 2>/dev/null || true
+  fi
+  if [[ -n $log_pid ]]; then
+    kill -INT "$log_pid" 2>/dev/null || true
+    wait "$log_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT HUP INT TERM
+
 for interface_name in $t2_interfaces; do
   case "$interface_name" in
     *[!A-Za-z0-9._-]*) echo "unsafe interface name" >&2; exit 2 ;;
@@ -77,6 +101,8 @@ kill -INT $pids 2>/dev/null || true
 kill -INT "$log_pid" 2>/dev/null || true
 wait $pids 2>/dev/null || true
 wait "$log_pid" 2>/dev/null || true
+pids=""
+log_pid=""
 
 ifconfig -a >"$capture_dir/ifconfig-after.txt"
 netstat -anv -p tcp >"$capture_dir/tcp-listeners-after.txt" 2>&1 || true

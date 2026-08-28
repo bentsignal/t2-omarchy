@@ -1,2 +1,5 @@
 __pycache__/
 *.py[cod]
+t2-static-capture/
+t2-runtime-capture/
+t2-runtime-summary.json
