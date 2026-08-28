@@ -216,6 +216,15 @@ exact self-consistent length and explicitly does not treat parsing as proof of
 authentication; event/request correlation, terminal status, and trusted
 identity enumeration are still mandatory.
 
+`read-only-biometric-plan.py` composes the eventual post-handshake inspection
+sequence entirely offline from a strictly validated RSD transcript. It emits
+Bridge methods 0 and 1 followed only by Catalina's maximum-identity-count
+(`0x0f`), free-identity-count (`0x41`), and identity-list (`0x42`) requests.
+The module exposes no socket API and cannot construct enrollment, match,
+presence, cancellation, or identity removal. This is preparation rather than
+live authorization: the current macOS wire comparison and current bridgeOS
+command compatibility must both succeed before any method-3 frame is sent.
+
 `bridge-query.py` is a separately gated runner for the first passive bridge
 query. With no arguments it only prints deterministic HELO and method-0 frame
 fixtures. Its live code has no method-3 or SBIO encoder: it verifies the
