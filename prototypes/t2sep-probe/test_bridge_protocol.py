@@ -191,9 +191,23 @@ class BridgeEnvelopeTests(unittest.TestCase):
         for status, opened in ((0, True), (-1, False)):
             body = plistlib.dumps([status, opened], fmt=plistlib.FMT_BINARY)
             self.assertEqual(
-                bridge.decode_service_opened_reply_body(body, max_body=len(body)),
+            bridge.decode_service_opened_reply_body(body, max_body=len(body)),
                 (status, opened),
             )
+
+    def test_complete_perform_reply_body_decoder(self):
+        body = plistlib.dumps([0, b"\x05\0\0\0"], fmt=plistlib.FMT_BINARY)
+        self.assertEqual(
+            bridge.decode_perform_command_reply_body(
+                body, max_body=len(body), max_output=4),
+            (0, b"\x05\0\0\0"))
+        for bad in (plistlib.dumps({"status": 0}), b"bad"):
+            with self.assertRaises(bridge.BridgeProtocolError):
+                bridge.decode_perform_command_reply_body(
+                    bad, max_body=1024, max_output=4)
+        with self.assertRaisesRegex(bridge.BridgeProtocolError, "body exceeds"):
+            bridge.decode_perform_command_reply_body(
+                body, max_body=len(body) - 1, max_output=4)
 
     def test_service_opened_reply_fails_closed(self):
         malformed = (

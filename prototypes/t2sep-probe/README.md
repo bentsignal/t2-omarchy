@@ -224,6 +224,11 @@ The module exposes no socket API and cannot construct enrollment, match,
 presence, cancellation, or identity removal. This is preparation rather than
 live authorization: the current macOS wire comparison and current bridgeOS
 command compatibility must both succeed before any method-3 frame is sent.
+`read-only-biometric-result.py` provides the matching socket-free receive state
+machine. It accepts exactly three successful method-3 replies in plan order,
+requires bounded NSData output, validates both counts and the identity records,
+rejects identities for another user or more listed identities than occupied
+sensor slots, and cannot finish on a partial or repeated sequence.
 
 `bridge-query.py` is a separately gated runner for the first passive bridge
 query. With no arguments it only prints deterministic HELO and method-0 frame

@@ -327,3 +327,24 @@ def decode_perform_command_reply(reply: tuple[BridgeAtom, ...],
     if output is not None and len(output) > max_output:
         raise BridgeProtocolError("reply output exceeds the caller's cap")
     return status, output
+
+
+def decode_perform_command_reply_body(body: bytes, *,
+                                      max_body: int,
+                                      max_output: int) -> tuple[int, bytes | None]:
+    """Decode one complete method-3 reply body before applying output caps."""
+    if not isinstance(body, bytes):
+        raise BridgeProtocolError("perform-command reply body must be bytes")
+    if (isinstance(max_body, bool) or not isinstance(max_body, int)
+            or max_body < 0):
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    if len(body) > max_body:
+        raise BridgeProtocolError("perform-command reply body exceeds its cap")
+    try:
+        value = plistlib.loads(body)
+    except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+        raise BridgeProtocolError(
+            "perform-command reply body is not a property list") from error
+    if not isinstance(value, list):
+        raise BridgeProtocolError("perform-command reply body must be an array")
+    return decode_perform_command_reply(tuple(value), max_output=max_output)
