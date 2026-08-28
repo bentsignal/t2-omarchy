@@ -4,6 +4,7 @@ from pathlib import Path
 import plistlib
 import sys
 import unittest
+from unittest import mock
 import uuid
 
 
@@ -48,6 +49,22 @@ class DirectorySocket(FakeSocket):
 
 
 class CoupledQueryTests(unittest.TestCase):
+    def test_multiverse_socket_binds_interface_and_completes_nonblocking_connect(self):
+        sock = mock.Mock()
+        sock.connect_ex.return_value = 115
+        sock.getsockopt.return_value = 0
+        with mock.patch.object(query.socket, "socket", return_value=sock), \
+                mock.patch.object(query.select, "select",
+                                  return_value=([], [sock], [])):
+            result = query.connect_multiverse_socket(
+                "enp4s0f1u1", ("fe80::1", 1234, 0, 7), 2)
+        self.assertIs(result, sock)
+        sock.setsockopt.assert_any_call(
+            query.socket.SOL_SOCKET, query.socket.SO_BINDTODEVICE, b"enp4s0f1u1\0")
+        sock.setblocking.assert_called_once_with(False)
+        sock.connect_ex.assert_called_once_with(("fe80::1", 1234, 0, 7))
+        sock.settimeout.assert_called_once_with(2)
+
     def test_keeps_directory_alive_through_query(self):
         directory = DirectorySocket()
         service = FakeSocket()
@@ -91,6 +108,15 @@ class CoupledQueryTests(unittest.TestCase):
         self.assertFalse(query.LIVE_COUPLED_QUERY_ENABLED)
         with self.assertRaises(query.CoupledQueryError):
             query.live_query("enp4s0f1u1", 1)
+
+    def test_live_rejects_non_uuid_before_interface_access_when_enabled(self):
+        original = query.LIVE_COUPLED_QUERY_ENABLED
+        query.LIVE_COUPLED_QUERY_ENABLED = True
+        try:
+            with self.assertRaisesRegex(query.CoupledQueryError, "client UUID"):
+                query.live_query("definitely-missing", 1, "not-a-uuid")
+        finally:
+            query.LIVE_COUPLED_QUERY_ENABLED = original
 
 
 if __name__ == "__main__":

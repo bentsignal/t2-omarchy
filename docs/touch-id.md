@@ -607,6 +607,41 @@ This proves the client library injects no post-handoff network preamble; it does
 not yet rule out an activation action performed inside macOS `remoted` before
 the descriptor is returned.
 
+Inspection of the exact installed `remoted` now rules that out too. Its
+`RSDRemoteMultiverseDevice::connectToService:withTcpOption:` converts the
+directory-advertised port with `atoi` and directly calls either
+`multiverse_device_connect` or `multiverse_device_connect_with_timeout`; the
+only local service-handler additions are bounded connect timeout/TCP keepalive
+options and fd duplication. `macos-multiverse-service-connect-evidence.py`
+pins those unique instruction sequences in the installed x86_64 slice. No
+RSDCheckin, StartService, entitlement token, or other service-specific bytes
+are written to the network before BridgeXPC.
+
+The current `biometrickitd` setup order also rules out method 10 as the missing
+first request. In `serviceMatchBridgeWithIterator:` it calls
+`getBridgeVersion:` first; only after a successful version greater than one
+does it call `setBridgeClientVersion:2`. The enhanced static verifier pins both
+ordered call sites. Linux is therefore correct to expect method 0 to work
+without a preceding method 1, method 10, or biometric command.
+
+A final bounded coupled test used the machine's SMBIOS UUID, rather than a
+fresh random UUID, in the RemoteXPC handshake. Directory discovery and service
+connection again succeeded, the T2 emitted its valid BridgeXPC HELO, and the
+byte-exact method-0 frame again received no application reply in five seconds.
+The source gate was restored false. This makes the handshake UUID choice a poor
+explanation and leaves the behavioral difference inside Multiverse socket
+construction or BridgeXPC connection state, not an omitted application method.
+
+The exact installed Intel MultiverseSupport socket routine was then
+disassembled directly from the dyld cache. It uses IPv6 TCP, nonblocking mode,
+the device IPv6 address and scope ID, and Darwin `SO_INTCOPROC_ALLOW`; it does
+not bind a source address or write a preamble. Linux has no equivalent for that
+Apple internal-coprocessor option. The gated coupled probe mirrored every
+portable behavior, including `SO_BINDTODEVICE` on both sockets and a bounded
+nonblocking connect. The T2 again supplied HELO but did not answer method 0 in
+five seconds, after which the live source gate was restored false. Ordinary
+socket selection and blocking state are therefore no longer plausible causes.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

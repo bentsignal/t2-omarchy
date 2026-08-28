@@ -12,6 +12,7 @@ from contextlib import AbstractContextManager
 import importlib.util
 import math
 from pathlib import Path
+import select
 import socket
 import sys
 from typing import Callable, Protocol
@@ -43,6 +44,34 @@ class CoupledQueryError(RuntimeError):
     pass
 
 
+def connect_multiverse_socket(interface: str, endpoint: tuple[str, int, int, int],
+                              timeout: float) -> socket.socket:
+    """Mirror the portable parts of Apple's MultiverseSupport socket setup."""
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    try:
+        # Darwin's SO_INTCOPROC_ALLOW has no Linux equivalent.  Binding the
+        # socket to the T2 USB network interface is the closest portable
+        # expression of its routing intent; the sockaddr scope ID remains set.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
+                        interface.encode() + b"\0")
+        sock.setblocking(False)
+        result = sock.connect_ex(endpoint)
+        if result not in (0, getattr(socket, "EINPROGRESS", 115)):
+            raise OSError(result, "Multiverse socket connect failed")
+        if result:
+            _, writable, exceptional = select.select([], [sock], [sock], timeout)
+            if exceptional or not writable:
+                raise TimeoutError("Multiverse socket connect timed out")
+            error = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if error:
+                raise OSError(error, "Multiverse socket connect failed")
+        sock.settimeout(timeout)
+        return sock
+    except BaseException:
+        sock.close()
+        raise
+
+
 def query_with_open_directory(
         directory_socket: ConnectedSocket,
         service_connector: Callable[[tuple[str, int, int, int]],
@@ -67,12 +96,17 @@ def query_with_open_directory(
         raise CoupledQueryError("coupled directory/BridgeXPC query failed") from error
 
 
-def live_query(interface: str, timeout: float) -> tuple[int, int]:
+def live_query(interface: str, timeout: float,
+               client_uuid: uuid.UUID | None = None) -> tuple[int, int]:
     if not LIVE_COUPLED_QUERY_ENABLED:
         raise CoupledQueryError("live coupled query is disabled in source")
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
             or not math.isfinite(timeout) or not 0 < timeout <= 5):
         raise CoupledQueryError("timeout must be finite, positive, and at most five seconds")
+    if client_uuid is None:
+        client_uuid = uuid.uuid4()
+    if not isinstance(client_uuid, uuid.UUID):
+        raise CoupledQueryError("client UUID must be a UUID")
     ifindex = rsd_query.verify_t2_interface(interface)
     directory_port = rsd_query.SAME_BOOT_DIRECTORY_PORT_VERIFICATION[0]
     directory_target = rsd_query.protocol.observed_rsd_sockaddr(ifindex, directory_port)
@@ -83,19 +117,15 @@ def live_query(interface: str, timeout: float) -> tuple[int, int]:
             self.sock = None
 
         def __enter__(self):
-            self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            self.sock.settimeout(timeout)
-            self.sock.connect(self.endpoint)
+            self.sock = connect_multiverse_socket(interface, self.endpoint, timeout)
             return self.sock
 
         def __exit__(self, *_):
             if self.sock is not None:
                 self.sock.close()
 
-    with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as directory_socket:
-        directory_socket.settimeout(timeout)
-        directory_socket.connect(directory_target)
-        return query_with_open_directory(directory_socket, Connector, ifindex, uuid.uuid4())
+    with connect_multiverse_socket(interface, directory_target, timeout) as directory_socket:
+        return query_with_open_directory(directory_socket, Connector, ifindex, client_uuid)
 
 
 def main() -> None:
@@ -103,6 +133,7 @@ def main() -> None:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--interface", default="enp4s0f1u1")
     parser.add_argument("--timeout", type=float, default=3.0)
+    parser.add_argument("--client-uuid", type=uuid.UUID)
     parser.add_argument("--confirm", default="")
     args = parser.parse_args()
     if not args.live:
@@ -110,7 +141,7 @@ def main() -> None:
         return
     if args.confirm != CONFIRMATION:
         parser.error(f"live mode requires --confirm={CONFIRMATION}")
-    status, version = live_query(args.interface, args.timeout)
+    status, version = live_query(args.interface, args.timeout, args.client_uuid)
     print(f"bridge status={status} version={version}")
 
 

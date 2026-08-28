@@ -89,6 +89,15 @@ duplicates the returned `fd`, and only polls that descriptor before giving it
 to BridgeXPC. It does not prove what `remoted` does before returning the fd,
 but proves the client framework adds no post-handoff activation bytes.
 
+`macos-multiverse-service-connect-evidence.py` closes the daemon side of that
+gap for the installed macOS 26.6.2 Intel `remoted`. It verifies
+`RSDRemoteMultiverseDevice::connectToService:withTcpOption:` converts the
+directory's port string and calls either `multiverse_device_connect` or its
+timeout variant directly. There is no service-specific network preamble in
+that method. `macos-biometric-evidence.py` additionally pins the current
+daemon's setup order: method 0 (`getBridgeVersion:`) precedes method 10
+(`setBridgeClientVersion:2`), so method 10 cannot unlock the first reply.
+
 `capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
 the transient network interface using binary `usbmon7`. It accepts only the
 exact private output path, requires the exact bound `7-1:1.0` function, and

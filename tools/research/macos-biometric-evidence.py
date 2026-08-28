@@ -29,7 +29,20 @@ REQUIRED = (
     b"handleEventWithMessage:error:\0",
     b"getBridgeVersion:\0",
     b"getServiceOpened:\0",
+    b"setBridgeClientVersion:\0",
     b"performCommand:input:output:capacity:\0",
+)
+
+# BiometricKitXPCServerMesa::serviceMatchBridgeWithIterator: first invokes
+# getBridgeVersion: and stores its result. Only later, when that version is
+# greater than one, it invokes setBridgeClientVersion: with literal version 2.
+# This proves method 10 is not a prerequisite for the initial method-0 reply.
+GET_BRIDGE_VERSION_SEQUENCE = bytes.fromhex(
+    "488b05a9c50f00488b3c034c8b2d5ec60f004901dd"
+    "488b35f4ad0f004c89eaff157b960d00"
+)
+SET_CLIENT_VERSION_TWO_SEQUENCE = bytes.fromhex(
+    "488b051bc40f00488b3c03488b3580ac0f00ba02000000ff15f5940d00"
 )
 
 
@@ -46,6 +59,10 @@ def inspect(data: bytes) -> dict[str, str]:
     missing = [item.rstrip(b"\0").decode() for item in REQUIRED if item not in data]
     if missing:
         raise EvidenceError("missing installed transport evidence: " + ", ".join(missing))
+    if data.count(GET_BRIDGE_VERSION_SEQUENCE) != 1:
+        raise EvidenceError("missing one exact initial bridge-version call sequence")
+    if data.count(SET_CLIENT_VERSION_TWO_SEQUENCE) != 1:
+        raise EvidenceError("missing one exact later client-version call sequence")
     return {
         "sha256": hashlib.sha256(data).hexdigest(),
         "service": "com.apple.eos.BiometricKit",
@@ -53,6 +70,7 @@ def inspect(data: bytes) -> dict[str, str]:
         "connection": "BridgeXPCConnection",
         "transport": "BiometricKitBridgeTransport",
         "logical_abi": "methods 0,1,3",
+        "setup_order": "method0-before-method10",
     }
 
 

@@ -282,6 +282,29 @@ trap restored both `cdc_ncm` interfaces and no reset occurred. Thus Linux's gene
 deeper macOS enumeration transition on this VHCI. The helper remains
 source-disabled, and its capture contains only the rejected attempt.
 
+Post-handback inspection of this exact installed `remoted` closes the
+service-socket activation question. The Intel Multiverse service method parses
+the advertised port and directly calls `multiverse_device_connect` (or its
+timeout variant); it sends no network preamble before returning the descriptor.
+The current biometric daemon also issues `getBridgeVersion:` before it ever
+issues `setBridgeClientVersion:2`. Thus Linux should not invent an RSDCheckin,
+StartService, method 10, or biometric command to make method 0 answer. The
+remaining comparison is the socket state created by MultiverseSupport versus a
+plain Linux IPv6 connect, plus BridgeXPC's internal activation state.
+
+Direct disassembly of the installed Intel MultiverseSupport implementation
+closes most of that socket comparison. It creates `AF_INET6/SOCK_STREAM`, sets
+`O_NONBLOCK`, enables Darwin `SO_INTCOPROC_ALLOW`, places the device's IPv6
+address and interface index in `sockaddr_in6`, and calls `connect`; it does not
+bind a source address. Linux has no `SO_INTCOPROC_ALLOW`, whose XNU definition
+is specifically for internal coprocessor interfaces. A bounded Linux analogue
+bound both directory and service sockets to the already-validated T2 interface
+with `SO_BINDTODEVICE`, used nonblocking connect, retained the IPv6 scope ID,
+then sent only HELO and method 0. The peer HELO still arrived and method 0 still
+timed out. The source gate was restored false. This rules out generic socket
+routing/blocking state; the Apple-only coprocessor marking itself cannot be
+reproduced through a Linux socket option.
+
 The supported sysfs reauthorization path did force a broader re-enumeration:
 writing zero and then one to the exact device's `authorized` attribute caused
 all T2 virtual USB functions to enumerate again, and an exit trap verified the

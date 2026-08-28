@@ -15,7 +15,9 @@ SPEC.loader.exec_module(evidence)
 
 def fixture(*, cpu=evidence.CPU_TYPE_X86_64, omit=b""):
     header = struct.pack("<IIIIIIII", evidence.MH_MAGIC_64, cpu, 3, 2, 0, 0, 0, 0)
-    return header + b"".join(item for item in evidence.REQUIRED if item != omit)
+    return (header + b"".join(item for item in evidence.REQUIRED if item != omit)
+            + evidence.GET_BRIDGE_VERSION_SEQUENCE
+            + evidence.SET_CLIENT_VERSION_TWO_SEQUENCE)
 
 
 class MacosBiometricEvidenceTests(unittest.TestCase):
@@ -25,6 +27,7 @@ class MacosBiometricEvidenceTests(unittest.TestCase):
         self.assertEqual(result["directory"], "RemoteServiceDiscovery")
         self.assertEqual(result["transport"], "BiometricKitBridgeTransport")
         self.assertEqual(result["logical_abi"], "methods 0,1,3")
+        self.assertEqual(result["setup_order"], "method0-before-method10")
         self.assertEqual(len(result["sha256"]), 64)
 
     def test_rejects_wrong_architecture_and_each_missing_fact(self):
@@ -34,6 +37,13 @@ class MacosBiometricEvidenceTests(unittest.TestCase):
             with self.subTest(required=required):
                 with self.assertRaisesRegex(evidence.EvidenceError, "missing"):
                     evidence.inspect(fixture(omit=required))
+
+    def test_rejects_missing_ordering_sequences(self):
+        for sequence in (evidence.GET_BRIDGE_VERSION_SEQUENCE,
+                         evidence.SET_CLIENT_VERSION_TWO_SEQUENCE):
+            with self.subTest(sequence=sequence):
+                with self.assertRaisesRegex(evidence.EvidenceError, "call sequence"):
+                    evidence.inspect(fixture().replace(sequence, b"", 1))
 
 
 if __name__ == "__main__":
