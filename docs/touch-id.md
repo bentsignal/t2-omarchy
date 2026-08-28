@@ -989,6 +989,20 @@ the qword's low byte, inserts the endpoint ID there, and passes the resulting
 that value through the endpoint API. The Intel GenericTransfer provenance of
 the following dword is not independently established by the available slice.
 
+The two-pointer ABI is now pinned more precisely. On x86_64,
+`AppleSEPEndpoint::sendMessage(void *, void *, bool)` forwards both pointers,
+but `AppleSEPManager::_sendMessageGated` never reads the second pointer. It
+loads the qword and following dword from the first pointer, inserts the endpoint
+byte, constructs a separate zero fourth word on its own stack, and posts the
+12-byte record. By contrast, the available arm64e
+`AppleSEPGenericTransfer::sendRawMessage` stores only its qword argument and
+calls its endpoint with `(&qword, nullptr, true)`. That architecture's endpoint
+cannot establish what an Intel GenericTransfer caller placed after its qword.
+`sep-endpoint-abi-evidence.py` pins both sides against x86_64 manager SHA-256
+`6739c1e61ebba15534c4492c3ac4e11cd5d899588bb19a257d49c684f82037fa`
+and arm64e GenericTransfer SHA-256
+`174c5a98b49371976dc285d8ac522a2d075c748b04e94dfec14c45920139a0b9`.
+
 `envelope_endpoint_notification()` therefore models the proven endpoint-byte
 insertion but requires its third word as an explicit argument with no default.
 It validates the normal routed endpoint range and refuses a notification whose
@@ -1012,6 +1026,16 @@ native x86_64 Mach-O result. Neither the prelink manifest nor its symbols and
 strings contain AppleSEPGenericTransfer; AppleMesaSEPDriver appears only as a
 personality/name reference. This closes the remaining obvious Catalina
 installer location without changing the third-word conclusion above.
+
+The matching Catalina 10.15.7 build 19H15 Kernel Debug Kit has now also been
+checked. Its 94,351,258-byte DMG matches published SHA-1
+`bec679d8e3eea7af93c7a3b770bce1b0e04b9627`; the bounded PBZX decoder expanded
+the main KDK payload to 357,202,944 bytes. It contains public/debug kernel and
+selected I/O-family kext artifacts, but no AppleSEPManager,
+AppleSEPGenericTransfer, or AppleMesaSEPDriver binary or dSYM. This closes the
+matching historical KDK as another possible Intel GenericTransfer source. The
+third word remains deliberately caller-supplied and kernel SBIO transmission
+remains unwired.
 
 For inbound data, the mailbox command must also equal the command in the DMA
 packet header. Error notification `0xff` uses word four (byte offset 16) of a

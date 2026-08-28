@@ -68,6 +68,20 @@ cache-relative file offset into the reconstructed image, and creates a new
 mode-0600 output without overwriting. It exists because modern dyld-cache
 tooling rejects the cache magic `dyld_v1  armv7k`.
 
+`sep-endpoint-abi-evidence.py` verifies why the Intel generic-transfer record's
+third word must remain an explicit unknown. In x86_64 AppleSEPManager, the
+endpoint forwards two pointers but `_sendMessageGated` ignores the second and
+copies a qword plus the following dword from the first pointer. The available
+arm64e GenericTransfer instead stores only a qword and calls its architecture's
+endpoint with `(&qword, nullptr, true)`. Cross-architecture code therefore
+cannot prove the Intel dword is zero:
+
+```bash
+python tools/research/sep-endpoint-abi-evidence.py \
+  /path/to/x86_64/AppleSEPManager \
+  /path/to/arm64e/AppleSEPGenericTransfer
+```
+
 `bridgeos-bkremoted-evidence.py` verifies the extracted armv7k bridge daemon
 from bridgeOS 3.0 (`14Y910`). Its exact method-zero implementation stores
 bridge version `2` when given an output pointer, clears the client-version
