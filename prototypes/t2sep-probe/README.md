@@ -248,6 +248,13 @@ A supervised Linux attempt reached the advertised TCP listener but received no
 BridgeXPC reply within three seconds, even with the exact current 119-byte HELO.
 Its source gate was restored to false; the result points to an activation or
 pre-BridgeXPC transport step still to recover.
+
+The alternative of waiting for the server HELO before sending method 0 was
+also tested. The T2 ACKed the complete request but emitted no reply or reset.
+Catalina disassembly confirms native BridgeXPC instead sends its HELO and queued
+method 0 back-to-back, so the runner preserves that ordering. The unresolved
+boundary is remote-service activation/handoff or bridgeOS policy, not packet
+delivery or Foundation serialization.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,

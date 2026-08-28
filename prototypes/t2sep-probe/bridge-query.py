@@ -61,8 +61,8 @@ def query_connected_socket(sock: socket.socket) -> tuple[int, int]:
                                       CURRENT_PROCESS_NAME,
                                       max_body=BODY_CAP)
     query = protocol.encode_bridge_version_query_frame(max_body=BODY_CAP)
-    # Preserve the observed BridgeXPC handshake boundary. The current client
-    # sends its HELO before releasing the first queued method request.
+    # Catalina's -connected writes HELO, starts its read, and immediately
+    # flushes requests queued before activation.  Preserve that wire order.
     sock.sendall(helo)
     sock.sendall(query)
 

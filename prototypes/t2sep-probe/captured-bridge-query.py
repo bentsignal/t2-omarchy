@@ -186,7 +186,6 @@ def live_query(capture_path: Path, interface: str, timeout: float) -> tuple[int,
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
             sock.connect(target)
-            receive_server_first_helo(sock)
             return bridge_query.query_connected_socket(sock)
     except (OSError, rsd_query.QueryError, bridge_query.QueryError) as error:
         raise CapturedBridgeError("bounded BridgeXPC version query failed") from error

@@ -574,6 +574,21 @@ class separately. A live macOS frame is still needed to name the one ordering
 chosen by the current `biometrickitd` process, but key order itself cannot be a
 sound BridgeXPC compatibility requirement.
 
+A subsequent Linux experiment also tested the stricter alternative handshake
+barrier: send the client HELO, consume and validate the peer HELO, and only then
+release method 0. The T2 acknowledged all 62 request bytes but returned no
+application data during the five-second bound. A metadata-only packet trace
+showed a clean handshake, the 119-byte client HELO, the peer's 117-byte framed
+HELO, the 62-byte method-zero request, ACKs in both directions, and an orderly
+FIN after the local timeout—no retransmission or reset. Catalina BridgeXPC
+disassembly independently shows that `-connected` writes its HELO, starts a
+read, and immediately flushes its queued request without waiting for the peer
+HELO. The prototype therefore retains that native back-to-back send order.
+Together these results rule out TCP delivery and either plausible HELO/request
+barrier. The remaining gap is now above a healthy raw TCP stream and below the
+known BridgeXPC method ABI, most likely in remote-service activation/handoff or
+bridgeOS policy state. Method 3 remains gated.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

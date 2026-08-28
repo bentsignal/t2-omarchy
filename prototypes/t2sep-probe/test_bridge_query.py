@@ -19,14 +19,17 @@ class FakeSocket:
         self.incoming = bytearray(incoming)
         self.chunk = chunk
         self.sent = bytearray()
+        self.events = []
 
     def recv(self, size):
+        self.events.append("recv")
         size = min(size, self.chunk, len(self.incoming))
         result = self.incoming[:size]
         del self.incoming[:size]
         return bytes(result)
 
     def sendall(self, data):
+        self.events.append("send")
         self.sent.extend(data)
 
 
@@ -55,6 +58,7 @@ class PassiveQueryTests(unittest.TestCase):
         first = query.protocol.decode_frame_header(bytes(sock.sent[:16]),
                                                    max_body=query.BODY_CAP)
         self.assertEqual(first.kind, query.protocol.FRAME_HELO)
+        self.assertEqual(sock.events[:2], ["send", "send"])
 
     def test_handles_noop_and_fragmented_reads(self):
         reply = plistlib.dumps([-1, 0], fmt=plistlib.FMT_BINARY)
