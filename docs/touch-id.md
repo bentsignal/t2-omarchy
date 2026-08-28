@@ -187,13 +187,12 @@ offset  size  field
 8       ...   input data
 ```
 
-`bridge-protocol.py` captures only this verified logical envelope. It enforces
+`bridge-protocol.py` captures this verified logical envelope. It enforces
 integer widths, the inner magic, explicit input/output caps, reply arity, and
-object types. It neither serializes Foundation objects nor opens BridgeXPC,
-USB, PCI, or SEP, so it is safe for offline fixtures. Recovering the lower
-BridgeXPC/AppleUSBiBridge framing is now the shortest path to replaying a
-read-only bridge query on Linux; sending raw SBIO application commands from
-the x86 host may bypass required bridgeOS state.
+object types. Its later framing helpers serialize the supported subset as a
+binary property list, but nothing in the module opens BridgeXPC, USB, PCI, or
+SEP. Sending raw SBIO application commands from the x86 host may bypass
+required bridgeOS state.
 
 The Catalina `BridgeXPC` framework resolves a named EmbeddedOS remote service
 to an IPv6 socket. Every record starts with this exact 16-byte little-endian
@@ -201,8 +200,9 @@ header:
 
 ```text
 offset  size  field
-0       4     magic 0x0001b892
-4       4     kind (1 = HELO JSON, 2 = binary-plist message)
+0       2     magic 0xb892
+2       2     protocol version 1
+4       4     kind (0 = no-op, 1 = HELO JSON, 2 = binary-plist message)
 8       8     body length
 ```
 
@@ -210,12 +210,11 @@ The initial HELO body is JSON and advertises maximum protocol version `1`, the
 OS build, BridgeXPC framework version, and process name. Normal Foundation
 messages are serialized with `NSPropertyListBinaryFormat_v1_0` (format value
 `0xc8`), so their body starts as an Apple binary property list. The offline
-codec now produces and validates the exact record header and a binary-plist
-method-3 body. It intentionally refuses to serialize a missing input because
-the private `BTNil` representation has not been recovered, and it requires a
-caller-provided body cap before accepting an advertised length. The remaining
-Linux-specific gap is resolving and connecting to the T2 remote-service
-socket through the hardware transport exposed beneath EmbeddedOSSupportHost.
+codec now produces the four-key HELO, the exact record header, and a
+binary-plist method-3 body. The receive side validates magic, protocol version,
+kind, no-op length, and a caller-selected body cap before parsing. It
+intentionally refuses to serialize a missing input because the private
+`BTNil` representation has not been recovered.
 
 That endpoint is now statically recovered too. Catalina's
 `EmbeddedOSSupportHost` uses the fixed T2 link-local address
@@ -234,6 +233,23 @@ connect a socket. Before any live query, Linux still needs a narrowly scoped
 link-local configuration on that interface, a bounded connect/read timeout,
 HELO negotiation, and strict response validation. Those actions are deferred
 because they change live network/device state.
+
+The safest first application-level request is now identified. Bridge method
+`0` sends the one-element binary-plist array `[0]` and performs no biometric
+command. Its reply must be exactly two `NSNumber` objects: a signed 32-bit
+status and an unsigned bridge-version value. The offline codec constructs
+that passive query and rejects malformed, oversized, incorrectly typed, or
+out-of-range replies. A future live runner should send only HELO plus this
+query, allow exactly one reply frame, enforce short deadlines, and close; it
+must not fall through to method `3`, enrollment, matching, or any SBIO command.
+
+That runner now exists as `bridge-query.py`, but has not been executed live.
+Its default mode emits offline fixtures only. The gated path verifies the
+exact internal USB/PCI ancestry and carrier, sets a maximum five-second socket
+deadline, caps every body at 64 KiB, consumes at most four frames (to permit a
+peer HELO/no-op), sends only method `0`, and validates the two-number reply.
+It contains no method-3 or SBIO send path. Unit tests use a fragmented fake
+socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 
 ## SBIO and the Intel xART split
 

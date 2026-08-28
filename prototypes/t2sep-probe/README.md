@@ -142,7 +142,8 @@ Its parser rejects bad versions, reserved bits, inconsistent lengths, and
 out-of-range chunks. Run both offline suites with:
 
 ```bash
-python -m unittest test_decode_message.py test_generic_transfer.py test_bridge_protocol.py
+python -m unittest test_decode_message.py test_generic_transfer.py \
+  test_bridge_protocol.py test_bridge_query.py
 ```
 
 `bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
@@ -152,6 +153,16 @@ plus BridgeXPC's 16-byte socket record header and normal-message binary plist.
 It validates integer widths, both magic values, types, arity, and
 caller-supplied size limits. It refuses to guess the private `BTNil`
 serialization and does not connect to BridgeXPC, USB, PCI, or SEP.
+
+`bridge-query.py` is a separately gated runner for the first passive bridge
+query. With no arguments it only prints deterministic HELO and method-0 frame
+fixtures. Its live code has no method-3 or SBIO encoder: it verifies the
+interface is USB `05ac:8233`, has carrier, and descends from PCI `04:00.1`;
+then it uses a timeout of at most five seconds, caps bodies at 64 KiB, accepts
+at most four frames, and validates the exact bridge-version reply. Live mode
+requires both `--live` and a long confirmation token. Do not run it until the
+T2 interface has a scoped link-local configuration and a live passive query is
+explicitly intended.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,

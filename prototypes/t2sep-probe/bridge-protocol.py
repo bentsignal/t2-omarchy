@@ -8,6 +8,8 @@ implement BridgeXPC serialization or access a device.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import math
 import plistlib
 import struct
 from typing import TypeAlias
@@ -34,8 +36,10 @@ SET_OS_TRANSACTION_RETAINED = 12
 
 BIOMETRIC_REQUEST_MAGIC = 0x4D42
 BIOMETRIC_REQUEST_HEADER = struct.Struct("<HHHH")
-BRIDGE_FRAME_MAGIC = 0x0001B892
-BRIDGE_FRAME_HEADER = struct.Struct("<IIQ")
+BRIDGE_FRAME_MAGIC = 0xB892
+BRIDGE_PROTOCOL_VERSION = 1
+BRIDGE_FRAME_HEADER = struct.Struct("<HHIQ")
+FRAME_NOOP = 0
 FRAME_HELO = 1
 FRAME_MESSAGE = 2
 T2_LINK_LOCAL_ADDRESS = "fe80::aede:48ff:fe33:4455"
@@ -69,6 +73,15 @@ def _unsigned(value: int, bits: int, field: str) -> int:
         raise BridgeProtocolError(f"{field} must be an integer")
     if not 0 <= value < 1 << bits:
         raise BridgeProtocolError(f"{field} does not fit in {bits} bits")
+    return value
+
+
+def _signed(value: int, bits: int, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise BridgeProtocolError(f"{field} must be an integer")
+    minimum, maximum = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+    if not minimum <= value <= maximum:
+        raise BridgeProtocolError(f"{field} does not fit in {bits} signed bits")
     return value
 
 
@@ -123,10 +136,14 @@ def biometric_perform_request(command: int, version: int, value: int,
 def encode_frame_header(kind: int, body_size: int) -> bytes:
     """Encode BridgeXPC's 16-byte little-endian TCP record header."""
     kind = _unsigned(kind, 32, "frame kind")
-    if kind not in (FRAME_HELO, FRAME_MESSAGE):
+    if kind not in (FRAME_NOOP, FRAME_HELO, FRAME_MESSAGE):
         raise BridgeProtocolError("unsupported frame kind")
     body_size = _unsigned(body_size, 64, "body size")
-    return BRIDGE_FRAME_HEADER.pack(BRIDGE_FRAME_MAGIC, kind, body_size)
+    if kind == FRAME_NOOP and body_size:
+        raise BridgeProtocolError("a no-op frame cannot carry a body")
+    return BRIDGE_FRAME_HEADER.pack(
+        BRIDGE_FRAME_MAGIC, BRIDGE_PROTOCOL_VERSION, kind, body_size
+    )
 
 
 def decode_frame_header(header: bytes, *, max_body: int) -> BridgeFrameHeader:
@@ -135,11 +152,15 @@ def decode_frame_header(header: bytes, *, max_body: int) -> BridgeFrameHeader:
         raise BridgeProtocolError("BridgeXPC frame header must be exactly 16 bytes")
     if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
         raise BridgeProtocolError("max_body must be a nonnegative integer")
-    magic, kind, body_size = BRIDGE_FRAME_HEADER.unpack(header)
+    magic, version, kind, body_size = BRIDGE_FRAME_HEADER.unpack(header)
     if magic != BRIDGE_FRAME_MAGIC:
         raise BridgeProtocolError("invalid BridgeXPC frame magic")
-    if kind not in (FRAME_HELO, FRAME_MESSAGE):
+    if version != BRIDGE_PROTOCOL_VERSION:
+        raise BridgeProtocolError("unsupported BridgeXPC protocol version")
+    if kind not in (FRAME_NOOP, FRAME_HELO, FRAME_MESSAGE):
         raise BridgeProtocolError("unsupported frame kind")
+    if kind == FRAME_NOOP and body_size:
+        raise BridgeProtocolError("a no-op frame cannot carry a body")
     if body_size > max_body:
         raise BridgeProtocolError("BridgeXPC frame exceeds the body cap")
     return BridgeFrameHeader(kind, body_size)
@@ -166,13 +187,66 @@ def encode_perform_command_frame(request: tuple[BridgeAtom, ...],
     return encode_frame_header(FRAME_MESSAGE, len(body)) + body
 
 
+def encode_helo_frame(os_build: str, bridge_xpc_version: float,
+                      process_name: str, *, max_body: int) -> bytes:
+    """Encode the four-key HELO JSON observed in Catalina BridgeXPC 37."""
+    if not isinstance(os_build, str) or not os_build:
+        raise BridgeProtocolError("OS build must be a nonempty string")
+    if (isinstance(bridge_xpc_version, bool)
+            or not isinstance(bridge_xpc_version, (int, float))
+            or not math.isfinite(bridge_xpc_version)
+            or bridge_xpc_version < 0):
+        raise BridgeProtocolError("BridgeXPC version must be finite and nonnegative")
+    if not isinstance(process_name, str) or not process_name:
+        raise BridgeProtocolError("process name must be a nonempty string")
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    body = json.dumps({
+        "MaxSupportedProtocolVersion": BRIDGE_PROTOCOL_VERSION,
+        "OSBuild": os_build,
+        "BridgeXPCVersion": bridge_xpc_version,
+        "ProcessName": process_name,
+    }, separators=(",", ":")).encode("utf-8")
+    if len(body) > max_body:
+        raise BridgeProtocolError("serialized HELO exceeds the body cap")
+    return encode_frame_header(FRAME_HELO, len(body)) + body
+
+
+def encode_bridge_version_query_frame(*, max_body: int) -> bytes:
+    """Encode the passive BiometricKit bridge-version request [0]."""
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    body = plistlib.dumps([GET_BRIDGE_VERSION], fmt=plistlib.FMT_BINARY,
+                          sort_keys=False)
+    if len(body) > max_body:
+        raise BridgeProtocolError("serialized bridge-version query exceeds the body cap")
+    return encode_frame_header(FRAME_MESSAGE, len(body)) + body
+
+
+def decode_bridge_version_reply_body(body: bytes, *, max_body: int) -> tuple[int, int]:
+    """Validate method 0's exact [int32 status, uint64 version] reply."""
+    if not isinstance(body, bytes):
+        raise BridgeProtocolError("reply body must be bytes")
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    if len(body) > max_body:
+        raise BridgeProtocolError("bridge-version reply exceeds the body cap")
+    try:
+        reply = plistlib.loads(body)
+    except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+        raise BridgeProtocolError("bridge-version reply is not a property list") from error
+    if not isinstance(reply, list) or len(reply) != 2:
+        raise BridgeProtocolError("bridge-version reply must contain two objects")
+    return _signed(reply[0], 32, "status"), _unsigned(reply[1], 64, "version")
+
+
 def decode_perform_command_reply(reply: tuple[BridgeAtom, ...],
                                  *, max_output: int) -> tuple[int, bytes | None]:
     """Validate method 3's observed [status NSNumber, data/BTNil] reply."""
     if not isinstance(reply, tuple) or len(reply) != 2:
         raise BridgeProtocolError("perform-command reply must contain two objects")
     status, output = reply
-    status = _unsigned(status, 32, "status")
+    status = _signed(status, 32, "status")
     if output is not None and not isinstance(output, bytes):
         raise BridgeProtocolError("reply output must be bytes or None")
     if not isinstance(max_output, int) or isinstance(max_output, bool) or max_output < 0:

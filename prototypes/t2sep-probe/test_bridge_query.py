@@ -1,0 +1,66 @@
+import importlib.util
+from pathlib import Path
+import plistlib
+import sys
+import unittest
+
+
+MODULE_PATH = Path(__file__).with_name("bridge-query.py")
+SPEC = importlib.util.spec_from_file_location("bridge_query", MODULE_PATH)
+query = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+sys.modules[SPEC.name] = query
+SPEC.loader.exec_module(query)
+
+
+class FakeSocket:
+    def __init__(self, incoming, chunk=7):
+        self.incoming = bytearray(incoming)
+        self.chunk = chunk
+        self.sent = bytearray()
+
+    def recv(self, size):
+        size = min(size, self.chunk, len(self.incoming))
+        result = self.incoming[:size]
+        del self.incoming[:size]
+        return bytes(result)
+
+    def sendall(self, data):
+        self.sent.extend(data)
+
+
+def frame(kind, body):
+    return query.protocol.encode_frame_header(kind, len(body)) + body
+
+
+class PassiveQueryTests(unittest.TestCase):
+    def test_accepts_peer_helo_then_one_version_reply(self):
+        reply = plistlib.dumps([0, 42], fmt=plistlib.FMT_BINARY)
+        incoming = (frame(query.protocol.FRAME_HELO, b'{"peer":1}')
+                    + frame(query.protocol.FRAME_MESSAGE, reply))
+        sock = FakeSocket(incoming)
+        self.assertEqual(query.query_connected_socket(sock), (0, 42))
+        first = query.protocol.decode_frame_header(bytes(sock.sent[:16]),
+                                                   max_body=query.BODY_CAP)
+        self.assertEqual(first.kind, query.protocol.FRAME_HELO)
+
+    def test_handles_noop_and_fragmented_reads(self):
+        reply = plistlib.dumps([-1, 0], fmt=plistlib.FMT_BINARY)
+        incoming = (frame(query.protocol.FRAME_NOOP, b"")
+                    + frame(query.protocol.FRAME_MESSAGE, reply))
+        self.assertEqual(query.query_connected_socket(FakeSocket(incoming, 1)),
+                         (-1, 0))
+
+    def test_rejects_eof_malformed_reply_and_frame_flood(self):
+        with self.assertRaises(query.QueryError):
+            query.query_connected_socket(FakeSocket(b""))
+        malformed = frame(query.protocol.FRAME_MESSAGE, b"bad")
+        with self.assertRaises(query.protocol.BridgeProtocolError):
+            query.query_connected_socket(FakeSocket(malformed))
+        noops = frame(query.protocol.FRAME_NOOP, b"") * 4
+        with self.assertRaises(query.QueryError):
+            query.query_connected_socket(FakeSocket(noops))
+
+
+if __name__ == "__main__":
+    unittest.main()

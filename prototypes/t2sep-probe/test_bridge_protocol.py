@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import plistlib
 import sys
@@ -72,7 +73,11 @@ class BridgeEnvelopeTests(unittest.TestCase):
             bridge.decode_perform_command_reply((5, None), max_output=0),
             (5, None),
         )
-        for reply in ((0,), (0, "bad"), (True, None), (-1, None)):
+        self.assertEqual(
+            bridge.decode_perform_command_reply((-1, None), max_output=0),
+            (-1, None),
+        )
+        for reply in ((0,), (0, "bad"), (True, None), (0x80000000, None)):
             with self.assertRaises(bridge.BridgeProtocolError):
                 bridge.decode_perform_command_reply(reply, max_output=16)
         with self.assertRaises(bridge.BridgeProtocolError):
@@ -89,11 +94,18 @@ class BridgeEnvelopeTests(unittest.TestCase):
     def test_frame_header_fails_closed(self):
         good = bridge.encode_frame_header(bridge.FRAME_HELO, 9)
         for bad in (b"", b"bad" + good[3:],
+                    good[:2] + (9).to_bytes(2, "little") + good[4:],
                     good[:4] + (9).to_bytes(4, "little") + good[8:]):
             with self.assertRaises(bridge.BridgeProtocolError):
                 bridge.decode_frame_header(bad, max_body=9)
         with self.assertRaises(bridge.BridgeProtocolError):
             bridge.decode_frame_header(good, max_body=8)
+
+    def test_noop_must_have_zero_body(self):
+        noop = bridge.encode_frame_header(bridge.FRAME_NOOP, 0)
+        self.assertEqual(bridge.decode_frame_header(noop, max_body=0).kind, 0)
+        with self.assertRaises(bridge.BridgeProtocolError):
+            bridge.encode_frame_header(bridge.FRAME_NOOP, 1)
 
     def test_binary_plist_message_frame(self):
         request = bridge.biometric_perform_request(4, 5, 6, b"data", 64)
@@ -101,6 +113,39 @@ class BridgeEnvelopeTests(unittest.TestCase):
         header = bridge.decode_frame_header(frame[:16], max_body=1024)
         self.assertEqual(header.body_size, len(frame) - 16)
         self.assertEqual(plistlib.loads(frame[16:]), list(request))
+
+    def test_helo_frame(self):
+        frame = bridge.encode_helo_frame("19H15", 37.0, "probe", max_body=512)
+        header = bridge.decode_frame_header(frame[:16], max_body=512)
+        self.assertEqual(header.kind, bridge.FRAME_HELO)
+        self.assertEqual(header.body_size, len(frame) - 16)
+        self.assertEqual(json.loads(frame[16:]), {
+            "MaxSupportedProtocolVersion": 1,
+            "OSBuild": "19H15",
+            "BridgeXPCVersion": 37.0,
+            "ProcessName": "probe",
+        })
+
+    def test_passive_bridge_version_query_and_reply(self):
+        frame = bridge.encode_bridge_version_query_frame(max_body=256)
+        self.assertEqual(plistlib.loads(frame[16:]), [0])
+        body = plistlib.dumps([0, 123], fmt=plistlib.FMT_BINARY)
+        self.assertEqual(
+            bridge.decode_bridge_version_reply_body(body, max_body=len(body)),
+            (0, 123),
+        )
+        signed = plistlib.dumps([-1, 0], fmt=plistlib.FMT_BINARY)
+        self.assertEqual(
+            bridge.decode_bridge_version_reply_body(signed, max_body=len(signed)),
+            (-1, 0),
+        )
+
+    def test_bridge_version_reply_fails_closed(self):
+        bad_replies = (b"bad", plistlib.dumps([0]), plistlib.dumps([True, 1]),
+                       plistlib.dumps([0, -1]), plistlib.dumps({"status": 0}))
+        for body in bad_replies:
+            with self.assertRaises(bridge.BridgeProtocolError):
+                bridge.decode_bridge_version_reply_body(body, max_body=len(body))
 
     def test_frame_encoder_does_not_guess_btnil(self):
         with self.assertRaises(bridge.BridgeProtocolError):
