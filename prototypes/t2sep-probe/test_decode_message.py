@@ -58,12 +58,14 @@ class DecodeMessageTests(unittest.TestCase):
     def test_discovery_table_rejects_duplicate_id(self) -> None:
         table = decode_message.DiscoveryTable()
         table.accept([0x080000FD, 0x6F696273, 0, 0])
+        table.accept([0x080100FD, 0x4B014104, 0, 0])
         with self.assertRaisesRegex(decode_message.DiscoveryError, "duplicate endpoint ID"):
             table.accept([0x080000FD, 0x74726178, 0, 0])
 
     def test_discovery_table_rejects_duplicate_name(self) -> None:
         table = decode_message.DiscoveryTable()
         table.accept([0x080000FD, 0x6F696273, 0, 0])
+        table.accept([0x080100FD, 0x4B014104, 0, 0])
         with self.assertRaisesRegex(decode_message.DiscoveryError, "duplicate endpoint name"):
             table.accept([0x130000FD, 0x6F696273, 0, 0])
 
@@ -96,6 +98,10 @@ class DecodeMessageTests(unittest.TestCase):
             (8, 0x1000, 0),
             (8, 0x1000, 0x1001),
             (8, 0x100000000000, 0x1000),
+            (8, 0xFFFFFFFF000, 0x2000),
+            (True, 0x1000, 0x1000),
+            (8, True, 0x1000),
+            (8, 0x1000, True),
         )
         for endpoint, address, size in invalid:
             with self.subTest(endpoint=endpoint, address=address, size=size):
@@ -103,6 +109,10 @@ class DecodeMessageTests(unittest.TestCase):
                     decode_message.encode_ool_registration(
                         endpoint, address, size, incoming_to_sep=True
                     )
+        with self.assertRaises(decode_message.ControlMessageError):
+            decode_message.encode_ool_registration(
+                8, 0x1000, 0x1000, incoming_to_sep=1
+            )
 
     def test_sbio_buffer_sizes_match_advertised_limits(self) -> None:
         endpoint = decode_message.EndpointInfo(8, 0x6F696273, (4, 65, 1, 75))
@@ -111,6 +121,70 @@ class DecodeMessageTests(unittest.TestCase):
             with self.subTest(send=send, receive=receive):
                 with self.assertRaises(decode_message.ControlMessageError):
                     decode_message.validate_ool_sizes(endpoint, send, receive)
+        malformed = (
+            "endpoint",
+            decode_message.EndpointInfo(8, 0x6F696273, (4, 1, 1, 75)),
+            decode_message.EndpointInfo(8, 0x6F696273, (4, 65, 1)),
+            decode_message.EndpointInfo(8, 0x6F696273, (4, 65, 1, True)),
+        )
+        for value in malformed:
+            with self.assertRaises(decode_message.ControlMessageError):
+                decode_message.validate_ool_sizes(value, 0x4000, 0x4B000)
+
+    def test_discovery_requires_immediate_limits_and_valid_ranges(self) -> None:
+        table = decode_message.DiscoveryTable()
+        table.accept([0x080000FD, 0x6F696273, 0, 0])
+        with self.assertRaisesRegex(decode_message.DiscoveryError, "not followed"):
+            table.accept([0x130000FD, 0x74726178, 0, 0])
+
+        table = decode_message.DiscoveryTable()
+        table.accept([0x080000FD, 0x6F696273, 0, 0])
+        with self.assertRaisesRegex(decode_message.DiscoveryError, "precede"):
+            table.accept([0x130100FD, 0x01010101, 0, 0])
+
+        table = decode_message.DiscoveryTable()
+        table.accept([0x080000FD, 0x6F696273, 0, 0])
+        with self.assertRaisesRegex(decode_message.DiscoveryError, "inverted"):
+            table.accept([0x080100FD, 0x01020104, 0, 0])
+
+    def test_discovery_rejects_bad_record_shape_tags_names_and_transport(self) -> None:
+        malformed = (
+            [],
+            [0x080000FD, 0, 0],
+            [0x080000FD, 0, 0, 0, 0],
+            [0x080000FD, 0, 0, True],
+            [0x080000FD, 0, 0, 1 << 32],
+            [0x080001FD, 0x6F696273, 0, 0],
+            [0x000000FD, 0x6F696273, 0, 0],
+            [0xFD0000FD, 0x6F696273, 0, 0],
+            [0x080000FD, 0x00696273, 0, 0],
+            [0x080000FD, 0x6F696273, 0, 1 << 18],
+        )
+        for record in malformed:
+            with self.subTest(record=record):
+                with self.assertRaises(decode_message.DiscoveryError):
+                    decode_message.DiscoveryTable().accept(record)
+
+    def test_discovery_record_cap_and_finalize_sbio(self) -> None:
+        with self.assertRaises(decode_message.DiscoveryError):
+            decode_message.DiscoveryTable(max_records=0)
+        table = decode_message.DiscoveryTable(max_records=2)
+        table.accept([0x080000FD, 0x6F696273, 0, 0])
+        table.accept([0x080100FD, 0x4B014104, 0, 0])
+        self.assertEqual(table.finalize_sbio().endpoint_id, 8)
+        with self.assertRaisesRegex(decode_message.DiscoveryError, "cap"):
+            table.accept([0x130000FD, 0x74726178, 0, 0])
+
+        incomplete = decode_message.DiscoveryTable()
+        incomplete.accept([0x080000FD, 0x6F696273, 0, 0])
+        with self.assertRaisesRegex(decode_message.DiscoveryError, "final"):
+            incomplete.finalize_sbio()
+
+        wrong_limits = decode_message.DiscoveryTable()
+        wrong_limits.accept([0x080000FD, 0x6F696273, 0, 0])
+        wrong_limits.accept([0x080100FD, 0x01010101, 0, 0])
+        with self.assertRaisesRegex(decode_message.DiscoveryError, "buffers"):
+            wrong_limits.finalize_sbio()
 
 
 if __name__ == "__main__":

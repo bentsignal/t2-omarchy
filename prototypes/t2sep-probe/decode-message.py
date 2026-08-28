@@ -24,15 +24,22 @@ SET_OOL_OUT = 3
 def encode_ool_registration(target_endpoint: int, dma_address: int, size: int,
                             *, incoming_to_sep: bool) -> list[int]:
     """Encode, but never send, Intel AppleSEPControl's SET_REMOTE_DMA message."""
-    if not 1 <= target_endpoint <= 0xFC:
+    if (isinstance(target_endpoint, bool) or not isinstance(target_endpoint, int)
+            or not 1 <= target_endpoint <= 0xFC):
         raise ControlMessageError("target endpoint is outside the service endpoint range")
-    if dma_address < 0 or dma_address % PAGE_SIZE:
+    if (isinstance(dma_address, bool) or not isinstance(dma_address, int)
+            or dma_address < 0 or dma_address % PAGE_SIZE):
         raise ControlMessageError("DMA address must be nonnegative and page aligned")
     page_address = dma_address >> 12
     if page_address > 0xFFFFFFFF:
         raise ControlMessageError("DMA page address does not fit the Intel wire field")
-    if not 0 < size <= 0xFFFFFFFF or size % PAGE_SIZE:
+    if (isinstance(size, bool) or not isinstance(size, int)
+            or not 0 < size <= 0xFFFFFFFF or size % PAGE_SIZE):
         raise ControlMessageError("OOL size must be a positive page multiple fitting 32 bits")
+    if page_address + size // PAGE_SIZE - 1 > 0xFFFFFFFF:
+        raise ControlMessageError("OOL DMA range exceeds the Intel page-address field")
+    if not isinstance(incoming_to_sep, bool):
+        raise ControlMessageError("incoming_to_sep must be boolean")
     opcode = SET_OOL_IN if incoming_to_sep else SET_OOL_OUT
     return [CONTROL_ENDPOINT | opcode << 16 | target_endpoint << 24,
             page_address, size, 0]
@@ -48,37 +55,60 @@ class EndpointInfo:
 class DiscoveryTable:
     """Fail-closed model of AppleSEPDiscovery's advertisement table."""
 
-    MAX_ENDPOINTS = 253
+    MAX_RECORDS = 64
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_records: int = MAX_RECORDS) -> None:
+        if (isinstance(max_records, bool) or not isinstance(max_records, int)
+                or not 1 <= max_records <= self.MAX_RECORDS):
+            raise DiscoveryError("discovery record cap must be between 1 and 64")
         self._by_id: dict[int, EndpointInfo] = {}
         self._ids_by_name: dict[int, int] = {}
+        self._max_records = max_records
+        self._records = 0
+        self._awaiting_limits: int | None = None
 
     @property
     def endpoints(self) -> tuple[EndpointInfo, ...]:
         return tuple(self._by_id.values())
 
     def accept(self, words: list[int]) -> EndpointInfo:
+        if (not isinstance(words, (list, tuple)) or len(words) != 4
+                or any(isinstance(word, bool) or not isinstance(word, int)
+                       or not 0 <= word <= 0xFFFFFFFF for word in words)):
+            raise DiscoveryError("discovery record must contain exactly four u32 words")
+        self._records += 1
+        if self._records > self._max_records:
+            raise DiscoveryError("discovery record cap exceeded")
         word0, word1, word2, word3 = words
         endpoint = word0 & 0xff
+        tag = (word0 >> 8) & 0xff
         opcode = (word0 >> 16) & 0xff
         endpoint_id = (word0 >> 24) & 0xff
 
         if endpoint != 0xfd:
             raise DiscoveryError(f"message is for endpoint 0x{endpoint:02x}, not discovery")
+        if tag:
+            raise DiscoveryError("discovery message has a nonzero tag")
         if word2:
             raise DiscoveryError("discovery message has a nonzero reserved word")
+        if word3 & ((1 << 18) | (1 << 19)):
+            raise DiscoveryError("discovery message has transport error flags")
+        if not 1 <= endpoint_id <= 0xFC:
+            raise DiscoveryError("advertised endpoint ID is outside the service range")
 
         if opcode == 0:
-            if len(self._by_id) >= self.MAX_ENDPOINTS:
-                raise DiscoveryError("discovery table is full")
+            if self._awaiting_limits is not None:
+                raise DiscoveryError("endpoint identity was not followed by its OOL limits")
             if endpoint_id in self._by_id:
                 raise DiscoveryError(f"duplicate endpoint ID 0x{endpoint_id:02x}")
             if word1 in self._ids_by_name:
                 raise DiscoveryError(f"duplicate endpoint name {fourcc(word1)!r}")
+            if any(not 0x20 <= byte <= 0x7E for byte in word1.to_bytes(4, "little")):
+                raise DiscoveryError("endpoint name is not a printable fourcc")
             info = EndpointInfo(endpoint_id, word1)
             self._by_id[endpoint_id] = info
             self._ids_by_name[word1] = endpoint_id
+            self._awaiting_limits = endpoint_id
             return info
 
         if opcode == 1:
@@ -87,22 +117,52 @@ class DiscoveryTable:
                 raise DiscoveryError(f"OOL limits precede endpoint ID 0x{endpoint_id:02x}")
             if info.limits is not None:
                 raise DiscoveryError(f"duplicate OOL limits for endpoint ID 0x{endpoint_id:02x}")
+            if self._awaiting_limits != endpoint_id:
+                raise DiscoveryError("OOL limits do not immediately follow their identity")
             limits = tuple((word1 >> shift) & 0xff for shift in (0, 8, 16, 24))
+            if limits[0] > limits[1] or limits[2] > limits[3]:
+                raise DiscoveryError("OOL limits have an inverted range")
             updated = EndpointInfo(info.endpoint_id, info.name, limits)
             self._by_id[endpoint_id] = updated
+            self._awaiting_limits = None
             return updated
 
         raise DiscoveryError(f"unknown discovery opcode 0x{opcode:02x}")
 
+    def finalize_sbio(self, *, send_size: int = 0x4000,
+                      receive_size: int = 0x4B000) -> EndpointInfo:
+        """Require the exact recovered sbio endpoint and usable OOL limits."""
+        if self._awaiting_limits is not None:
+            raise DiscoveryError("discovery ended before the final OOL limits record")
+        endpoint = self._by_id.get(0x08)
+        if endpoint is None or endpoint.name != 0x6F696273:
+            raise DiscoveryError("discovery did not advertise sbio at endpoint 0x08")
+        try:
+            validate_ool_sizes(endpoint, send_size, receive_size)
+        except ControlMessageError as error:
+            raise DiscoveryError("sbio OOL limits do not cover the recovered buffers") from error
+        return endpoint
+
 
 def validate_ool_sizes(endpoint: EndpointInfo, send_size: int, receive_size: int) -> None:
     """Require page-aligned buffer sizes inside an endpoint's advertised limits."""
+    if not isinstance(endpoint, EndpointInfo):
+        raise ControlMessageError("endpoint must be EndpointInfo")
     if endpoint.limits is None:
         raise ControlMessageError("endpoint has no advertised OOL limits")
-    if send_size <= 0 or receive_size <= 0 or send_size % PAGE_SIZE or receive_size % PAGE_SIZE:
+    if (not isinstance(endpoint.limits, tuple) or len(endpoint.limits) != 4
+            or any(isinstance(limit, bool) or not isinstance(limit, int)
+                   or not 0 <= limit <= 0xFF for limit in endpoint.limits)):
+        raise ControlMessageError("endpoint OOL limits are malformed")
+    if (isinstance(send_size, bool) or not isinstance(send_size, int)
+            or isinstance(receive_size, bool) or not isinstance(receive_size, int)
+            or send_size <= 0 or receive_size <= 0
+            or send_size % PAGE_SIZE or receive_size % PAGE_SIZE):
         raise ControlMessageError("OOL buffer sizes must be positive page multiples")
     send_pages, receive_pages = send_size // PAGE_SIZE, receive_size // PAGE_SIZE
     in_min, in_max, out_min, out_max = endpoint.limits
+    if in_min > in_max or out_min > out_max:
+        raise ControlMessageError("endpoint advertised inverted OOL limits")
     if not in_min <= send_pages <= in_max:
         raise ControlMessageError("send buffer is outside advertised OOL_IN limits")
     if not out_min <= receive_pages <= out_max:

@@ -385,9 +385,10 @@ word 3: zero
 
 Registration succeeds before Apple retains the memory object. The offline
 encoder rejects reserved endpoint IDs, unaligned addresses/sizes, zero sizes,
-and page-frame overflow. A separate gate checks both sizes against the four
-page limits passively advertised for that exact endpoint. It performs no
-allocation, mapping, registration, or device access.
+page-frame overflow, and a multi-page range that would wrap beyond the final
+32-bit page-frame number. A separate gate validates the exact four-byte limit
+tuple and checks both sizes against the passively advertised ranges for that
+endpoint. It performs no allocation, mapping, registration, or device access.
 
 Linux currently reports both `dma_mask_bits` and `consistent_dma_mask_bits`
 as 32 for `0000:04:00.2`, consistent with this T2 wire format. A future live
@@ -428,7 +429,21 @@ the defined wrap from `0xffff` to zero.
 For inbound data, the mailbox command must also equal the command in the DMA
 packet header. Error notification `0xff` uses word four (byte offset 16) of a
 buffer larger than the common header as its 32-bit status. Both rules are now
-represented by offline validators.
+represented by offline validators. `InboundTransaction` couples sequence,
+notification type, mailbox command, packet header, bounded reassembly, and
+remote-error parsing so callers cannot accidentally validate those layers in
+isolation. Once complete it rejects every additional record, including an
+empty duplicate continuation.
+
+The passive discovery model and the not-yet-run kernel collector now enforce
+the same stricter table grammar: exactly four 32-bit words; discovery endpoint
+`0xfd`; zero tag/reserved fields; no transport error/fatal flags; service IDs
+`1..0xfc`; printable unique fourcc names; and an identity immediately followed
+by that endpoint's non-inverted OOL limits. Completion is success only if
+`sbio` is exactly endpoint `0x08` and its limits cover Apple's recovered
+4-page send and 75-page receive buffers. The privileged wrapper now requires
+the final log to say `sbio=yes limits=yes result=0`; a merely clean timeout or
+some unrelated endpoint table is no longer accepted.
 
 `AppleMesaSEPDriver::initSbioCommunication()` also establishes the first SBIO
 transaction in Apple's ordering: after generic-transfer setup, it sends

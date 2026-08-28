@@ -20,6 +20,13 @@ class ProtocolError(ValueError):
     pass
 
 
+class RemoteError(ProtocolError):
+    def __init__(self, code: int):
+        _u32("remote error code", code)
+        self.code = code
+        super().__init__(f"SEP generic-transfer error 0x{code:08x}")
+
+
 @dataclass(frozen=True)
 class Notification:
     sequence: int
@@ -34,6 +41,16 @@ class SequenceTracker:
         self.previous: int | None = None
 
     def accept(self, notification: Notification) -> None:
+        if not isinstance(notification, Notification):
+            raise ProtocolError("sequence tracker requires a Notification")
+        if (isinstance(notification.sequence, bool)
+                or not isinstance(notification.sequence, int)
+                or not 0 <= notification.sequence <= 0xFFFF):
+            raise ProtocolError("notification sequence is not an unsigned 16-bit value")
+        _u32("notification command", notification.command)
+        if notification.message_type not in (
+                MESSAGE_FIRST, MESSAGE_NEXT_IN, MESSAGE_NEXT_OUT, MESSAGE_ERROR):
+            raise ProtocolError("notification has an unsupported message type")
         if self.previous is not None and notification.sequence != (self.previous + 1) & 0xFFFF:
             raise ProtocolError("notification sequence skipped, repeated, or went backwards")
         self.previous = notification.sequence
@@ -47,8 +64,11 @@ class Reassembler:
         self.maximum = maximum
         self.packet: Packet | None = None
         self.data = bytearray()
+        self.complete = False
 
     def add(self, message_type: int, raw: bytes) -> bytes | None:
+        if self.complete:
+            raise ProtocolError("transaction received data after completion")
         packet = decode_packet(raw)
         if self.packet is None:
             if message_type != MESSAGE_FIRST or packet.offset != 0:
@@ -66,6 +86,7 @@ class Reassembler:
                 raise ProtocolError("continuation is overlapping, duplicated, or out of order")
         self.data.extend(packet.payload)
         if len(self.data) == packet.total_length:
+            self.complete = True
             return bytes(self.data)
         if not packet.payload:
             raise ProtocolError("incomplete transaction made no progress")
@@ -73,7 +94,7 @@ class Reassembler:
 
 
 def _u32(name: str, value: int) -> None:
-    if not 0 <= value <= 0xFFFFFFFF:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xFFFFFFFF:
         raise ProtocolError(f"{name} is not an unsigned 32-bit value")
 
 
@@ -88,6 +109,8 @@ class Packet:
     def encode(self) -> bytes:
         for name in ("total_length", "offset", "flags", "command"):
             _u32(name, getattr(self, name))
+        if not isinstance(self.payload, bytes):
+            raise ProtocolError("payload must be bytes")
         if self.offset > self.total_length:
             raise ProtocolError("offset exceeds total length")
         if len(self.payload) > self.total_length - self.offset:
@@ -97,6 +120,8 @@ class Packet:
 
 
 def decode_packet(data: bytes) -> Packet:
+    if not isinstance(data, bytes):
+        raise ProtocolError("packet must be bytes")
     if len(data) < HEADER_SIZE:
         raise ProtocolError("packet is shorter than the 28-byte header")
     version, total, offset, flags, reserved, command, chunk = HEADER.unpack_from(data)
@@ -113,16 +138,18 @@ def decode_packet(data: bytes) -> Packet:
 
 def encode_mailbox_notification(sequence: int, command: int,
                                 message_type: int = GENERIC_TRANSFER_MESSAGE_TYPE) -> int:
-    if not 0 <= sequence <= 0xFFFF:
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or not 0 <= sequence <= 0xFFFF:
         raise ProtocolError("sequence is not an unsigned 16-bit value")
     _u32("command", command)
-    if not 0 <= message_type <= 0xFF:
+    if (isinstance(message_type, bool) or not isinstance(message_type, int)
+            or not 0 <= message_type <= 0xFF):
         raise ProtocolError("message type is not an unsigned 8-bit value")
     return sequence << 48 | command << 16 | message_type << 8
 
 
 def decode_mailbox_notification(word: int) -> tuple[int, int, int, int]:
-    if not 0 <= word <= 0xFFFFFFFFFFFFFFFF:
+    if (isinstance(word, bool) or not isinstance(word, int)
+            or not 0 <= word <= 0xFFFFFFFFFFFFFFFF):
         raise ProtocolError("mailbox word is not an unsigned 64-bit value")
     return word >> 48, (word >> 16) & 0xFFFFFFFF, (word >> 8) & 0xFF, word & 0xFF
 
@@ -149,9 +176,27 @@ def decode_notified_packet(word: int, raw: bytes) -> tuple[Notification, Packet]
 def decode_error_code(raw: bytes) -> int:
     # Apple's _gt_read_error requires a buffer larger than the 28-byte common
     # header and reads the status from word four (offset 16).
-    if len(raw) <= HEADER_SIZE:
+    if not isinstance(raw, bytes) or len(raw) <= HEADER_SIZE:
         raise ProtocolError("error packet is not larger than the common header")
     return struct.unpack_from("<I", raw, 16)[0]
+
+
+class InboundTransaction:
+    """Couple mailbox sequence, command, packet, and reassembly validation."""
+
+    def __init__(self, maximum: int):
+        self.sequence = SequenceTracker()
+        self.reassembler = Reassembler(maximum)
+
+    def accept(self, notification_word: int, raw: bytes) -> bytes | None:
+        notification = decode_generic_notification(notification_word)
+        self.sequence.accept(notification)
+        if notification.message_type == MESSAGE_ERROR:
+            raise RemoteError(decode_error_code(raw))
+        notification, _ = decode_notified_packet(notification_word, raw)
+        # Reassembler decodes again intentionally: its public boundary must
+        # remain independently safe when used without this coupled wrapper.
+        return self.reassembler.add(notification.message_type, raw)
 
 
 def main() -> None:

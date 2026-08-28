@@ -95,6 +95,10 @@ struct t2sep_irq_probe {
 
 #define T2SEP_DISCOVERY_ENDPOINT 0xfd
 #define T2SEP_DISCOVERY_MAX_RECORDS 64
+#define T2SEP_SBIO_ENDPOINT 0x08
+#define T2SEP_SBIO_NAME 0x6f696273
+#define T2SEP_SBIO_IN_PAGES 4
+#define T2SEP_SBIO_OUT_PAGES 75
 
 struct t2sep_discovery_entry {
 	bool identity;
@@ -180,6 +184,7 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 	u32 identities = 0;
 	u32 idle_ms = 0;
 	u32 elapsed_ms;
+	int awaiting_limits = -1;
 	bool saw_message = false;
 	int ret = 0;
 
@@ -190,6 +195,7 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 	for (elapsed_ms = 0; elapsed_ms < 1000; elapsed_ms += 10) {
 		u32 words[4];
 		u8 endpoint;
+		u8 tag;
 		u8 opcode;
 		u8 endpoint_id;
 		u32 i;
@@ -212,13 +218,14 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 		saw_message = true;
 		idle_ms = 0;
 		endpoint = words[0] & 0xff;
+		tag = (words[0] >> 8) & 0xff;
 		opcode = (words[0] >> 16) & 0xff;
 		endpoint_id = (words[0] >> 24) & 0xff;
 		dev_info(&pdev->dev,
 			 "discovery candidate %u: %08x %08x %08x %08x\n",
 			 records, words[0], words[1], words[2], words[3]);
 
-		if (endpoint != T2SEP_DISCOVERY_ENDPOINT || words[2] != 0) {
+		if (endpoint != T2SEP_DISCOVERY_ENDPOINT || tag || words[2] != 0) {
 			dev_err(&pdev->dev,
 				"bounded discovery stopped on non-discovery message\n");
 			ret = -EPROTO;
@@ -229,8 +236,24 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 			ret = -E2BIG;
 			break;
 		}
+		if (endpoint_id < 1 || endpoint_id > 0xfc) {
+			dev_err(&pdev->dev,
+				"discovery endpoint ID %#02x is outside service range\n",
+				endpoint_id);
+			ret = -EPROTO;
+			break;
+		}
 
 		if (opcode == 0) {
+			u8 name_byte;
+
+			if (awaiting_limits >= 0) {
+				dev_err(&pdev->dev,
+					"identity %#02x was not followed by OOL limits\n",
+					awaiting_limits);
+				ret = -EPROTO;
+				break;
+			}
 			if (entries[endpoint_id].identity) {
 				dev_err(&pdev->dev,
 					"duplicate discovery endpoint ID %#02x\n",
@@ -249,15 +272,29 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 			}
 			if (ret)
 				break;
+			for (i = 0; i < 4; i++) {
+				name_byte = (words[1] >> (i * 8)) & 0xff;
+				if (name_byte < 0x20 || name_byte > 0x7e) {
+					dev_err(&pdev->dev,
+						"endpoint %#02x has non-printable name %08x\n",
+						endpoint_id, words[1]);
+					ret = -EPROTO;
+					break;
+				}
+			}
+			if (ret)
+				break;
 			entries[endpoint_id].identity = true;
 			entries[endpoint_id].name = words[1];
+			awaiting_limits = endpoint_id;
 			identities++;
 			dev_info(&pdev->dev,
 				 "discovery identity: id=%#02x name=%08x\n",
 				 endpoint_id, words[1]);
 		} else if (opcode == 1) {
 			if (!entries[endpoint_id].identity ||
-			    entries[endpoint_id].limits) {
+			    entries[endpoint_id].limits ||
+			    awaiting_limits != endpoint_id) {
 				dev_err(&pdev->dev,
 					"invalid OOL ordering for endpoint ID %#02x\n",
 					endpoint_id);
@@ -269,6 +306,15 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 			entries[endpoint_id].in_max = (words[1] >> 8) & 0xff;
 			entries[endpoint_id].out_min = (words[1] >> 16) & 0xff;
 			entries[endpoint_id].out_max = (words[1] >> 24) & 0xff;
+			if (entries[endpoint_id].in_min > entries[endpoint_id].in_max ||
+			    entries[endpoint_id].out_min > entries[endpoint_id].out_max) {
+				dev_err(&pdev->dev,
+					"inverted OOL range for endpoint ID %#02x\n",
+					endpoint_id);
+				ret = -EPROTO;
+				break;
+			}
+			awaiting_limits = -1;
 			dev_info(&pdev->dev,
 				 "discovery OOL: id=%#02x in=%u..%u pages out=%u..%u pages\n",
 				 endpoint_id, entries[endpoint_id].in_min,
@@ -282,11 +328,30 @@ static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
 			break;
 		}
 	}
+	if (!ret && awaiting_limits >= 0) {
+		dev_err(&pdev->dev,
+			"discovery ended before OOL limits for endpoint %#02x\n",
+			awaiting_limits);
+		ret = -EPROTO;
+	}
+	if (!ret && (!entries[T2SEP_SBIO_ENDPOINT].identity ||
+		     entries[T2SEP_SBIO_ENDPOINT].name != T2SEP_SBIO_NAME ||
+		     !entries[T2SEP_SBIO_ENDPOINT].limits ||
+		     entries[T2SEP_SBIO_ENDPOINT].in_min > T2SEP_SBIO_IN_PAGES ||
+		     entries[T2SEP_SBIO_ENDPOINT].in_max < T2SEP_SBIO_IN_PAGES ||
+		     entries[T2SEP_SBIO_ENDPOINT].out_min > T2SEP_SBIO_OUT_PAGES ||
+		     entries[T2SEP_SBIO_ENDPOINT].out_max < T2SEP_SBIO_OUT_PAGES)) {
+		dev_err(&pdev->dev,
+			"discovery lacks usable sbio endpoint 0x08 OOL limits\n");
+		ret = -ENODEV;
+	}
 
 	dev_info(&pdev->dev,
 		 "bounded discovery complete: records=%u identities=%u sbio=%s limits=%s result=%d\n",
-		 records, identities, entries[0x08].identity ? "yes" : "no",
-		 entries[0x08].limits ? "yes" : "no", ret);
+		 records, identities,
+		 entries[T2SEP_SBIO_ENDPOINT].identity &&
+		 entries[T2SEP_SBIO_ENDPOINT].name == T2SEP_SBIO_NAME ? "yes" : "no",
+		 entries[T2SEP_SBIO_ENDPOINT].limits ? "yes" : "no", ret);
 	kfree(entries);
 	return ret;
 }

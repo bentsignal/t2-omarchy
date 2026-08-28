@@ -139,7 +139,10 @@ python -m unittest test_decode_message.py
 28-byte AppleSEPGenericTransfer framing and its 64-bit mailbox notification.
 It is not connected to the kernel prototype and cannot issue SEP commands.
 Its parser rejects bad versions, reserved bits, inconsistent lengths, and
-out-of-range chunks. Run both offline suites with:
+out-of-range chunks. Its coupled inbound state machine additionally binds the
+16-bit sequence, mailbox and packet commands, message type, bounded
+reassembly, completion state, and remote-error record; it rejects every record
+after completion. Run both offline suites with:
 
 ```bash
 python -m unittest test_decode_message.py test_generic_transfer.py \
@@ -200,17 +203,20 @@ deadline, and the transcript validator's byte/frame limits.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,
-32-bit page-frame fit, and the endpoint's advertised send/receive page limits.
-Nothing calls the encoder from the kernel module; it cannot allocate or
-register DMA memory.
+the full DMA range's 32-bit page-frame fit, and a well-formed endpoint's
+advertised send/receive page limits. Nothing calls the encoder from the kernel
+module; it cannot allocate or register DMA memory.
 
 The next gated probe collects only passive discovery advertisements emitted
 after the validated NOP. It sends no discovery request. Collection is capped
 at 64 records and one second, requires endpoint `0xfd` opcode 0/1 records in
 KDK order, validates transport flags and uniqueness, and stops on the first
-unexpected message. `run-discovery.sh` also requires the exact model/device,
-an unbound SEP, two MSI vectors, verified NOP output, module cleanup, and a
-clean collector result:
+unexpected message. Identity must be immediately followed by limits; endpoint
+IDs and printable names are range checked; inverted limits fail; and success
+requires `sbio` at `0x08` with ranges covering the recovered 4-page/75-page
+buffers. `run-discovery.sh` also requires the exact model/device, an unbound
+SEP, two MSI vectors, verified NOP output, module cleanup, and the exact final
+`sbio=yes limits=yes result=0` result:
 
 ```bash
 pkexec ./run-discovery.sh

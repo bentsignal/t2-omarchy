@@ -77,7 +77,7 @@ class GenericTransferTests(unittest.TestCase):
     def test_error_code_location_and_minimum_size(self):
         raw = bytearray(29)
         struct.pack_into("<I", raw, 16, 0xE00002C2)
-        self.assertEqual(gt.decode_error_code(raw), 0xE00002C2)
+        self.assertEqual(gt.decode_error_code(bytes(raw)), 0xE00002C2)
         with self.assertRaises(gt.ProtocolError): gt.decode_error_code(bytes(28))
 
     def test_reassembles_ordered_packets(self):
@@ -100,6 +100,62 @@ class GenericTransferTests(unittest.TestCase):
     def test_reassembler_rejects_oversize_transaction(self):
         with self.assertRaises(gt.ProtocolError):
             gt.Reassembler(7).add(gt.MESSAGE_FIRST, gt.Packet(8, 0, 0, 0x73, b"abcd").encode())
+
+    def test_reassembler_rejects_every_record_after_completion(self):
+        stream = gt.Reassembler(4)
+        self.assertEqual(
+            stream.add(gt.MESSAGE_FIRST, gt.Packet(4, 0, 0, 0x73, b"data").encode()),
+            b"data",
+        )
+        with self.assertRaisesRegex(gt.ProtocolError, "after completion"):
+            stream.add(gt.MESSAGE_NEXT_IN, gt.Packet(4, 4, 0, 0x73, b"").encode())
+
+    def test_coupled_inbound_transaction_validates_sequence_and_command(self):
+        transaction = gt.InboundTransaction(8)
+        first = gt.Packet(8, 0, 0, 0x73, b"abcd").encode()
+        second = gt.Packet(8, 4, 0, 0x73, b"efgh").encode()
+        self.assertIsNone(transaction.accept(
+            gt.encode_mailbox_notification(10, 0x73, gt.MESSAGE_FIRST), first
+        ))
+        self.assertEqual(transaction.accept(
+            gt.encode_mailbox_notification(11, 0x73, gt.MESSAGE_NEXT_IN), second
+        ), b"abcdefgh")
+
+        skipped = gt.InboundTransaction(8)
+        skipped.accept(gt.encode_mailbox_notification(10, 0x73), first)
+        with self.assertRaisesRegex(gt.ProtocolError, "sequence"):
+            skipped.accept(gt.encode_mailbox_notification(12, 0x73, gt.MESSAGE_NEXT_IN), second)
+
+    def test_coupled_inbound_transaction_surfaces_remote_error(self):
+        raw = bytearray(29)
+        struct.pack_into("<I", raw, 16, 0xE00002C2)
+        transaction = gt.InboundTransaction(8)
+        with self.assertRaises(gt.RemoteError) as raised:
+            transaction.accept(
+                gt.encode_mailbox_notification(1, 0x73, gt.MESSAGE_ERROR), bytes(raw)
+            )
+        self.assertEqual(raised.exception.code, 0xE00002C2)
+
+    def test_strict_python_types_fail_with_protocol_errors(self):
+        invalid_packets = (bytearray(28), "packet", None)
+        for raw in invalid_packets:
+            with self.assertRaises(gt.ProtocolError):
+                gt.decode_packet(raw)
+        with self.assertRaises(gt.ProtocolError):
+            gt.Packet(1, 0, 0, 0, "x").encode()
+        for bad in (True, "1", None):
+            with self.assertRaises(gt.ProtocolError):
+                gt.encode_mailbox_notification(bad, 0)
+            with self.assertRaises(gt.ProtocolError):
+                gt.decode_mailbox_notification(bad)
+        with self.assertRaises(gt.ProtocolError):
+            gt.SequenceTracker().accept("not-a-notification")
+        for notification in (
+                gt.Notification(True, 0, gt.MESSAGE_FIRST),
+                gt.Notification(0, True, gt.MESSAGE_FIRST),
+                gt.Notification(0, 0, 1)):
+            with self.assertRaises(gt.ProtocolError):
+                gt.SequenceTracker().accept(notification)
 
 
 if __name__ == "__main__": unittest.main()
