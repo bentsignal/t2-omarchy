@@ -424,6 +424,19 @@ page-frame overflow, and a multi-page range that would wrap beyond the final
 tuple and checks both sizes against the passively advertised ranges for that
 endpoint. It performs no allocation, mapping, registration, or device access.
 
+Control acknowledgement is tag-correlated, not merely “the next endpoint-zero
+record.” `_cmsgSend` allocates a nonzero byte tag, inserts it in word 0, and
+keeps the command active until `_cmsgAction` receives that tag. The reply's
+word 1 is the remote result; nonzero values are errors. The observed NOP proves
+reply opcode `1` and target `0` for that one command, but neither Apple’s
+callback nor the current evidence proves the opcode/target returned for OOL
+commands `2` and `3`. `tag_control_request()` and
+`validate_control_reply()` now model the correlation and status rules, while
+requiring the caller to supply independently verified reply opcode and target.
+Consequently an OOL registration cannot yet be marked committed from a guessed
+ack shape. A future bounded hardware transcript must establish those two
+fields before DMA registration is wired into the kernel path.
+
 Linux currently reports both `dma_mask_bits` and `consistent_dma_mask_bits`
 as 32 for `0000:04:00.2`, consistent with this T2 wire format. A future live
 implementation must explicitly establish a 32-bit coherent DMA mask, use the

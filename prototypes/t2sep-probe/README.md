@@ -238,6 +238,13 @@ the full DMA range's 32-bit page-frame fit, and a well-formed endpoint's
 advertised send/receive page limits. Nothing calls the encoder from the kernel
 module; it cannot allocate or register DMA memory.
 
+The same module models AppleSEPControl's nonzero byte tags and strict reply
+status. The known NOP acknowledgement is fixed to its observed opcode/target.
+OOL reply opcode and target remain unobserved, so the reply validator requires
+those values as explicit independently verified inputs; there is no permissive
+default that could turn an arbitrary endpoint-zero message into registration
+success.
+
 The next gated probe collects only passive discovery advertisements emitted
 after the validated NOP. It sends no discovery request. Collection is capped
 at 64 records and one second, requires endpoint `0xfd` opcode 0/1 records in

@@ -19,6 +19,7 @@ PAGE_SIZE = 4096
 CONTROL_ENDPOINT = 0
 SET_OOL_IN = 2
 SET_OOL_OUT = 3
+TRANSPORT_ERROR_FLAGS = (1 << 18) | (1 << 19)
 
 
 def encode_ool_registration(target_endpoint: int, dma_address: int, size: int,
@@ -43,6 +44,64 @@ def encode_ool_registration(target_endpoint: int, dma_address: int, size: int,
     opcode = SET_OOL_IN if incoming_to_sep else SET_OOL_OUT
     return [CONTROL_ENDPOINT | opcode << 16 | target_endpoint << 24,
             page_address, size, 0]
+
+
+def tag_control_request(words: list[int], tag: int) -> list[int]:
+    """Insert the nonzero byte tag allocated by AppleSEPControl."""
+    if (not isinstance(words, (list, tuple)) or len(words) != 4
+            or any(isinstance(word, bool) or not isinstance(word, int)
+                   or not 0 <= word <= 0xFFFFFFFF for word in words)):
+        raise ControlMessageError("control request must contain exactly four u32 words")
+    if words[0] & 0xFF:
+        raise ControlMessageError("control request is not for endpoint zero")
+    if words[0] & 0xFF00:
+        raise ControlMessageError("control request already has a tag")
+    if words[3] != 0:
+        raise ControlMessageError("host control metadata word must be zero")
+    if isinstance(tag, bool) or not isinstance(tag, int) or not 1 <= tag <= 0xFF:
+        raise ControlMessageError("control tag must be a nonzero byte")
+    tagged = list(words)
+    tagged[0] |= tag << 8
+    return tagged
+
+
+def validate_control_reply(request: list[int], response: list[int],
+                           *, expected_opcode: int,
+                           expected_target: int) -> tuple[int, int, int, int]:
+    """Validate a reply when its opcode and target are independently known."""
+    for name, words in (("request", request), ("response", response)):
+        if (not isinstance(words, (list, tuple)) or len(words) != 4
+                or any(isinstance(word, bool) or not isinstance(word, int)
+                       or not 0 <= word <= 0xFFFFFFFF for word in words)):
+            raise ControlMessageError(f"control {name} must contain exactly four u32 words")
+    if (isinstance(expected_opcode, bool) or not isinstance(expected_opcode, int)
+            or not 0 <= expected_opcode <= 0xFF):
+        raise ControlMessageError("expected reply opcode is not an unsigned byte")
+    if (isinstance(expected_target, bool) or not isinstance(expected_target, int)
+            or not 0 <= expected_target <= 0xFF):
+        raise ControlMessageError("expected reply target is not an unsigned byte")
+    request_endpoint = request[0] & 0xFF
+    request_tag = (request[0] >> 8) & 0xFF
+    request_target = (request[0] >> 24) & 0xFF
+    response_endpoint = response[0] & 0xFF
+    response_tag = (response[0] >> 8) & 0xFF
+    response_opcode = (response[0] >> 16) & 0xFF
+    response_target = (response[0] >> 24) & 0xFF
+    if request_endpoint or not request_tag:
+        raise ControlMessageError("control request is not tagged endpoint zero")
+    if response_endpoint != CONTROL_ENDPOINT:
+        raise ControlMessageError("control reply is not for endpoint zero")
+    if response_tag != request_tag:
+        raise ControlMessageError("control reply tag does not match request")
+    if request_target != expected_target or response_target != expected_target:
+        raise ControlMessageError("control request/reply target is not independently verified")
+    if response_opcode != expected_opcode:
+        raise ControlMessageError("control reply opcode is not independently verified")
+    if response[3] & TRANSPORT_ERROR_FLAGS:
+        raise ControlMessageError("control reply has transport error flags")
+    if response[1] != 0:
+        raise ControlMessageError(f"control reply status is nonzero: 0x{response[1]:08x}")
+    return tuple(response)
 
 
 @dataclass(frozen=True)

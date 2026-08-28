@@ -20,6 +20,45 @@ class DecodeMessageTests(unittest.TestCase):
         self.assertIn("endpoint=0x00", result)
         self.assertIn("opcode=0x01", result)
 
+    def test_tagged_control_request_and_observed_nop_ack(self) -> None:
+        request = decode_message.tag_control_request([0, 0, 0, 0], 1)
+        self.assertEqual(request, [0x00000100, 0, 0, 0])
+        self.assertEqual(decode_message.validate_control_reply(
+            request, [0x00010100, 0, 0, 0x00100100],
+            expected_opcode=1, expected_target=0
+        ), (0x00010100, 0, 0, 0x00100100))
+
+    def test_control_reply_coupling_fails_closed(self) -> None:
+        request = decode_message.tag_control_request(
+            decode_message.encode_ool_registration(
+                8, 0x100000, 0x4000, incoming_to_sep=True), 7)
+        valid = [0x08010700, 0, 0xAABBCCDD, 0]
+        self.assertEqual(decode_message.validate_control_reply(
+            request, valid, expected_opcode=1, expected_target=8), tuple(valid))
+        mutations = (
+            [0x08010800, 0, 0, 0],
+            [0x09010700, 0, 0, 0],
+            [0x08020700, 0, 0, 0],
+            [0x08010701, 0, 0, 0],
+            [0x08010700, 1, 0, 0],
+            [0x08010700, 0, 0, 1 << 18],
+        )
+        for response in mutations:
+            with self.assertRaises(decode_message.ControlMessageError):
+                decode_message.validate_control_reply(
+                    request, response, expected_opcode=1, expected_target=8)
+
+    def test_control_tag_and_reply_types_are_strict(self) -> None:
+        for tag in (True, 0, 0x100, None):
+            with self.assertRaises(decode_message.ControlMessageError):
+                decode_message.tag_control_request([0, 0, 0, 0], tag)
+        with self.assertRaises(decode_message.ControlMessageError):
+            decode_message.tag_control_request([0x100, 0, 0, 0], 1)
+        with self.assertRaises(decode_message.ControlMessageError):
+            decode_message.validate_control_reply(
+                [0x100, 0, 0, 0], [0x10100, 0, 0, 0],
+                expected_opcode=True, expected_target=0)
+
     def test_discovery_identity(self) -> None:
         result = decode_message.decode([0x080000FD, 0x6F696273, 0, 0])
         self.assertIn("endpoint_id=0x08", result)
