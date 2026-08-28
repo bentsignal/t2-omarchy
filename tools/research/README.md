@@ -106,6 +106,17 @@ python tools/research/bridgeos-bridgexpc-evidence.py /path/to/BridgeXPC \
   --expect-sha256 df97ee9ee6f37383303e153bc92f3528f1478fa1268f89b50c5e666c747c3b37
 ```
 
+`xnu-intcoproc-evidence.py` verifies the relevant path for Darwin's private
+`SO_INTCOPROC_ALLOW` option in an Apple XNU source tree. The option is an
+entitlement-gated local PCB flag that permits traffic on an otherwise
+restricted internal-coprocessor interface. It is not a TCP option or an
+application-visible handshake signal, so Linux needs no wire analogue once it
+can already exchange packets on the T2 interface:
+
+```bash
+python tools/research/xnu-intcoproc-evidence.py /path/to/xnu
+```
+
 `macos-bridgexpc-evidence.py` verifies the current thin x86_64 BridgeXPC
 framework's exact HELO/message header loads, binary-plist format load, HELO
 keys, and serialization import. It rejects the wrong architecture, duplicate

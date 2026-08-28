@@ -698,8 +698,19 @@ legacy BridgeXPC does not wait for, authenticate, or negotiate fields from the
 peer HELO before allowing normal messages. It does not prove that bridgeOS
 `23P6068` retained identical behavior. For the current machine, however, a
 silent method 0 after both sides have exchanged structurally valid frames is
-now even more specifically a current service/socket policy distinction, with
-Apple's unavailable `SO_INTCOPROC_ALLOW` marking the strongest known candidate.
+now even more specifically a current service/socket policy distinction.
+
+Apple's XNU `xnu-12377.1.9` source closes `SO_INTCOPROC_ALLOW` as a
+peer-visible candidate.
+`sosetopt` gates the option on `PRIV_NET_RESTRICTED_INTCOPROC`, then sets only
+the local inpcb flag `INP2_INTCOPROC_ALLOWED`. IPv6 send/receive policy rejects
+sockets lacking that flag on interfaces classified as internal coprocessors.
+It is not placed in a TCP option, IPv6 extension, BridgeXPC frame, or payload.
+Linux already sends, ACKs, and receives on this interface, so it has satisfied
+the behavior the Darwin flag unlocks. `xnu-intcoproc-evidence.py` makes this
+source chain reproducible. The remaining boundary is current bridgeOS 39
+connection/handoff state or another receiver-side distinction, not a missing
+Linux socket mark.
 
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
