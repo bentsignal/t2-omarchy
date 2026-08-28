@@ -71,6 +71,13 @@ python tools/research/macos-bridgexpc-evidence.py /path/to/BridgeXPC \
   --expect-sha256 EXPECTED_SHA256
 ```
 
+`macos-bridge-wire-compare.py` is the private-capture boundary for the two
+initial client writes. It accepts one complete client HELO frame and one
+complete method-zero frame only from regular mode-0600 files, strictly decodes
+both, and compares them with the Linux reconstruction. Its output is limited
+to sizes, SHA-256 hashes, decoded non-private HELO fields, equality flags, and
+first-difference offsets; it never prints the captured bytes.
+
 `macos-rsd-port-evidence.py` verifies the companion x86_64 `remoted` evidence:
 the NCM-device listener class/method and its unique exact instruction storing
 port `58783`. It likewise performs no device or network access.

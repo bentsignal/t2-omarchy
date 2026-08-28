@@ -22,7 +22,11 @@ Give the macOS Codex session this exact instruction:
 > match, modify the enrolled finger, disable SIP, or publish raw private data.
 > Compare those bytes byte-for-byte with `bridge-query.py`, add a sanitized
 > verifier/fixture and tests, document the mismatch or exact equality, commit,
-> and push the handback for Linux.
+> and push the handback for Linux. The Linux checkpoint includes
+> `tools/research/macos-bridge-wire-compare.py`: save each complete frame in a
+> separate mode-0600 file and run it with the actual macOS build. It validates
+> exact framing and semantics, prints only sizes/hashes/first-difference offsets,
+> and never prints raw wire bytes.
 
 The older activation instruction below is retained as history and is already
 complete.
