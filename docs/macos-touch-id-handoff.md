@@ -14,7 +14,10 @@
 > proves method zero unconditionally returns `[0, 3]`. Linux has additionally
 > ruled out client HELO, accept-handler timing, MTU 1500 versus 16000, and the
 > recorded macOS source ports. Before returning to macOS, perform one true
-> power-off/cold Linux boot and repeat only the coupled method-zero query.
+> power-off/cold Linux boot and repeat only the coupled method-zero query. That
+> test is now complete and also timed out: fresh service port 49223 ACKed both
+> exact client records, sent the normal server HELO, and never returned method
+> zero. Do not repeat cold boot or send another speculative Linux message.
 
 Give the macOS Codex session this exact instruction:
 

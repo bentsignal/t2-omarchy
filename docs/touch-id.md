@@ -769,6 +769,19 @@ remove T2 power. If that still fails, further progress requires targeted
 successful-path observation from macOS rather than another guessed Linux
 application message.
 
+That cold-start discriminator has now been run. After a complete shutdown,
+external-power removal, and direct Linux boot, the host had 93 seconds of
+uptime when inspected. Linux restored only the proven
+`fe80::aede:48ff:fe00:1122/64` address; carrier, peer neighbor discovery, and
+two scoped ICMPv6 replies then confirmed the internal link. A fresh directory
+exchange on port 59602 advertised BiometricKit on boot-dynamic port 49223.
+The bounded service connection again sent separate 119-byte HELO and 62-byte
+method-zero TCP segments. bridgeOS acknowledged both, sent its valid 117-byte
+HELO, emitted periodic keepalive probes, and returned no application reply
+within five seconds. The cold-start hypothesis is therefore closed. TCP
+timestamps are deliberately not used as bridgeOS uptime evidence because
+modern stacks apply per-connection timestamp offsets.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
