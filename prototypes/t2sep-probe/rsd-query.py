@@ -10,6 +10,7 @@ implemented here is the RemoteXPC service-directory handshake.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import importlib.util
 import math
 from pathlib import Path
@@ -52,6 +53,12 @@ class QueryError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class PassiveDirectoryCapture:
+    advertised_port: int
+    server_transcript: bytes
+
+
 def recv_exact(sock: socket.socket, size: int) -> bytes:
     chunks = bytearray()
     while len(chunks) < size:
@@ -77,9 +84,9 @@ def recv_frame(sock: socket.socket) -> bytes:
     return frame
 
 
-def query_connected_socket(sock: socket.socket,
-                           client_uuid: uuid.UUID) -> int:
-    """Perform only the bounded service-directory exchange on a supplied socket."""
+def capture_connected_socket(sock: socket.socket,
+                             client_uuid: uuid.UUID) -> PassiveDirectoryCapture:
+    """Return the validated port and exact bounded server transcript."""
     if not isinstance(client_uuid, uuid.UUID):
         raise QueryError("client UUID must be a UUID")
     parser = protocol.PassiveRSDTranscript(
@@ -89,11 +96,14 @@ def query_connected_socket(sock: socket.socket,
         max_total=TOTAL_CAP,
         max_xpc_body=FRAME_CAP,
     )
+    transcript = bytearray()
     sock.sendall(protocol.candidate_rsd_transport_opening())
     handshake_sent = False
     for _ in range(FRAME_LIMIT):
         try:
-            parser.feed(recv_frame(sock))
+            frame = recv_frame(sock)
+            transcript += frame
+            parser.feed(frame)
         except protocol.RSDProtocolError as error:
             raise QueryError("peer RSD transcript failed validation") from error
         if parser.peer_settings_seen and not handshake_sent:
@@ -102,10 +112,16 @@ def query_connected_socket(sock: socket.socket,
             handshake_sent = True
         if parser.complete:
             try:
-                return parser.finish()
+                return PassiveDirectoryCapture(parser.finish(), bytes(transcript))
             except protocol.RSDProtocolError as error:
                 raise QueryError("peer RSD directory failed final validation") from error
     raise QueryError("no RSD directory within the frame limit")
+
+
+def query_connected_socket(sock: socket.socket,
+                           client_uuid: uuid.UUID) -> int:
+    """Compatibility wrapper returning only the validated advertised port."""
+    return capture_connected_socket(sock, client_uuid).advertised_port
 
 
 def _read_sysfs(path: Path) -> str:

@@ -399,6 +399,13 @@ method 1 (`getServiceOpened:`) frames. The module does not import or create
 sockets. This prevents a caller-selected port or Catalina's different fixed
 peer address from entering the modern transcript-to-plan path.
 
+The staged RSD runner retains that evidence boundary during capture. Its
+fake-socket-tested core returns an immutable pair of the validated advertised
+port and the exact, capped server transcript; the existing port-only function
+is just a compatibility wrapper. A future supervised experiment can therefore
+feed the captured transcript directly into the offline plan builder and prove
+that the endpoint came from the peer's named-service directory.
+
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service
 Discovery protocol identify TCP port `58783`; pymobiledevice3 attributes it to

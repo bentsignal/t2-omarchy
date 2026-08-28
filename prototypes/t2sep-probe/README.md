@@ -238,7 +238,11 @@ interleaving, surplus frames, resource caps, and deterministic garbage.
 `rsd-query.py` is the staged passive-directory runner. Default execution only
 prints deterministic fixtures. Its fake-socket-tested engine sends transport
 setup, waits for validated peer SETTINGS, then sends the SETTINGS ACK and
-device handshake; it never constructs a service-open message. The live branch
+device handshake; it never constructs a service-open message. The engine now
+returns an immutable capture containing both the strictly decoded advertised
+port and the exact bounded server transcript, so a supervised result can be
+revalidated by the socket-free handoff instead of trusting a copied number.
+The compatibility wrapper still returns only the port. The live branch
 is checked before sysfs or socket access and remains mechanically disabled by
 `LIVE_DIRECTORY_CAPTURE_ENABLED = False`. The installed macOS 26.6.2 x86_64
 `remoted` proves listener port `58783` and derives the peer address from the

@@ -69,14 +69,21 @@ def valid_server_transcript(port="52032"):
 class RSDQueryTests(unittest.TestCase):
     def test_fragmented_passive_query_sequence(self):
         identifier = uuid.UUID(int=2)
-        sock = FakeSocket(valid_server_transcript(), chunk_size=1)
-        self.assertEqual(query.query_connected_socket(sock, identifier), 52032)
+        incoming = valid_server_transcript()
+        sock = FakeSocket(incoming, chunk_size=1)
+        capture = query.capture_connected_socket(sock, identifier)
+        self.assertEqual(capture.advertised_port, 52032)
+        self.assertEqual(capture.server_transcript, incoming)
         self.assertEqual(sock.incoming, b"")
         self.assertEqual(sock.sent, [
             protocol.candidate_rsd_transport_opening(),
             protocol.candidate_rsd_settings_ack(),
             protocol.candidate_rsd_device_handshake(identifier),
         ])
+
+    def test_port_only_wrapper_preserves_existing_api(self):
+        self.assertEqual(query.query_connected_socket(
+            FakeSocket(valid_server_transcript()), uuid.UUID(int=2)), 52032)
 
     def test_never_sends_device_handshake_before_peer_settings(self):
         sock = FakeSocket(protocol.encode_http2_frame(
