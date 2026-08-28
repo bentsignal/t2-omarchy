@@ -171,6 +171,13 @@ and page-frame overflow. A separate gate checks both sizes against the four
 page limits passively advertised for that exact endpoint. It performs no
 allocation, mapping, registration, or device access.
 
+Linux currently reports both `dma_mask_bits` and `consistent_dma_mask_bits`
+as 32 for `0000:04:00.2`, consistent with this T2 wire format. A future live
+implementation must explicitly establish a 32-bit coherent DMA mask, use the
+DMA address returned by the kernel rather than a CPU physical address, reject
+any address whose page-frame number exceeds the 32-bit field, and never assume
+that membership in IOMMU group 10 makes sibling-device mappings interchangeable.
+
 There is no corresponding control “unregister” in the Intel endpoint methods.
 `clearSendOOL()` and `clearReceiveOOL()` zero the already-visible memory but do
 not revoke the address from SEP; object destruction releases the host object

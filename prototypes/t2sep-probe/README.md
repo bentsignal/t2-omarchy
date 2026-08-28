@@ -145,6 +145,12 @@ out-of-range chunks. Run both offline suites with:
 python -m unittest test_decode_message.py test_generic_transfer.py
 ```
 
+`decode-message.py` also contains an offline Intel OOL-registration encoder.
+It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,
+32-bit page-frame fit, and the endpoint's advertised send/receive page limits.
+Nothing calls the encoder from the kernel module; it cannot allocate or
+register DMA memory.
+
 The next gated probe collects only passive discovery advertisements emitted
 after the validated NOP. It sends no discovery request. Collection is capped
 at 64 records and one second, requires endpoint `0xfd` opcode 0/1 records in
