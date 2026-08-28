@@ -7,6 +7,11 @@
 > on T2 port `59602`, and received boot-dynamic BiometricKit port `49165`.
 > Neither port may be hard-coded for Linux.
 
+The current offline continuation is `rsd-mdns.py`: a bounded DNS-SD codec for
+the `_remoted._tcp.local.` bootstrap used by go-ios. It binds a strictly
+validated, T2-sourced PTR/SRV transcript to the RSD endpoint without accepting
+a caller-selected port. No multicast socket or live query is enabled yet.
+
 Status as of 2026-08-28: **transport and macOS activation sequence proven;
 Linux biometric path not working yet**. This document records the
 machine-specific evidence, current public research, safety boundaries, and a

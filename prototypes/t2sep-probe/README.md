@@ -228,6 +228,16 @@ one of them. The module can encode the passive directory handshake and
 strictly decode the named advertised service port, but contains no socket
 calls or fixed directory port.
 
+`rsd-mdns.py` models the missing same-boot bootstrap without sockets. It emits
+the exact `_remoted._tcp.local.` PTR query and incrementally validates at most
+16 T2-sourced mDNS datagrams / 64 records / 64 KiB. Its DNS decoder bounds
+compression traversal, detects pointer cycles, enforces record boundaries,
+requires a PTR-to-SRV chain, rejects conflicting ports and non-T2 sources, and
+optionally checks the target AAAA against the wire-proven T2 address. The
+transcript-to-endpoint handoff derives the TCP port only from that validated
+SRV record; it has no caller-controlled port parameter. Live multicast remains
+unimplemented pending a supervised run from the corrected host address.
+
 Its `PassiveRSDTranscript` state machine validates a complete server transcript
 from fragmented offline bytes. It caps bytes, frames, controls, and XPC sizes;
 requires peer settings before data; accepts only streams 1 and 3; refuses
