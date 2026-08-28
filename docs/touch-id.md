@@ -393,11 +393,11 @@ The offline `discovered-bridge-plan.py` now joins the modern discovery and
 BridgeXPC layers without weakening that gate. Its transcript entry point runs
 the complete bounded RSD state machine, requires the named BiometricKit
 service, and transfers the proven port directly into the plan. It combines
-that port with the current RSD-derived link-local T2 address and a nonzero
+that port with the wire-observed link-local T2 address and a nonzero
 interface index, then constructs only HELO, method 0 (`getBridgeVersion:`), and
 method 1 (`getServiceOpened:`) frames. The module does not import or create
-sockets. This prevents a caller-selected port or Catalina's different fixed
-peer address from entering the modern transcript-to-plan path.
+sockets. This prevents a caller-selected port from entering the modern
+transcript-to-plan path.
 
 The staged RSD runner retains that evidence boundary during capture. Its
 fake-socket-tested core returns an immutable pair of the validated advertised
@@ -408,8 +408,9 @@ that the endpoint came from the peer's named-service directory.
 
 The first supervised Linux attempt on 2026-08-28 did not reach RSD. A temporary
 non-autoconnecting NetworkManager profile assigned the verified local address
-`fe80::aede:48ff:fe00:1122/64`, and route selection correctly chose it for the
-derived peer `fe80::aede:48ff:fe00:11dd`. The TCP connection timed out because
+`fe80::aede:48ff:fe00:1122/64`, and route selection chose the then-inferred
+peer `fe80::aede:48ff:fe00:11dd`. That inference was later disproved by a wire
+capture. The TCP connection timed out because
 neighbor discovery never left the host: `ip -s link` showed zero transmitted
 packets and increasing TX errors. Kernel history tied this to the immediately
 preceding T2BCE preserved-state resume:
@@ -421,11 +422,17 @@ cdc_ncm ... NETDEV WATCHDOG: transmit queue 0 timed out
 
 Cycling only the NetworkManager connection did not recover the wedged USB
 request. No RSD bytes, BridgeXPC frame, or biometric command reached the T2.
-The next supervised prerequisite is therefore a narrow unbind/rebind of USB
-interface `7-1:1.0` (or a reboot), followed by proof that CDC-NCM TX packets
-increase before retrying the passive directory capture. This is a T2BCE
-suspend/resume transport failure, not evidence against the recovered RSD
-address or protocol.
+The narrow USB-interface unbind/rebind that followed recovered CDC-NCM TX and
+captured the T2's unsolicited startup MLDv2 report. Its Ethernet source is
+`ac:de:48:33:44:55` and IPv6 source is `fe80::aede:48ff:fe33:4455`. Neighbor
+discovery and ICMPv6 echo then succeeded. Applying `remoted`'s peer transform
+to that wire-observed T2 MAC gives the host address
+`fe80::aede:48ff:fe33:44aa`; echo still succeeds with that host address.
+Connections to candidate directory port `58783` and legacy BiometricKit port
+`52032` were actively refused, and no `_remoted._tcp` mDNS answer appeared.
+This proves the NCM transport and endpoint, while showing that neither
+listener is active during this Linux boot. The next experiment must capture
+macOS startup traffic to identify the activation sequence.
 
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service
@@ -491,12 +498,12 @@ The same binary's `RSDRemoteNCMDevice::local_address` and `remote_address`
 methods call a shared six-byte-MAC helper with direction values 1 and 0. The
 helper toggles MAC byte 0 with `0x02`, inserts `ff:fe`, and, for the remote
 direction, XORs byte 5 with `0xff`, then prepends `fe80::/64`. Applied to the
-kernel-observed NCM MAC `ac:de:48:00:11:22`, this yields:
+T2's wire-observed NCM MAC `ac:de:48:33:44:55`, this yields:
 
 ```text
-host/local: fe80::aede:48ff:fe00:1122
-T2/remote:  fe80::aede:48ff:fe00:11dd
-port:       58783
+T2/local:  fe80::aede:48ff:fe33:4455
+host/peer: fe80::aede:48ff:fe33:44aa
+port:      58783
 ```
 
 `rsd-protocol.py` implements this derivation with strict input checks, and the
@@ -507,7 +514,8 @@ been replaced by the explicit source kill switch
 or socket work. Tests separately prove the kill switch, malformed evidence,
 and invalid timeouts cannot construct a socket.
 
-This establishes Apple's current NCM endpoint, but does **not** establish that
+The address is wire-proven. The port remains a binary-derived candidate: its
+listener was not active in the supervised Linux test. This does **not** establish that
 the T2 directory currently advertises the host-requested
 `com.apple.eos.BiometricKit` service. Neither the codec nor the disabled runner
 has connected to it. The first future experiment remains a supervised,

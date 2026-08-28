@@ -34,8 +34,8 @@ class DiscoveredBridgePlanTests(unittest.TestCase):
 
     def test_uses_current_rsd_address_and_advertised_port(self):
         result = plan.build_plan(49152, 7)
-        self.assertEqual(result.endpoint, ("fe80::aede:48ff:fe00:11dd", 49152, 0, 7))
-        self.assertNotEqual(result.endpoint[0], plan.bridge.T2_LINK_LOCAL_ADDRESS)
+        self.assertEqual(result.endpoint, ("fe80::aede:48ff:fe33:4455", 49152, 0, 7))
+        self.assertEqual(result.endpoint[0], plan.bridge.T2_LINK_LOCAL_ADDRESS)
         header_size = plan.bridge.BRIDGE_FRAME_HEADER.size
         self.assertEqual(plistlib.loads(result.bridge_version_query[header_size:]), [0])
         self.assertEqual(plistlib.loads(result.service_opened_query[header_size:]), [1])
@@ -64,7 +64,7 @@ class DiscoveredBridgePlanTests(unittest.TestCase):
     def test_transcript_to_plan_has_no_caller_controlled_port(self):
         result = plan.build_plan_from_rsd_transcript(self._transcript(), 9)
         self.assertEqual(result.endpoint,
-                         ("fe80::aede:48ff:fe00:11dd", 49152, 0, 9))
+                         ("fe80::aede:48ff:fe33:4455", 49152, 0, 9))
 
     def test_transcript_handoff_fails_closed(self):
         malformed = (

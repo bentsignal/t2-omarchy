@@ -38,12 +38,11 @@ CURRENT_RSD_PORT_VERIFICATION = (
     protocol.RSD_PORT_CANDIDATE,
     "installed macOS 26.6.2 remoted NCM-device listener",
 )
-# RSDRemoteNCMDevice::remote_address in the same binary derives the peer's
-# link-local address from the NCM MAC, toggling the EUI-64 U/L bit, inserting
-# ff:fe, and XORing the peer's last byte with ff.
+# A supervised post-rebind Ethernet capture proves bridgeOS source MAC
+# ac:de:48:33:44:55 and source IPv6 fe80::aede:48ff:fe33:4455 directly.
 CURRENT_T2_ADDRESS_VERIFICATION = (
     protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
-    "installed macOS 26.6.2 remoted NCM remote_address derivation",
+    "supervised bridgeOS MLDv2 source address observed on the T2 NCM wire",
 )
 # Deliberately remains false until a supervised passive-directory experiment.
 LIVE_DIRECTORY_CAPTURE_ENABLED = False

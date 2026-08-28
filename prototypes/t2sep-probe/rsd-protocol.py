@@ -19,7 +19,8 @@ class RSDProtocolError(ValueError):
 
 
 RSD_PORT_CANDIDATE = 58783
-T2_NCM_MAC = bytes.fromhex("acde48001122")
+LINUX_CDC_DESCRIPTOR_MAC = bytes.fromhex("acde48001122")
+T2_NCM_MAC = bytes.fromhex("acde48334455")
 
 
 def ncm_link_local_address(mac: bytes, *, peer: bool) -> str:
@@ -35,7 +36,11 @@ def ncm_link_local_address(mac: bytes, *, peer: bool) -> str:
     return str(ipaddress.IPv6Address(b"\xfe\x80" + b"\0" * 6 + interface_id))
 
 
-T2_LINK_LOCAL_ADDRESS_CANDIDATE = ncm_link_local_address(T2_NCM_MAC, peer=True)
+LINUX_DESCRIPTOR_LINK_LOCAL_ADDRESS = ncm_link_local_address(
+    LINUX_CDC_DESCRIPTOR_MAC, peer=False)
+T2_LINK_LOCAL_ADDRESS_CANDIDATE = ncm_link_local_address(T2_NCM_MAC, peer=False)
+T2_EXPECTED_HOST_LINK_LOCAL_ADDRESS = ncm_link_local_address(T2_NCM_MAC,
+                                                              peer=True)
 HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 HTTP2_DATA = 0
 HTTP2_HEADERS = 1

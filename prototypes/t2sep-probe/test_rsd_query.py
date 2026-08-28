@@ -109,7 +109,7 @@ class RSDQueryTests(unittest.TestCase):
     def test_live_gate_precedes_interface_and_socket_work(self):
         self.assertFalse(query.LIVE_DIRECTORY_CAPTURE_ENABLED)
         self.assertEqual(query.CURRENT_T2_ADDRESS_VERIFICATION[0],
-                         "fe80::aede:48ff:fe00:11dd")
+                         "fe80::aede:48ff:fe33:4455")
         self.assertEqual(query.CURRENT_RSD_PORT_VERIFICATION[0], 58783)
         with mock.patch.object(query, "verify_t2_interface") as verify:
             with mock.patch.object(query.socket, "socket") as socket_constructor:

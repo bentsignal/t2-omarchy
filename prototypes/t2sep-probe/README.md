@@ -245,10 +245,13 @@ revalidated by the socket-free handoff instead of trusting a copied number.
 The compatibility wrapper still returns only the port. The live branch
 is checked before sysfs or socket access and remains mechanically disabled by
 `LIVE_DIRECTORY_CAPTURE_ENABLED = False`. The installed macOS 26.6.2 x86_64
-`remoted` proves listener port `58783` and derives the peer address from the
-NCM MAC. For this machine's `ac:de:48:00:11:22`, its algorithm produces local
-`fe80::aede:48ff:fe00:1122` and peer `fe80::aede:48ff:fe00:11dd`. Those facts
-are recorded separately in the endpoint evidence tuples. Even if the kill
+`remoted` contains a device-role listener for port `58783` and derives both
+link-local addresses from the device MAC. A supervised rebind capture proved
+this T2 transmits as `ac:de:48:33:44:55` /
+`fe80::aede:48ff:fe33:4455`; the same algorithm yields the expected host peer
+`fe80::aede:48ff:fe33:44aa`. The Linux CDC descriptor MAC
+`ac:de:48:00:11:22` is recorded separately and is not used to infer the T2
+endpoint. Even if the kill
 switch is deliberately changed, both source gates, two CLI gates, exact internal
 T2 USB/PCI ancestry, carrier, a maximum five-second deadline, and the
 transcript validator's byte/frame limits must all pass.
@@ -267,8 +270,8 @@ service, and passes the resulting port directly into the plan without exposing
 a caller-controlled value. It combines that result with a validated interface
 index to build the current link-local endpoint and bounded BridgeXPC HELO plus
 read-only method-0 and method-1 frames. It deliberately uses the current
-RSD-derived T2 address—not the different Catalina address in the legacy
-fixed-port runner—and contains no socket API. Its tests also caught and closed
+wire-observed T2 address, which agrees with the Catalina address in the legacy
+fixed-port runner, and contains no socket API. Its tests also caught and closed
 an encoder asymmetry: locally generated HELO strings now obey the same NUL and
 byte-length rules as received HELO strings.
 
