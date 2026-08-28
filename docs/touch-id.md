@@ -260,9 +260,14 @@ installer does not expose them as ordinary Mach-O files.
 The x86_64 software-update ramdisk contains current
 `RemoteServiceDiscovery.framework` (`RemoteServiceDiscovery-131.120.2`) and
 `RemoteXPC.framework`. Its strings identify the `ncm-device`, `ncm-host`, and
-`bridge` transports and indicate that newer systems discover named services
-through `remoted`. They do not confirm Catalina's fixed BiometricKit port
-`52032` for the bridgeOS version currently installed on this machine.
+`bridge` transports. The current framework exposes named operations including
+`list_services`, `get_service`, and `check_service`; its client-side API sends
+those requests through `com.apple.remoted.control` and receives a connected
+service socket from `remoted`. In other words, the current host architecture
+delegates endpoint selection and connection setup to the daemon rather than
+publishing a fixed port in this framework. These artifacts do not confirm
+Catalina's fixed BiometricKit port `52032` for the bridgeOS version currently
+installed on this machine.
 
 The Sonoma payload was scanned one archive at a time in separate user scopes,
 each capped at 1 GiB RAM and 256 MiB swap. The only directly materialized
