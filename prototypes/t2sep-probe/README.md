@@ -413,9 +413,22 @@ contiguous zero-based candidate indices, one matching identity/OOL detail per
 candidate, a kernel summary whose counts match an independent replay through
 `DiscoveryTable`, usable `sbio`, and one later CPU-stop record. It rejects
 failure words, stale/mixed sessions, truncation, reordered or altered details,
-summary disagreement, and transport-error candidate bits. Build and review
-this runner without executing it until a privileged hardware test is
-explicitly intended.
+summary disagreement, and transport-error candidate bits.
+
+The first privileged run was performed after a true cold boot on 2026-08-28.
+CPU start succeeded, both MSI vectors fired once, and the control NOP returned
+the exact validated acknowledgement in 10 ms. The following one-second passive
+window contained zero endpoint advertisements, so the kernel reported
+`records=0 identities=0 sbio=no limits=no result=-11`, stopped the CPU, freed
+both vectors, restored PCI state, and unloaded. This clean negative result
+means OOL capture remains gated off. It also corrects the earlier expectation
+that a NOP necessarily triggers discovery: the recovered x86_64 code defines
+the `0xfd` receiver but does not show the NOP as a discovery request.
+
+The offline verifier ignores the kernel's module-wide unsigned-module warning
+(`module verification failed`) because it occurs before the device probe and
+does not describe transport failure. Device-scoped failures and unsuccessful
+discovery summaries remain fatal.
 
 The kernel prototype now contains a separate, default-off acknowledgement
 capture stage for control opcodes 2 and 3. It is deliberately not exposed by

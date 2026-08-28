@@ -71,6 +71,12 @@ def verify_log(text: str) -> VerificationResult:
     for line in text.splitlines():
         if "t2sep_probe" not in line:
             continue
+        # The kernel emits this module-wide warning before probe() and without
+        # a PCI device prefix when a locally built module is unsigned.  It is
+        # not a transport/probe failure and must not mask the bounded session's
+        # own result.  All device-scoped "failed" records remain fatal below.
+        if "t2sep_probe: module verification failed:" in line:
+            continue
         if FAILURE_WORDS.search(line):
             raise VerificationError(f"probe log contains a failure: {line.strip()}")
         if "control NOP response passed strict validation" in line:

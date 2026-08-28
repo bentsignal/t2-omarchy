@@ -1183,6 +1183,31 @@ mounted read-write and no new transport errors appeared during capture or
 verification. This completes the required rollback checkpoint before bounded
 SEP endpoint discovery; it does not by itself back up SEP anti-replay state.
 
+The bounded discovery collector was then run after a verified full cold boot
+on 2026-08-28. It established the direct transport again: CPU start completed,
+MSI inbox and outbox vectors each fired once, and the control NOP produced the
+strictly validated response in 10 ms. No `0xfd` advertisement arrived during
+the one-second passive collection window:
+
+```text
+bounded discovery complete: records=0 identities=0 sbio=no limits=no result=-11
+MSI observations: vector0=1 vector1=1
+```
+
+Cleanup completed: the Apple CPU-stop value was issued, PCI command state was
+restored, both MSI vectors were freed, and no driver remained bound. Therefore
+the separately gated OOL-registration experiment was not entered. This rules
+out the simple model that CPU start plus a control NOP causes T2 to replay its
+dynamic service table. It does not prove that endpoint `0xfd` can never emit;
+the driver may need to be present during an earlier SEP lifecycle transition,
+or the Intel/T2 biometric path may not use this dynamic generic-transfer route
+at all. The latter is consistent with the absence of an x86_64
+`AppleSEPGenericTransfer` in the inspected Catalina and Sonoma artifacts and
+with the independently recovered network BridgeXPC biometric path. Future
+direct-SEP work must recover a demonstrated lifecycle trigger before another
+write; it must not guess a discovery command or bypass the successful-
+discovery gate on OOL DMA registration.
+
 ## Useful baseline commands
 
 ```bash

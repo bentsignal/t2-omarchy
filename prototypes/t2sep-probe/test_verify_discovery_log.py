@@ -37,6 +37,18 @@ class DiscoveryLogVerifierTests(unittest.TestCase):
         result = verifier.verify_log(valid_log())
         self.assertEqual(result, verifier.VerificationResult(2, 1, (4, 65, 1, 75)))
 
+    def test_ignores_unsigned_module_warning_but_not_device_failure(self):
+        warning = ("Aug 27 23:00:00 intelmac kernel: t2sep_probe: module "
+                   "verification failed: signature and/or required key missing")
+        result = verifier.verify_log(warning + "\n" + valid_log())
+        self.assertEqual(result.records, 2)
+        with self.assertRaisesRegex(verifier.VerificationError, "failure"):
+            verifier.verify_log(valid_log().replace(
+                line("bounded discovery complete"),
+                line("bounded Apple transport probe failed") + "\n" +
+                line("bounded discovery complete"),
+            ))
+
     def test_rejects_missing_or_duplicate_lifecycle_events(self):
         original = valid_log()
         cases = (
