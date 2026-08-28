@@ -248,6 +248,35 @@ Its default mode emits offline fixtures only. The gated path verifies the
 exact internal USB/PCI ancestry and carrier, sets a maximum five-second socket
 deadline, caps every body at 64 KiB, consumes at most four frames (to permit a
 peer HELO/no-op), sends only method `0`, and validates the two-number reply.
+
+### Sonoma cross-check and remaining endpoint gap
+
+The official Sonoma 14.8.9 (`23J631`) InstallAssistant was also inspected
+offline. Its post-install BOM confirms a 1.4 MB `usr/libexec/biometrickitd`
+and the BridgeXPC and EmbeddedOSSupportHost framework stubs. The framework
+executables themselves are zero-length dyld-shared-cache placeholders, so the
+installer does not expose them as ordinary Mach-O files.
+
+The x86_64 software-update ramdisk contains current
+`RemoteServiceDiscovery.framework` (`RemoteServiceDiscovery-131.120.2`) and
+`RemoteXPC.framework`. Its strings identify the `ncm-device`, `ncm-host`, and
+`bridge` transports and indicate that newer systems discover named services
+through `remoted`. They do not confirm Catalina's fixed BiometricKit port
+`52032` for the bridgeOS version currently installed on this machine.
+
+The Sonoma payload was scanned one archive at a time in separate user scopes,
+each capped at 1 GiB RAM and 256 MiB swap. The only directly materialized
+BiometricKit daemon records were its launchd plist and manual page. The daemon
+binary is an AppleArchive asset reconstructed from split payload/patch records,
+not a standalone file in any one `payload.NNN`. Standard YAA listing therefore
+cannot recover it, and `ipsw` delegates that reconstruction to Apple's macOS
+`aa` tool. This is a tooling boundary, not evidence that the binary is absent.
+
+Consequently the live runner remains fail-closed: `CURRENT_PORT_VERIFICATION`
+is unset. The next safe evidence source is a read-only copy of the installed
+Sonoma daemon/framework or a dyld shared-cache extraction performed in macOS.
+Until that confirms the current service discovery result, the Linux runner
+cannot open a socket and cannot fall through to a biometric command.
 It contains no method-3 or SBIO send path. Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
