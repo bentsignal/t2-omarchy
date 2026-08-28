@@ -147,6 +147,15 @@ packetless continuation pulls, response reassembly, and the shared per-direction
 sequence streams; request-upload completion alone is never reported as a
 completed transaction.
 
+The Intel mailbox envelope is modeled separately. KDK disassembly proves that
+the x86_64 manager copies three payload words and replaces the first word's low
+byte with the endpoint ID, while GenericTransfer constructs the adjacent
+64-bit sequence/command/type notification. The available evidence does not
+prove the source or value of the third payload word for Intel `sbio`.
+`envelope_endpoint_notification()` therefore requires that word explicitly and
+has no zero-valued default. It cannot silently turn the two-word notification
+into a guessed live FIFO record.
+
 The only SBIO-specific helper is the recovered initialization fixture:
 command `0x73`, flags zero, four-byte little-endian value `3`, and a strictly
 empty response transaction. No pairing, key-exchange, sequence-state,

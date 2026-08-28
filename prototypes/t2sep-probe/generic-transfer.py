@@ -49,6 +49,13 @@ class TransactionResult:
     response: bytes | None = None
 
 
+@dataclass(frozen=True)
+class EndpointRecord:
+    """Three payload words consumed by Intel AppleSEPManager's mailbox path."""
+
+    words: tuple[int, int, int]
+
+
 class SequenceTracker:
     """Validate the 16-bit per-direction notification sequence, including wrap."""
 
@@ -170,6 +177,45 @@ def decode_mailbox_notification(word: int) -> tuple[int, int, int, int]:
             or not 0 <= word <= 0xFFFFFFFFFFFFFFFF):
         raise ProtocolError("mailbox word is not an unsigned 64-bit value")
     return word >> 48, (word >> 16) & 0xFFFFFFFF, (word >> 8) & 0xFF, word & 0xFF
+
+
+def envelope_endpoint_notification(endpoint: int, notification_word: int,
+                                   third_word: int) -> EndpointRecord:
+    """Model Intel ``_sendMessageGated`` without guessing record word two.
+
+    The x86_64 manager replaces the low byte of the first qword with the
+    endpoint ID and copies the following dword. GenericTransfer's Intel source
+    for that following dword is not yet independently established, so callers
+    must provide it explicitly and no convenience default exists.
+    """
+    if (isinstance(endpoint, bool) or not isinstance(endpoint, int)
+            or not 1 <= endpoint <= 0x1F):
+        raise ProtocolError("endpoint is outside Intel's normal routed range")
+    if (isinstance(notification_word, bool) or not isinstance(notification_word, int)
+            or not 0 <= notification_word <= 0xFFFFFFFFFFFFFFFF):
+        raise ProtocolError("notification is not an unsigned 64-bit value")
+    if notification_word & 0xFF:
+        raise ProtocolError("notification low byte must be zero before endpoint insertion")
+    _u32("endpoint record third word", third_word)
+    routed = notification_word | endpoint
+    return EndpointRecord((routed & 0xFFFFFFFF, routed >> 32, third_word))
+
+
+def decode_endpoint_notification(record: EndpointRecord,
+                                 expected_endpoint: int) -> tuple[int, int, int, int]:
+    if not isinstance(record, EndpointRecord):
+        raise ProtocolError("endpoint notification requires an EndpointRecord")
+    if len(record.words) != 3:
+        raise ProtocolError("endpoint record must contain exactly three words")
+    for index, word in enumerate(record.words):
+        _u32(f"endpoint record word {index}", word)
+    if (isinstance(expected_endpoint, bool) or not isinstance(expected_endpoint, int)
+            or not 1 <= expected_endpoint <= 0x1F):
+        raise ProtocolError("expected endpoint is outside Intel's routed range")
+    if record.words[0] & 0xFF != expected_endpoint:
+        raise ProtocolError("endpoint record is routed to a different endpoint")
+    notification = ((record.words[1] << 32) | record.words[0]) & ~0xFF
+    return decode_mailbox_notification(notification)
 
 
 def decode_generic_notification(word: int) -> Notification:

@@ -48,6 +48,26 @@ class GenericTransferTests(unittest.TestCase):
         self.assertEqual(word, 0x123489ABCDEFFC00)
         self.assertEqual(gt.decode_mailbox_notification(word), (0x1234, 0x89ABCDEF, 0xFC, 0))
 
+    def test_intel_endpoint_envelope_requires_explicit_third_word(self):
+        word = gt.encode_mailbox_notification(0x1234, 0x89ABCDEF)
+        record = gt.envelope_endpoint_notification(8, word, 0xA5A5A5A5)
+        self.assertEqual(record.words, (0xCDEFFC08, 0x123489AB, 0xA5A5A5A5))
+        self.assertEqual(gt.decode_endpoint_notification(record, 8),
+                         (0x1234, 0x89ABCDEF, 0xFC, 0))
+
+    def test_intel_endpoint_envelope_fails_closed(self):
+        word = gt.encode_mailbox_notification(1, 0x73)
+        for endpoint in (0, 0x20, True):
+            with self.assertRaises(gt.ProtocolError):
+                gt.envelope_endpoint_notification(endpoint, word, 0)
+        with self.assertRaises(gt.ProtocolError):
+            gt.envelope_endpoint_notification(8, word | 1, 0)
+        with self.assertRaises(gt.ProtocolError):
+            gt.envelope_endpoint_notification(8, word, 0x100000000)
+        record = gt.envelope_endpoint_notification(8, word, 0)
+        with self.assertRaises(gt.ProtocolError):
+            gt.decode_endpoint_notification(record, 9)
+
     def test_rejects_mailbox_overflow(self):
         with self.assertRaises(gt.ProtocolError): gt.encode_mailbox_notification(0x10000, 0)
 

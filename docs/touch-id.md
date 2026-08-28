@@ -504,6 +504,33 @@ The strict notification decoder additionally requires a zero low byte and one
 of the four recovered generic-transfer types. A separate sequence tracker can
 reject skipped, repeated, or backward 16-bit sequence values while permitting
 the defined wrap from `0xffff` to zero.
+
+The Intel endpoint envelope is now separated from that architecture-neutral
+notification. In the macOS 14.5 KDK x86_64 `AppleSEPManager`,
+`AppleSEPEndpoint::sendMessage` at `0x6204` forwards the endpoint index and
+record pointer to `AppleSEPManager::sendMessage` at `0x33fe`.
+`_sendMessageGated` at `0x3458` copies a qword plus the following dword, clears
+the qword's low byte, inserts the endpoint ID there, and passes the resulting
+12-byte record to `AppleSEPIntelIOP::postMailbox`. Separately, arm64e
+`AppleSEPGenericTransfer::_gt_send_transact_message` at `0x4090` proves the
+64-bit sequence/command/type value, and `sendRawMessage` at `0x68bc` supplies
+that value through the endpoint API. The Intel GenericTransfer provenance of
+the following dword is not independently established by the available slice.
+
+`envelope_endpoint_notification()` therefore models the proven endpoint-byte
+insertion but requires its third word as an explicit argument with no default.
+It validates the normal routed endpoint range and refuses a notification whose
+low byte is already occupied. This deliberately prevents the kernel prototype
+from assuming that FIFO word two is zero merely because the recovered 64-bit
+notification has no field for it.
+
+The locally extracted Catalina `InstallESD` root and the Sonoma boot kernel
+collection contain no separate x86_64 `AppleSEPGenericTransfer` fileset entry
+from which to recover that third word. The Sonoma boot collection contains
+`AppleSEPManager` but not `AppleMesaSEPDriver`; the latter appears only as a
+string/personality reference there. The available KDK GenericTransfer slice is
+arm64e. Thus zero remains plausible but unproved, and kernel SBIO initialization
+stays intentionally unwired pending either an Intel binary or a bounded trace.
 For inbound data, the mailbox command must also equal the command in the DMA
 packet header. Error notification `0xff` uses word four (byte offset 16) of a
 buffer larger than the common header as its 32-bit status. Both rules are now
@@ -605,7 +632,9 @@ and passes the outbound and inbound objects to two different
 does `getEndpoint()` consider the channel usable; it waits for the endpoint's
 enabled state before returning it to `transact()`. Linux must reproduce that
 ownership and teardown contract rather than merely DMA-map two allocations and
-send their addresses. The current prototype intentionally has no DMA path.
+send their addresses. The current prototype has only the separately confirmed,
+default-off, bounded OOL-acknowledgement capture path; it still has no generic
+transfer or SBIO application-command DMA path.
 
 The earlier assumption that T2 requires an APFS-backed GigaLocker before SBIO
 can appear came from Apple-silicon SEP work. The universal macOS 14.5 KDK shows
