@@ -289,6 +289,38 @@ machine's newer bridgeOS, the connection function is mechanically disabled in
 source. A current macOS binary or successful-system trace must confirm that
 the named BiometricKit service still owns that port before enabling it.
 
+There is now a second, explicitly candidate transport model for that next
+capture. Two independent open implementations of Apple's modern Remote Service
+Discovery protocol identify TCP port `58783`; pymobiledevice3 attributes it to
+`-[RSDRemoteNCMDeviceDevice createPortListener]`, while go-ios implements the
+same HTTP/2/RemoteXPC directory handshake. The inspected revisions were
+pymobiledevice3 `a6bd794e0d8a` and go-ios `ced7e53d94a2`. Their shared wire
+constants are:
+
+```text
+HTTP/2 connection preface: PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n
+RemoteXPC wrapper magic:   0x29b00b92
+XPC object magic/version:  0x42133742 / 5
+root/reply streams:        1 / 3
+candidate RSD port:        58783
+```
+
+`rsd-protocol.py` implements only this offline candidate handshake, a bounded
+subset of the XPC object codec, strict HTTP/2 frame boundaries, and extraction
+of one named service port from a decoded directory. Its encoder output was
+checked byte-for-byte against pymobiledevice3 for the handshake and every
+supported object type; the complete frame sequence was parsed independently
+with `hyperframe`. The decoder caps wrapper bodies, strings, blobs, collection
+sizes, and nesting; rejects duplicate keys, unknown types/flags, noncanonical
+padding and booleans, surplus bytes, malformed ports, and unexpected directory
+shapes.
+
+This does **not** establish that T2 bridgeOS exposes its `remoted` listener on
+`58783`, nor that its directory advertises `com.apple.eos.BiometricKit`.
+Neither the candidate codec nor any existing runner connects to that port. A
+future live experiment may only become possible after the installed Sonoma
+artifacts or passive network evidence confirms this specific T2 route.
+
 ## SBIO and the Intel xART split
 
 Static analysis of `AppleMesaSEPDriver` and `AppleSEPGenericTransfer` confirms

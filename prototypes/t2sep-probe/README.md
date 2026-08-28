@@ -143,7 +143,7 @@ out-of-range chunks. Run both offline suites with:
 
 ```bash
 python -m unittest test_decode_message.py test_generic_transfer.py \
-  test_bridge_protocol.py test_bridge_query.py
+  test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py
 ```
 
 `bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
@@ -165,6 +165,15 @@ T2 interface has a scoped link-local configuration and a live passive query is
 explicitly intended. Its connection path is additionally hard-disabled in
 source until port `52032`, currently proven only from Catalina 19H15, is
 verified against the newer bridgeOS installed on this machine.
+
+`rsd-protocol.py` models the newer `remoted` directory route as an offline
+candidate only. Independent implementations agree on HTTP/2 plus RemoteXPC
+framing and candidate RSD port `58783`; the local encoder has been checked
+byte-for-byte against one of them. The module can encode the passive directory
+handshake and strictly decode a named advertised service port, but contains no
+socket calls. Port `58783` and the presence of `com.apple.eos.BiometricKit`
+remain unverified for this T2 bridgeOS, so this codec is not wired into
+`bridge-query.py` and does not weaken its hard live gate.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,
