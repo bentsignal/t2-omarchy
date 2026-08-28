@@ -740,6 +740,35 @@ delivery but outside BridgeXPC's HELO state machine—most likely the exact RSD
 service handoff context or the current daemon's message/reply path—not a
 missing Linux socket mark.
 
+A fresh same-boot run after the current-firmware recovery reconfirmed the
+boundary on a newly advertised service port. Packet metadata showed distinct
+119-byte client-HELO and 62-byte method-zero segments, both acknowledged by
+the T2, followed by its 117-byte HELO and no application reply. Sending method
+zero only after first receiving the server HELO also timed out, so the client
+HELO cannot be poisoning the stream. A 250 ms post-HELO delay ruled out the
+small interval between BridgeXPC listener activation and `bkremoted` installing
+its accepted-connection event handler.
+
+Two remaining peer-visible socket differences from the successful macOS boot
+were tested independently and restored immediately. Raising the T2 interface
+MTU from Linux's 1500 to macOS's observed 16000 did not change method zero.
+Binding the directory and service sockets to macOS's recorded source ports
+49153 and 49174 likewise did not change it. The T2 continued to acknowledge
+the request and send its HELO in every case.
+
+The exact current bridgeOS 10.6 service definition and `remoted` binary were
+then recovered read-only from the same IPSW. The launchd definition exposes
+`com.apple.eos.BiometricKit` with `UsesRemoteXPC=false`; its entitlement is a
+host-side local-client check. Current bridgeOS `remoted` source version
+219.160.4 creates a raw service listener, and its
+`shouldExposeRemoteService:` implementation returns true unconditionally.
+The service listener is therefore not waiting for an additional RemoteXPC
+message on the service socket. The next bounded runtime discriminator is a
+true power-off/cold start, because ordinary macOS-to-Linux reboots do not fully
+remove T2 power. If that still fails, further progress requires targeted
+successful-path observation from macOS rather than another guessed Linux
+application message.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

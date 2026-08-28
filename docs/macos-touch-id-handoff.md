@@ -9,12 +9,16 @@
 > The exact current `23P6068` BridgeXPC 39 has now been recovered from Apple's
 > iBridge2,14 restore IPSW. It confirms that peer HELO is only decoded/logged,
 > never gates state, and kind-2 messages dispatch immediately. The next task is
-> a narrow comparison with the already successful
-> macOS boot connection; do not repeat enrollment or broad biometric captures.
+> a narrow comparison with the already successful macOS boot connection; do
+> not repeat enrollment or broad biometric captures. Current `bkremoted` also
+> proves method zero unconditionally returns `[0, 3]`. Linux has additionally
+> ruled out client HELO, accept-handler timing, MTU 1500 versus 16000, and the
+> recorded macOS source ports. Before returning to macOS, perform one true
+> power-off/cold Linux boot and repeat only the coupled method-zero query.
 
 Give the macOS Codex session this exact instruction:
 
-> Continue from `1ede359` or later. Read this file, `docs/touch-id.md`, and
+> Continue from `f668e66` or later. Read this file, `docs/touch-id.md`, and
 > `docs/macos-touch-id-findings.md`. First locate the private packet capture and
 > logs from the already successful boot-time BiometricKit connection; do not
 > put raw pcaps, serials, UUIDs, or fingerprint data in git. Isolate the TCP flow
