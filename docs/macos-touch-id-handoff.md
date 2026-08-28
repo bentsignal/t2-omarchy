@@ -4,13 +4,16 @@
 > of MultiverseSupport's socket setup (`AF_INET6`, TCP, nonblocking connect,
 > exact address/scope, and interface binding). The T2 still sends HELO but does
 > not answer the byte-exact method-zero request. Darwin's
-> `SO_INTCOPROC_ALLOW` has no Linux equivalent. Commit `c11696a` contains this
+> `SO_INTCOPROC_ALLOW` has no Linux equivalent. Historical bridgeOS 3.0
+> BridgeXPC has now also been recovered: it deserializes and logs peer HELO
+> without comparing fields or changing connection state, and immediately
+> dispatches kind-2 messages. Commit `1ede359` contains the verifier and this
 > result. The next task is a narrow comparison with the already successful
 > macOS boot connection; do not repeat enrollment or broad biometric captures.
 
 Give the macOS Codex session this exact instruction:
 
-> Continue from `c11696a` or later. Read this file, `docs/touch-id.md`, and
+> Continue from `1ede359` or later. Read this file, `docs/touch-id.md`, and
 > `docs/macos-touch-id-findings.md`. First locate the private packet capture and
 > logs from the already successful boot-time BiometricKit connection; do not
 > put raw pcaps, serials, UUIDs, or fingerprint data in git. Isolate the TCP flow
@@ -19,8 +22,11 @@ Give the macOS Codex session this exact instruction:
 > state if recoverable, exact frame sizes/hashes/order/timing for client HELO,
 > server HELO, method 0, and its reply, plus decoded non-private method status
 > and bridge version. Use `macos-bridge-wire-compare.py` for the client frames.
-> Determine whether the successful connection has any bytes or TCP transition
-> between HELO and method 0 that Linux lacks. If the old private capture is
+> Determine whether the successful connection has any bytes, socket metadata,
+> or TCP transition between HELO and method 0 that Linux lacks. Pay particular
+> attention to evidence attributable to Darwin's `SO_INTCOPROC_ALLOW`; do not
+> spend time proposing HELO JSON-field negotiation, because the recovered
+> bridgeOS receiver has no such gate. If the old private capture is
 > insufficient, make one narrow boot capture that stops immediately after the
 > automatic bridge-version reply; do not enroll, match, touch the sensor,
 > disable SIP, or capture later biometric traffic. Add only sanitized evidence,
