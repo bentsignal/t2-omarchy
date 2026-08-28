@@ -37,7 +37,13 @@ class Notification:
 @dataclass(frozen=True)
 class OutboundRecord:
     notification_word: int
-    packet: bytes
+    packet: bytes | None
+
+
+@dataclass(frozen=True)
+class TransactionResult:
+    outbound: OutboundRecord | None = None
+    response: bytes | None = None
 
 
 class SequenceTracker:
@@ -46,7 +52,7 @@ class SequenceTracker:
     def __init__(self):
         self.previous: int | None = None
 
-    def accept(self, notification: Notification) -> None:
+    def validate(self, notification: Notification) -> None:
         if not isinstance(notification, Notification):
             raise ProtocolError("sequence tracker requires a Notification")
         if (isinstance(notification.sequence, bool)
@@ -59,6 +65,9 @@ class SequenceTracker:
             raise ProtocolError("notification has an unsupported message type")
         if self.previous is not None and notification.sequence != (self.previous + 1) & 0xFFFF:
             raise ProtocolError("notification sequence skipped, repeated, or went backwards")
+
+    def accept(self, notification: Notification) -> None:
+        self.validate(notification)
         self.previous = notification.sequence
 
 
@@ -249,6 +258,11 @@ class OutboundTransaction:
         self.complete = self._offset == len(self._payload)
         return OutboundRecord(word, packet)
 
+    def _emit_notification(self, message_type: int) -> OutboundRecord:
+        word = encode_mailbox_notification(self._next_sequence, self.command, message_type)
+        self._next_sequence = (self._next_sequence + 1) & 0xFFFF
+        return OutboundRecord(word, None)
+
     def first(self) -> OutboundRecord:
         if self._started:
             raise ProtocolError("first outbound packet was already emitted")
@@ -267,6 +281,76 @@ class OutboundTransaction:
             raise ProtocolError("continuation request changed transaction command")
         self.requests.accept(notification)
         return self._emit(MESSAGE_NEXT_IN)
+
+
+class TransactionSession:
+    """Couple one host request with its SEP response, entirely offline."""
+
+    def __init__(self, request: bytes, command: int, flags: int,
+                 send_capacity: int, maximum_response: int,
+                 initial_sequence: int = 0):
+        self.outbound = OutboundTransaction(
+            request, command, flags, send_capacity, initial_sequence)
+        self.command = command
+        self.inbound = Reassembler(maximum_response)
+        self.peer_sequence = SequenceTracker()
+        self.started = False
+        self.complete = False
+
+    def start(self) -> OutboundRecord:
+        if self.started:
+            raise ProtocolError("transaction session was already started")
+        self.started = True
+        return self.outbound.first()
+
+    def accept(self, notification_word: int, raw: bytes | None = None) -> TransactionResult:
+        if not self.started:
+            raise ProtocolError("transaction session has not started")
+        if self.complete:
+            raise ProtocolError("transaction session received data after completion")
+        notification = decode_generic_notification(notification_word)
+
+        if notification.message_type == MESSAGE_NEXT_OUT:
+            if raw is not None:
+                raise ProtocolError("0xfe continuation request must not carry packet bytes")
+            if self.outbound.complete:
+                raise ProtocolError("SEP requested outbound data after request completion")
+            if notification.command != self.command:
+                raise ProtocolError("continuation request changed transaction command")
+            self.peer_sequence.accept(notification)
+            # The session owns the peer-wide sequence tracker.  Emit directly
+            # after all request validation so the narrower helper cannot track
+            # only the 0xfe subset as if it were a separate wire stream.
+            return TransactionResult(self.outbound._emit(MESSAGE_NEXT_IN))
+
+        if notification.message_type == MESSAGE_ERROR:
+            if notification.command != self.command:
+                raise ProtocolError("error notification changed transaction command")
+            if raw is None:
+                raise ProtocolError("error notification is missing packet bytes")
+            code = decode_error_code(raw)
+            self.peer_sequence.accept(notification)
+            raise RemoteError(code)
+
+        if notification.message_type not in (MESSAGE_FIRST, MESSAGE_NEXT_IN):
+            raise ProtocolError("unsupported transaction-session notification")
+        if not self.outbound.complete:
+            raise ProtocolError("SEP response began before request upload completed")
+        if raw is None:
+            raise ProtocolError("response notification is missing packet bytes")
+        decoded_notification, packet = decode_notified_packet(notification_word, raw)
+        if packet.command != self.command:
+            raise ProtocolError("response command does not match request command")
+        # Validate sequence before mutating the reassembler, then commit the
+        # tracker only after packet validation succeeds.
+        self.peer_sequence.validate(decoded_notification)
+        response = self.inbound.add(decoded_notification.message_type, raw)
+        self.peer_sequence.accept(decoded_notification)
+        if response is not None:
+            self.complete = True
+            return TransactionResult(response=response)
+        return TransactionResult(
+            outbound=self.outbound._emit_notification(MESSAGE_NEXT_OUT))
 
 
 def main() -> None:

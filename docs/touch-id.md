@@ -449,6 +449,20 @@ a skipped/repeated peer sequence, and every request after completion. The
 planner returns immutable packet and notification bytes and has no hardware
 I/O path.
 
+Apple does not signal `transact()` when request writing finishes:
+`_gt_transfer_writing_complete` is a no-op. The waiter is signaled only after
+the response reassembler reaches its declared total (or the error callback
+stores a status). This means a Linux caller must treat upload completion and
+transaction completion as different states. `TransactionSession` now couples
+those states and uses one peer sequence tracker across `0xfe` upload pulls,
+`0xfc`/`0xfd` response packets, and `0xff` errors. For every incomplete
+response packet it emits a packetless `0xfe` pull from the same host sequence
+stream used by request packets. It rejects a response before request upload is
+complete, a response command different from the request, missing or unexpected
+DMA bytes, cross-type sequence gaps, continuation after either half completes,
+and malformed records before they can mutate reassembly state. This remains a
+pure codec/state model, not an executable transport.
+
 The passive discovery model and the not-yet-run kernel collector now enforce
 the same stricter table grammar: exactly four 32-bit words; discovery endpoint
 `0xfd`; zero tag/reserved fields; no transport error/fatal flags; service IDs

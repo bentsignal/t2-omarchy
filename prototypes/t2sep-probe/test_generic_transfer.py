@@ -203,6 +203,73 @@ class GenericTransferTests(unittest.TestCase):
         record = gt.OutboundTransaction(source, 1, 0, 64).first()
         self.assertEqual(gt.decode_packet(record.packet).payload, b"abc")
 
+    def test_transaction_session_couples_upload_and_response_sequences(self):
+        session = gt.TransactionSession(b"abcdef", 0x73, 0, 32, 16, 0xFFFF)
+        first = session.start()
+        self.assertEqual(gt.decode_mailbox_notification(first.notification_word),
+                         (0xFFFF, 0x73, gt.MESSAGE_FIRST, 0))
+        self.assertEqual(gt.decode_packet(first.packet).payload, b"abcd")
+
+        upload = session.accept(
+            gt.encode_mailbox_notification(20, 0x73, gt.MESSAGE_NEXT_OUT))
+        self.assertEqual(gt.decode_mailbox_notification(upload.outbound.notification_word),
+                         (0, 0x73, gt.MESSAGE_NEXT_IN, 0))
+        self.assertEqual(gt.decode_packet(upload.outbound.packet).payload, b"ef")
+
+        response_first = gt.Packet(6, 0, 0, 0x73, b"wxyz").encode()
+        request_more = session.accept(
+            gt.encode_mailbox_notification(21, 0x73, gt.MESSAGE_FIRST), response_first)
+        self.assertIsNone(request_more.response)
+        self.assertIsNone(request_more.outbound.packet)
+        self.assertEqual(gt.decode_mailbox_notification(
+            request_more.outbound.notification_word),
+            (1, 0x73, gt.MESSAGE_NEXT_OUT, 0))
+
+        response_last = gt.Packet(6, 4, 0, 0x73, b"12").encode()
+        finished = session.accept(
+            gt.encode_mailbox_notification(22, 0x73, gt.MESSAGE_NEXT_IN), response_last)
+        self.assertEqual(finished.response, b"wxyz12")
+        self.assertIsNone(finished.outbound)
+        self.assertTrue(session.complete)
+
+    def test_transaction_session_rejects_early_response_and_late_request(self):
+        early = gt.TransactionSession(b"abcde", 7, 0, 32, 8)
+        early.start()
+        with self.assertRaisesRegex(gt.ProtocolError, "before request upload"):
+            early.accept(gt.encode_mailbox_notification(1, 7, gt.MESSAGE_FIRST),
+                         gt.Packet(1, 0, 0, 7, b"x").encode())
+
+        uploaded = gt.TransactionSession(b"x", 7, 0, 32, 8)
+        uploaded.start()
+        with self.assertRaisesRegex(gt.ProtocolError, "after request completion"):
+            uploaded.accept(gt.encode_mailbox_notification(1, 7, gt.MESSAGE_NEXT_OUT))
+
+    def test_transaction_session_rejects_cross_type_sequence_gaps_atomically(self):
+        session = gt.TransactionSession(b"abcde", 7, 0, 32, 8)
+        session.start()
+        session.accept(gt.encode_mailbox_notification(4, 7, gt.MESSAGE_NEXT_OUT))
+        packet = gt.Packet(4, 0, 0, 7, b"data").encode()
+        with self.assertRaisesRegex(gt.ProtocolError, "sequence"):
+            session.accept(gt.encode_mailbox_notification(6, 7, gt.MESSAGE_FIRST), packet)
+        self.assertEqual(session.inbound.data, b"")
+        self.assertEqual(session.accept(
+            gt.encode_mailbox_notification(5, 7, gt.MESSAGE_FIRST), packet
+        ).response, b"data")
+
+    def test_transaction_session_surfaces_errors_and_validates_context(self):
+        session = gt.TransactionSession(b"abcde", 7, 0, 32, 8)
+        with self.assertRaisesRegex(gt.ProtocolError, "not started"):
+            session.accept(gt.encode_mailbox_notification(1, 7, gt.MESSAGE_NEXT_OUT))
+        session.start()
+        with self.assertRaisesRegex(gt.ProtocolError, "must not carry"):
+            session.accept(gt.encode_mailbox_notification(1, 7, gt.MESSAGE_NEXT_OUT), b"")
+
+        raw = bytearray(29)
+        struct.pack_into("<I", raw, 16, 0xE00002C2)
+        with self.assertRaises(gt.RemoteError) as raised:
+            session.accept(gt.encode_mailbox_notification(1, 7, gt.MESSAGE_ERROR), bytes(raw))
+        self.assertEqual(raised.exception.code, 0xE00002C2)
+
     def test_strict_python_types_fail_with_protocol_errors(self):
         invalid_packets = (bytearray(28), "packet", None)
         for raw in invalid_packets:
