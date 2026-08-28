@@ -212,6 +212,44 @@ def encode_helo_frame(os_build: str, bridge_xpc_version: float,
     return encode_frame_header(FRAME_HELO, len(body)) + body
 
 
+def decode_helo_body(body: bytes, *, max_body: int) -> dict[str, object]:
+    """Strictly validate the four-key BridgeXPC HELO JSON object."""
+    if not isinstance(body, bytes):
+        raise BridgeProtocolError("HELO body must be bytes")
+    if isinstance(max_body, bool) or not isinstance(max_body, int) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    if len(body) > max_body:
+        raise BridgeProtocolError("HELO exceeds the body cap")
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                raise BridgeProtocolError("HELO contains a duplicate JSON key")
+            result[key] = item
+        return result
+
+    try:
+        value = json.loads(body.decode("utf-8"), object_pairs_hook=unique_object)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise BridgeProtocolError("HELO is not valid UTF-8 JSON") from error
+    expected = {"MaxSupportedProtocolVersion", "OSBuild",
+                "BridgeXPCVersion", "ProcessName"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise BridgeProtocolError("HELO does not have the exact expected keys")
+    if (type(value["MaxSupportedProtocolVersion"]) is not int
+            or value["MaxSupportedProtocolVersion"] != BRIDGE_PROTOCOL_VERSION):
+        raise BridgeProtocolError("HELO protocol version is unsupported")
+    for key, limit in (("OSBuild", 128), ("ProcessName", 256)):
+        if (not isinstance(value[key], str) or not value[key]
+                or len(value[key].encode("utf-8")) > limit or "\0" in value[key]):
+            raise BridgeProtocolError(f"HELO {key} is invalid")
+    version = value["BridgeXPCVersion"]
+    if (isinstance(version, bool) or not isinstance(version, (int, float))
+            or not math.isfinite(version) or version < 0):
+        raise BridgeProtocolError("HELO BridgeXPCVersion is invalid")
+    return value
+
+
 def encode_bridge_version_query_frame(*, max_body: int) -> bytes:
     """Encode the passive BiometricKit bridge-version request [0]."""
     if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:

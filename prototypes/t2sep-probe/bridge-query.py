@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import math
 from pathlib import Path
 import plistlib
 import socket
@@ -24,9 +25,8 @@ SPEC.loader.exec_module(protocol)
 
 BODY_CAP = 64 * 1024
 CONFIRMATION = "I_UNDERSTAND_THIS_OPENS_T2_BIOMETRIC_SERVICE"
-# Port 52032 is proven for Catalina 19H15, not yet for the newer bridgeOS
-# installed on this machine. Keep live execution mechanically disabled until a
-# current macOS binary or trace confirms the named service still owns it.
+# Must become (52032, nonempty-evidence-note) only after a current macOS binary
+# or trace confirms the named service still owns Catalina's port.
 CURRENT_PORT_VERIFICATION = None
 
 
@@ -62,10 +62,7 @@ def query_connected_socket(sock: socket.socket) -> tuple[int, int]:
         if header.kind == protocol.FRAME_NOOP:
             continue
         if header.kind == protocol.FRAME_HELO:
-            try:
-                body.decode("utf-8")
-            except UnicodeDecodeError as error:
-                raise QueryError("peer HELO is not UTF-8") from error
+            protocol.decode_helo_body(body, max_body=BODY_CAP)
             continue
         if header.kind == protocol.FRAME_MESSAGE:
             return protocol.decode_bridge_version_reply_body(body,
@@ -81,6 +78,10 @@ def _read_sysfs(path: Path) -> str:
 
 
 def verify_t2_interface(name: str) -> int:
+    if (not isinstance(name, str) or not name
+            or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+                   for character in name)):
+        raise QueryError("network interface name is invalid")
     base = Path("/sys/class/net") / name
     try:
         resolved = base.resolve(strict=True)
@@ -101,6 +102,14 @@ def verify_t2_interface(name: str) -> int:
 def live_query(interface: str, timeout: float) -> tuple[int, int]:
     if CURRENT_PORT_VERIFICATION is None:
         raise QueryError("live query disabled: verify BiometricKit's port on current bridgeOS")
+    verification = CURRENT_PORT_VERIFICATION
+    if (not isinstance(verification, tuple) or len(verification) != 2
+            or verification[0] != protocol.BIOMETRIC_KIT_PORT
+            or not isinstance(verification[1], str) or not verification[1]):
+        raise QueryError("live query disabled: malformed current-port verification")
+    if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout) or not 0 < timeout <= 5):
+        raise QueryError("timeout must be finite, positive, and no more than five seconds")
     ifindex = verify_t2_interface(interface)
     target = protocol.biometric_sockaddr(ifindex)
     with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:

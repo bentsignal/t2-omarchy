@@ -125,6 +125,34 @@ class BridgeEnvelopeTests(unittest.TestCase):
             "BridgeXPCVersion": 37.0,
             "ProcessName": "probe",
         })
+        self.assertEqual(
+            bridge.decode_helo_body(frame[16:], max_body=512)["OSBuild"],
+            "19H15",
+        )
+
+    def test_helo_decoder_fails_closed(self):
+        valid = {
+            "MaxSupportedProtocolVersion": 1,
+            "OSBuild": "19H15",
+            "BridgeXPCVersion": 37.0,
+            "ProcessName": "peer",
+        }
+        malformed = [
+            b"bad",
+            json.dumps({**valid, "extra": 1}).encode(),
+            json.dumps({**valid, "MaxSupportedProtocolVersion": True}).encode(),
+            json.dumps({**valid, "MaxSupportedProtocolVersion": 1.0}).encode(),
+            json.dumps({**valid, "OSBuild": ""}).encode(),
+            json.dumps({**valid, "BridgeXPCVersion": -1}).encode(),
+            json.dumps({**valid, "ProcessName": "x" * 257}).encode(),
+            (b'{"MaxSupportedProtocolVersion":1,"OSBuild":"19H15",'
+             b'"BridgeXPCVersion":37,"ProcessName":"a","ProcessName":"b"}'),
+        ]
+        for body in malformed:
+            with self.assertRaises(bridge.BridgeProtocolError):
+                bridge.decode_helo_body(body, max_body=1024)
+        with self.assertRaises(bridge.BridgeProtocolError):
+            bridge.decode_helo_body(json.dumps(valid).encode(), max_body=1)
 
     def test_passive_bridge_version_query_and_reply(self):
         frame = bridge.encode_bridge_version_query_frame(max_body=256)

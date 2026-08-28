@@ -166,6 +166,9 @@ T2 interface has a scoped link-local configuration and a live passive query is
 explicitly intended. Its connection path is additionally hard-disabled in
 source until port `52032`, currently proven only from Catalina 19H15, is
 verified against the newer bridgeOS installed on this machine.
+The source gate must be an exact port plus nonempty evidence tuple. Peer HELO
+JSON must have the recovered four keys and valid types; invalid interface names
+and nonfinite/out-of-range timeouts are rejected before sysfs or socket access.
 
 `rsd-protocol.py` models the newer `remoted` directory route as an offline
 candidate only. Independent implementations agree on HTTP/2 plus RemoteXPC

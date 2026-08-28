@@ -291,6 +291,10 @@ Because `52032` is currently proven from Catalina 19H15 rather than this
 machine's newer bridgeOS, the connection function is mechanically disabled in
 source. A current macOS binary or successful-system trace must confirm that
 the named BiometricKit service still owns that port before enabling it.
+The old runner now also requires an exact `(52032, nonempty evidence note)`
+source tuple, validates the peer's complete four-key HELO rather than accepting
+arbitrary UTF-8, rejects traversal-capable interface names and nonfinite
+timeouts, and proves all those gates run before sysfs or socket access.
 
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service
