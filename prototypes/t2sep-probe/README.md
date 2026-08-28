@@ -135,6 +135,16 @@ OOL page limits. Run its tests with:
 python -m unittest test_decode_message.py
 ```
 
+`generic-transfer.py` is a separate offline encoder/decoder for the recovered
+28-byte AppleSEPGenericTransfer framing and its 64-bit mailbox notification.
+It is not connected to the kernel prototype and cannot issue SEP commands.
+Its parser rejects bad versions, reserved bits, inconsistent lengths, and
+out-of-range chunks. Run both offline suites with:
+
+```bash
+python -m unittest test_decode_message.py test_generic_transfer.py
+```
+
 The next gated probe collects only passive discovery advertisements emitted
 after the validated NOP. It sends no discovery request. Collection is capped
 at 64 records and one second, requires endpoint `0xfd` opcode 0/1 records in

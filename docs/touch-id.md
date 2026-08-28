@@ -153,6 +153,23 @@ then uses generic-transfer message type `0xfc` for transactions. The first
 packet has a 28-byte header followed by request data. These details are now
 recovered well enough to implement the transport without guessing.
 
+Disassembly of `_gt_write_next_packet` gives the exact seven-word,
+little-endian header: protocol version (`1`), total transaction length, byte
+offset, flags, reserved zero, 32-bit command, and this packet's payload
+length. `_gt_send_transact_message` constructs the mailbox notification with
+a 16-bit sequence in bits 63–48, the same command in bits 47–16, the
+message type in bits 15–8, and zero in bits 7–0. The strict offline
+`generic-transfer.py` codec and tests capture these invariants and perform no
+device I/O.
+
+`AppleMesaSEPDriver::initSbioCommunication()` also establishes the first SBIO
+transaction in Apple's ordering: after generic-transfer setup, it sends
+command `0x73` with one little-endian 32-bit input value, `3`, and requests no
+reply payload. This resembles protocol-version initialization, but that
+meaning is not yet proven. It must not be sent live until passive `sbio`
+discovery, OOL limits, DMA registration lifetime, and completion semantics
+have all been validated.
+
 The earlier assumption that T2 requires an APFS-backed GigaLocker before SBIO
 can appear came from Apple-silicon SEP work. The universal macOS 14.5 KDK shows
 that this is an architecture split, not a common requirement. Its arm64e slice
