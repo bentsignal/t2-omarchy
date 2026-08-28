@@ -142,10 +142,20 @@ Its parser rejects bad versions, reserved bits, inconsistent lengths, and
 out-of-range chunks. Its coupled inbound state machine additionally binds the
 16-bit sequence, mailbox and packet commands, message type, bounded
 reassembly, completion state, and remote-error record; it rejects every record
-after completion. Run both offline suites with:
+after completion. Its duplex transaction session also couples request upload,
+packetless continuation pulls, response reassembly, and the shared per-direction
+sequence streams; request-upload completion alone is never reported as a
+completed transaction.
+
+`intel-fifo.py` independently models the x86_64 driver's exact MMIO action
+order without opening or mapping a device. A receive plan is four ordered reads
+at `0x810..0x81c`. A post plan checks outbox-full, writes payload words 0..2,
+commits with a literal zero at `0x82c`, and finishes with the driver's status
+read at `0x10c`. It rejects host metadata in word 3 and received error/fatal
+flags. Run the offline suites with:
 
 ```bash
-python -m unittest test_decode_message.py test_generic_transfer.py \
+python -m unittest test_decode_message.py test_generic_transfer.py test_intel_fifo.py \
   test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py \
   test_rsd_query.py test_verify_discovery_log.py
 ```

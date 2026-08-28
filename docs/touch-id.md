@@ -118,6 +118,17 @@ register `0x20`, which is PCI BAR4. The mailbox methods then use this layout:
 | `0x8040` | transport interrupt mask/disable; Apple writes `0` |
 | `0x8048` | transport interrupt enable; Apple writes `1` |
 
+The x86_64 `_postMailboxGated` implementation does not copy an arbitrary
+128-bit host record. After confirming outbox bit 16 is clear, it writes only
+input words 0, 1, and 2 to `0x820`, `0x824`, and `0x828`; it always writes a
+literal zero to `0x82c`, then reads `0x10c` as the final ordered access. Receive
+checks inbox bit 17 and reads `0x810`, `0x814`, `0x818`, then `0x81c`. Bits 18
+and 19 of that received fourth word are error/fatal transport metadata rather
+than host payload. `intel-fifo.py` records this asymmetry as a pure MMIO-action
+planner and rejects full/empty state, a nonzero host fourth word, malformed
+u32 records, and received transport errors. It performs no mapping, polling,
+or I/O.
+
 This is a different PCIe FIFO presentation from the T8012/PongoOS mailbox
 offsets initially tested. The earlier all-zero reads at BAR4 `+0x4000` neither
 showed that the T2 was dead nor described this interface. The next experiment
