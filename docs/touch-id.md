@@ -143,7 +143,7 @@ probe then issued Apple's stop sequence, freed both vectors, restored the PCI
 command word, and unloaded. No biometric endpoint command or xART operation
 was involved.
 
-## SBIO and the storage prerequisite
+## SBIO and the Intel xART split
 
 Static analysis of `AppleMesaSEPDriver` and `AppleSEPGenericTransfer` confirms
 that built-in Touch ID is SEP endpoint `sbio` (`0x08`). The Apple driver asks
@@ -153,27 +153,33 @@ then uses generic-transfer message type `0xfc` for transactions. The first
 packet has a 28-byte header followed by request data. These details are now
 recovered well enough to implement the transport without guessing.
 
-SBIO is not expected to become available until xART is online. xART is the
-SEP's anti-replay store and is backed by a machine-specific GigaLocker `.gl`
-file on APFS-backed storage. The machine now has an Apple-created APFS
-container and a macOS-enrolled fingerprint, removing the earlier absence of
-Apple storage as a blocker. Linux still needs a safe xART implementation; the
-available forensic APFS reader explicitly does not support T2 encryption, so
-the presence of the GigaLocker file cannot yet be confirmed from Linux by
-mounting the macOS data volume.
+The earlier assumption that T2 requires an APFS-backed GigaLocker before SBIO
+can appear came from Apple-silicon SEP work. The universal macOS 14.5 KDK shows
+that this is an architecture split, not a common requirement. Its arm64e slice
+contains `AppleSEPXARTService`, `_gigalocker_state`, `gl_initialize`, and
+SEP-driven GigaLocker handling. The x86_64 slice contains none of them. Instead
+Intel `AppleSEPManager::start()` creates `AppleSEPXART` directly at fixed SEP
+endpoint `0x10`; its operations use bounded OOL buffers but have no AP-side
+GigaLocker service.
 
-Do not solve this by fabricating an xART response, registering DMA buffers and
-freeing them while SEP may retain their addresses, or sending guessed SBIO
-commands. A safe continuation needs the machine's xART volume/material (or a
-macOS Recovery-supported initialization of new xART state) preserved before
-Linux implements the endpoint.
+This distinction is confirmed on the enrolled machine. A read-only
+`apfsprogs` inventory of the verified APFS image found Data, Preboot, Recovery,
+System, Update, and VM volumes only. There is no XART-role volume in the
+container. Fingerprint enrollment nevertheless works in macOS, so Intel/T2
+enrollment state is not dependent on the Apple-silicon XART-volume design.
+Linux should not invent an APFS/GigaLocker service for this machine.
+
+The next question is therefore empirical and bounded: does the already-running
+T2 advertise `sbio` on passive discovery endpoint `0xfd` after the known-safe
+control NOP? Only after that record and its OOL limits are observed should DMA
+buffer registration be considered. Do not fabricate an xART response, free
+registered DMA while SEP may retain its address, or send guessed SBIO commands.
 
 ## Safety boundary
 
-Do not experiment with xART/gigalocker writes on this daily-driver machine.
-xART provides anti-replay storage used by the SEP. Public reverse-engineering
-notes warn that an incorrect write can invalidate protected state and lose
-FileVault-encrypted data. Also avoid:
+Do not experiment with xART or anti-replay writes on this daily-driver machine.
+The x86 path is not the Apple-silicon GigaLocker path, but an incorrect
+anti-replay operation can still invalidate protected state. Also avoid:
 
 - `/dev/mem` MMIO pokes;
 - binding the shared IOMMU group to VFIO;
