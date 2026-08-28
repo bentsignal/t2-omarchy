@@ -664,6 +664,27 @@ so the remaining mismatch is below `bkremoted` method dispatch—inside
 BridgeXPC's connection/HELO state or an equivalent current transport gate—not
 inside Touch ID initialization.
 
+The matching bridgeOS 3.0 BridgeXPC framework is now reconstructed from that
+same recovery dyld cache with corrected Mach-O section offsets. Its connection
+state machine is more permissive than the remaining hypothesis suggested:
+`-connected` changes state 2 to state 3, writes its own HELO, starts the read,
+and flushes queued messages. `-send:` queues only in states 1/2 and writes in
+state 3. On receive, frame kind 1 is mapped, deserialized by Foundation with
+option 4, and logged as the peer HELO; frame kind 2 goes to ordinary message
+processing. The kind-1 arm contains no HELO-field comparison and no connection
+state mutation before it rejoins the common read loop. The checksum-pinned
+`bridgeos-bridgexpc-evidence.py` verifier records the four exact instruction
+sequences against framework SHA-256
+`df97ee9ee6f37383303e153bc92f3528f1478fa1268f89b50c5e666c747c3b37`.
+
+This historical evidence removes another proposed application-layer gate:
+legacy BridgeXPC does not wait for, authenticate, or negotiate fields from the
+peer HELO before allowing normal messages. It does not prove that bridgeOS
+`23P6068` retained identical behavior. For the current machine, however, a
+silent method 0 after both sides have exchanged structurally valid frames is
+now even more specifically a current service/socket policy distinction, with
+Apple's unavailable `SO_INTCOPROC_ALLOW` marking the strongest known candidate.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

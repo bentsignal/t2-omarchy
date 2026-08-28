@@ -63,9 +63,10 @@ python tools/research/macos-biometric-command-evidence.py \
 `extract-legacy-dyld-image.py` reconstructs one named 32-bit Mach-O from the
 old unslid dyld-cache format used by bridgeOS 3 recovery firmware. It accepts
 only bounded tables/mappings/segments, requires one exact image-path match,
-supports only little-endian 32-bit Mach-O segments, and creates a new mode-0600
-output without overwriting. It exists because modern dyld-cache tooling rejects
-the cache magic `dyld_v1  armv7k`.
+supports only little-endian 32-bit Mach-O segments, rewrites each section's
+cache-relative file offset into the reconstructed image, and creates a new
+mode-0600 output without overwriting. It exists because modern dyld-cache
+tooling rejects the cache magic `dyld_v1  armv7k`.
 
 `bridgeos-bkremoted-evidence.py` verifies the extracted armv7k bridge daemon
 from bridgeOS 3.0 (`14Y910`). Its exact method-zero implementation stores
@@ -75,6 +76,19 @@ range covering methods 0 through 10. This proves the historical bridgeOS
 server has no enrollment, service-open, or method-10 prerequisite for method
 0; it does not claim that this old daemon is byte-identical to current
 bridgeOS.
+
+`bridgeos-bridgexpc-evidence.py` verifies the corresponding historical
+armv7k BridgeXPC framework. It pins the connection transition from state 2 to
+state 3 followed by `writeHELO`, `readMessage`, and `flushQueue`; the send
+dispatch that queues in states 1/2 and writes in state 3; and the receive
+dispatch for kind 1 HELO versus kind 2 ordinary messages. The HELO arm asks
+Foundation to deserialize the JSON with option 4 and logs the result, with no
+field comparison or state mutation before returning to the common read loop:
+
+```bash
+python tools/research/bridgeos-bridgexpc-evidence.py /path/to/BridgeXPC \
+  --expect-sha256 df97ee9ee6f37383303e153bc92f3528f1478fa1268f89b50c5e666c747c3b37
+```
 
 `macos-bridgexpc-evidence.py` verifies the current thin x86_64 BridgeXPC
 framework's exact HELO/message header loads, binary-plist format load, HELO

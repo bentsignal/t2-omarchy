@@ -83,6 +83,7 @@ def extract(data: bytes, image_path: str) -> bytes:
     if command_end > len(data):
         raise ExtractError("Mach-O load commands are truncated")
     segments = []
+    section_offset_patches = []
     output_size = 0
     for _ in range(command_count):
         if cursor + 8 > command_end:
@@ -95,11 +96,28 @@ def extract(data: bytes, image_path: str) -> bytes:
                 raise ExtractError("Mach-O segment command is truncated")
             vm_address, vm_size, file_offset, file_size = struct.unpack_from(
                 "<IIII", data, cursor + 24)
+            section_count = struct.unpack_from("<I", data, cursor + 48)[0]
+            if 56 + section_count * 68 > size:
+                raise ExtractError("Mach-O section table is truncated")
             if file_size > vm_size or file_offset + file_size > MAX_IMAGE:
                 raise ExtractError("Mach-O segment bounds are invalid")
             if file_size:
                 segments.append((vm_address, file_offset, file_size))
                 output_size = max(output_size, file_offset + file_size)
+            for section_index in range(section_count):
+                section = cursor + 56 + section_index * 68
+                section_address = struct.unpack_from("<I", data, section + 32)[0]
+                section_size = struct.unpack_from("<I", data, section + 36)[0]
+                section_type = struct.unpack_from("<I", data, section + 56)[0] & 0xff
+                if not vm_address <= section_address or section_size > \
+                        vm_address + vm_size - section_address:
+                    raise ExtractError("Mach-O section is outside its segment")
+                if section_size and section_type not in (1, 0xc, 0x12):
+                    corrected = file_offset + section_address - vm_address
+                    if corrected + section_size > file_offset + file_size:
+                        raise ExtractError("Mach-O section file range is invalid")
+                    section_offset_patches.append(
+                        (section - header_offset + 40, corrected))
         cursor += size
     if cursor != command_end or not segments or output_size > MAX_IMAGE:
         raise ExtractError("Mach-O segment layout is invalid")
@@ -107,6 +125,8 @@ def extract(data: bytes, image_path: str) -> bytes:
     for vm_address, file_offset, file_size in segments:
         source = cache_offset(vm_address, file_size)
         output[file_offset:file_offset + file_size] = data[source:source + file_size]
+    for patch_offset, corrected in section_offset_patches:
+        struct.pack_into("<I", output, patch_offset, corrected)
     return bytes(output)
 
 

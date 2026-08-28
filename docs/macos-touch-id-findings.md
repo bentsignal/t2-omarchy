@@ -317,6 +317,17 @@ server architecture would answer immediately once BridgeXPC dispatches the
 request. The current Linux silence is consequently evidence of a pre-dispatch
 BridgeXPC/transport-state mismatch rather than dormant biometric hardware.
 
+The matching historical BridgeXPC framework further narrows that pre-dispatch
+boundary. Its exact state transition writes HELO, begins reading, and flushes
+the request queue as soon as the TCP connection reaches state 2. Incoming
+frame kind 1 is deserialized as JSON and logged as HELO, while kind 2 is sent
+to ordinary message processing. No HELO field is compared and no state is
+changed in the kind-1 arm. The reconstructed framework hashes to
+`df97ee9ee6f37383303e153bc92f3528f1478fa1268f89b50c5e666c747c3b37`, and
+`bridgeos-bridgexpc-evidence.py` pins the relevant instruction sequences. This
+is bridgeOS 3.0 evidence, not proof of current `23P6068`, but it rules out a
+HELO-negotiation prerequisite in the recovered server design.
+
 The supported sysfs reauthorization path did force a broader re-enumeration:
 writing zero and then one to the exact device's `authorized` attribute caused
 all T2 virtual USB functions to enumerate again, and an exit trap verified the
