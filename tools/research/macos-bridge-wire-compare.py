@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import itertools
+import json
 from pathlib import Path
 import plistlib
 import sys
@@ -64,6 +66,16 @@ def _first_difference(left: bytes, right: bytes) -> int | None:
     return None if len(left) == len(right) else min(len(left), len(right))
 
 
+def _native_helo_order_variants(fields: dict[str, object]) -> set[bytes]:
+    """Return compact JSON frames for every Foundation dictionary key order."""
+    items = tuple(fields.items())
+    result = set()
+    for ordering in itertools.permutations(items):
+        body = json.dumps(dict(ordering), separators=(",", ":")).encode("utf-8")
+        result.add(bridge.encode_frame_header(bridge.FRAME_HELO, len(body)) + body)
+    return result
+
+
 def compare(helo_wire: bytes, query_wire: bytes, *, os_build: str,
             version: int | float, process_name: str) -> dict[str, object]:
     helo_body = _frame(helo_wire, bridge.FRAME_HELO)
@@ -79,11 +91,17 @@ def compare(helo_wire: bytes, query_wire: bytes, *, os_build: str,
     expected_helo = bridge.encode_helo_frame(
         os_build, version, process_name, max_body=CAP)
     expected_query = bridge.encode_bridge_version_query_frame(max_body=CAP)
+    expected_fields = bridge.decode_helo_body(
+        expected_helo[bridge.BRIDGE_FRAME_HEADER.size:], max_body=CAP)
+    native_order_variants = _native_helo_order_variants(expected_fields)
     return {
         "helo_size": len(helo_wire),
         "helo_sha256": hashlib.sha256(helo_wire).hexdigest(),
         "helo_fields": decoded_helo,
         "helo_exact": helo_wire == expected_helo,
+        "helo_fields_exact": decoded_helo == expected_fields,
+        "helo_native_order_variant": helo_wire in native_order_variants,
+        "helo_native_order_variant_count": len(native_order_variants),
         "helo_first_difference": _first_difference(helo_wire, expected_helo),
         "query_size": len(query_wire),
         "query_sha256": hashlib.sha256(query_wire).hexdigest(),

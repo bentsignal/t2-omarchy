@@ -1,13 +1,12 @@
 # macOS Codex handoff: T2 bridgeOS service activation
 
-> **Current handoff (2026-08-28):** Linux completed Multiverse discovery and
-> recovered the live BiometricKit port. A clean connection proves the service
-> is server-first: it immediately sends a 101-byte BridgeXPC 39 HELO identifying
-> `bkremoted` on bridgeOS `23P6068`. Linux validates that HELO and sends the
-> reconstructed 119-byte macOS client HELO plus method 0, but receives no
-> method reply. The next macOS task is a narrow exact-byte capture of the first
-> client HELO and first queued `[0]` request; do not repeat broad activation or
-> fingerprint captures.
+> **Current handoff (2026-08-28):** macOS Foundation reconstruction proves the
+> first `[0]` request is byte-exact. The 119-byte HELO has 24 valid native key-
+> order encodings because NSDictionary enumeration is process-seeded; it must
+> be validated semantically, not against one canonical byte string. The one
+> ordering used by the live `biometrickitd` process remains uncaptured, but key
+> order is not a sound explanation for the missing Linux reply. Continue from
+> the sanitized findings below; do not repeat broad biometric captures.
 
 Give the macOS Codex session this exact instruction:
 
@@ -30,6 +29,28 @@ Give the macOS Codex session this exact instruction:
 
 The older activation instruction below is retained as history and is already
 complete.
+
+## 2026-08-28 Foundation wire reconstruction
+
+Using the current macOS Foundation implementation, the first method-zero array
+serializes to a 46-byte binary plist. With the installed BridgeXPC 39 header,
+the complete request is exactly 62 bytes, byte-identical to
+`bridge-query.py`, and SHA-256
+`a60083fc2ec4be95418906235ac3024e9d01eb8661d82a34c2dea0bf3d0f4b1d`.
+
+The HELO's four fields and types are also correct, but native Foundation does
+not preserve the source dictionary's key order. Twenty-four fresh serializer
+runs produced 15 distinct compact-JSON orderings, all with a 103-byte body and
+119-byte frame. All 24 permutations are valid native encodings. The comparator
+now distinguishes field equality, exact bytes, and native-order membership.
+
+This rules out method-zero binary-plist serialization and any requirement for
+one canonical HELO key order. A later live macOS trace may record the current
+process's particular HELO ordering, but Linux should first investigate the
+connection state between receipt of the server-first HELO and release of the
+queued method request. It may test only semantically valid HELO encodings and
+the already exact method-zero frame; it still must not send method 3 or any
+biometric command.
 
 > Continue the T2 Touch ID Linux investigation from the current `main` branch.
 > Read `docs/touch-id.md`, `docs/macos-touch-id-findings.md`, and

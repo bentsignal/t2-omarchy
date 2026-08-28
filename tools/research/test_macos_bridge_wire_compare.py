@@ -1,4 +1,6 @@
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import plistlib
 import sys
@@ -23,9 +25,15 @@ class MacosBridgeWireCompareTests(unittest.TestCase):
         result = compare.compare(helo, query, os_build="25G83", version=39,
                                  process_name="biometrickitd")
         self.assertTrue(result["helo_exact"])
+        self.assertTrue(result["helo_fields_exact"])
+        self.assertTrue(result["helo_native_order_variant"])
+        self.assertEqual(result["helo_native_order_variant_count"], 24)
         self.assertTrue(result["query_exact"])
         self.assertEqual(result["helo_size"], 119)
         self.assertEqual(result["query_size"], 62)
+        self.assertEqual(
+            hashlib.sha256(query).hexdigest(),
+            "a60083fc2ec4be95418906235ac3024e9d01eb8661d82a34c2dea0bf3d0f4b1d")
 
     def test_semantic_helo_difference_is_reported_without_raw_bytes(self):
         helo = compare.bridge.encode_helo_frame(
@@ -35,8 +43,29 @@ class MacosBridgeWireCompareTests(unittest.TestCase):
         result = compare.compare(helo, query, os_build="25G83", version=39,
                                  process_name="biometrickitd")
         self.assertFalse(result["helo_exact"])
+        self.assertFalse(result["helo_fields_exact"])
+        self.assertFalse(result["helo_native_order_variant"])
         self.assertIsInstance(result["helo_first_difference"], int)
         self.assertNotIn(helo.hex(), repr(result))
+
+    def test_accepts_native_foundation_key_order_variance(self):
+        fields = {
+            "OSBuild": "25G83",
+            "BridgeXPCVersion": 39,
+            "ProcessName": "biometrickitd",
+            "MaxSupportedProtocolVersion": 1,
+        }
+        body = json.dumps(fields, separators=(",", ":")).encode()
+        helo = (compare.bridge.encode_frame_header(compare.bridge.FRAME_HELO,
+                                                   len(body)) + body)
+        query = compare.bridge.encode_bridge_version_query_frame(
+            max_body=compare.CAP)
+        result = compare.compare(helo, query, os_build="25G83", version=39,
+                                 process_name="biometrickitd")
+        self.assertFalse(result["helo_exact"])
+        self.assertTrue(result["helo_fields_exact"])
+        self.assertTrue(result["helo_native_order_variant"])
+        self.assertTrue(result["query_exact"])
 
     def test_rejects_wrong_kind_trailing_bytes_and_nonzero_method(self):
         helo = compare.bridge.encode_helo_frame(

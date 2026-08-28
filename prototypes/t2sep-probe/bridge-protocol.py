@@ -13,14 +13,20 @@ import json
 import math
 import plistlib
 import struct
-from typing import TypeAlias
+from typing import Union
+
+try:
+    from typing import TypeAlias
+except ImportError:  # macOS Command Line Tools still ships Python 3.9.
+    from typing import Any
+    TypeAlias = Any
 
 
 class BridgeProtocolError(ValueError):
     pass
 
 
-BridgeAtom: TypeAlias = int | bool | bytes | str | None
+BridgeAtom: TypeAlias = Union[int, bool, bytes, str, None]
 
 GET_BRIDGE_VERSION = 0
 GET_SERVICE_OPENED = 1

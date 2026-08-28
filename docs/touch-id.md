@@ -554,6 +554,26 @@ check-in experiment's reset came from contaminating the stream, while the live
 remaining mismatch is specifically in the reconstructed client HELO or first
 serialized method request. Exact current macOS outbound bytes are required
 before any further live command class is justified.
+
+Read-only macOS reconstruction with the current Foundation serializers narrows
+that mismatch. `NSPropertyListSerialization` produces an exact 46-byte binary
+plist body for `[0]`; with BridgeXPC's 16-byte header the complete 62-byte frame
+is byte-for-byte identical to `bridge-query.py` and has SHA-256
+`a60083fc2ec4be95418906235ac3024e9d01eb8661d82a34c2dea0bf3d0f4b1d`.
+The first method request is therefore not a Python-versus-Foundation encoding
+mismatch.
+
+The HELO has no single process-independent byte encoding. Across 24 fresh
+Foundation processes, `NSJSONSerialization` emitted 15 different permutations
+of the same four dictionary keys. Every body was 103 bytes and every complete
+frame 119 bytes. This is expected NSDictionary enumeration behavior; JSON
+object member order is not semantic. The Linux ordering is one member of the
+24-permutation native equivalence class. `macos-bridge-wire-compare.py` now
+reports exact fields, exact bytes, and membership in that native key-order
+class separately. A live macOS frame is still needed to name the one ordering
+chosen by the current `biometrickitd` process, but key order itself cannot be a
+sound BridgeXPC compatibility requirement.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
