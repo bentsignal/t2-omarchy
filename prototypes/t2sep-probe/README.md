@@ -302,6 +302,14 @@ events before the terminal match event, and delegates the final decision to
 the fail-closed trusted-identity model. Exact trusted match, explicit no-match,
 unknown UUID, unexpected event, timeout, and mandatory-cancel paths are tested.
 Its result intentionally omits identity UUIDs.
+
+`enrollment-probe.py` is the corresponding source-disabled Linux-native
+enrollment state machine. It permits only Catalina's statically mapped,
+size-bounded progress statuses, requires the exact terminal enrollment event,
+and then proves an independent before/after identity-list delta of exactly one.
+The terminal identity and newly enumerated identity must be identical. Tests
+cover success, missing list mutation, terminal/list mismatch, cancellation,
+and the closed live gate; no UUID is returned or logged.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,

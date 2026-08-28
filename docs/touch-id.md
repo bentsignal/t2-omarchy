@@ -854,6 +854,19 @@ operation permanently. Cancellation is attempted on every post-start exit.
 The public result reports only the Boolean decision, UID, identity count,
 status numbers, and cancel status; it never exposes UUID bytes.
 
+Linux-native enrollment is now composed offline in `enrollment-probe.py`, also
+with a closed live source gate. A checksum-pinned Catalina jump table maps
+every service status from `0xe3ff8002` through `0xe3ff800b`; method-specific
+minimum payload sizes for progress statuses are enforced. The runner takes a
+fresh UID-scoped identity snapshot, starts only the 48-byte token-free ordinary
+enrollment form, caps the operation at 256 events, requires version 1 and the
+exact `0xe3ff8003` terminal identity, then independently enumerates again. It
+completes only if exactly one identity was added, none changed or disappeared,
+the new identity belongs to the requested Linux UID, and its UUID equals the
+terminal event. Timeout, malformed/unknown progress, event flood, terminal
+mismatch, or any other list delta fails closed; cancellation is attempted on
+every post-start exit. Its result reports counts and statuses but not UUIDs.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

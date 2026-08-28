@@ -70,6 +70,9 @@ DAEMON_PATTERNS = {
         "41b9040000004c89f7ba41000000b9000000005350"),
     "service event switch spans 0xe3ff8002 through 0xe3ff800b": bytes.fromhex(
         "418d85fe7f001c83f8090f87"),
+    "service event jump table preserves distinct 0x8002 through 0x800b arms": bytes.fromhex(
+        "f8eeffff3fefffff33f1ffff82f1ffff68edffff68edffffc2f1ffff"
+        "f4f1ffff53f2ffff51f6ffff"),
     "enrollment result requires version 1 and at least 20 bytes": bytes.fromhex(
         "4183fc010f8520090000488b"),
 }
@@ -137,6 +140,7 @@ def inspect(daemon: bytes, support: bytes) -> dict[str, object]:
         "match_result_service_event": 0xE3FF8002,
         "enroll_result_service_event": 0xE3FF8003,
         "service_event_version": 1,
+        "service_event_range": (0xE3FF8002, 0xE3FF800B),
         "match_result_base_size": 0xC70,
         "match_result_lotl_count_offset": 0xC6C,
         "no_match_user_id": 0xFFFFFFFF,

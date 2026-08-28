@@ -46,6 +46,8 @@ class CommandEvidenceTests(unittest.TestCase):
         self.assertEqual(result["match_result_service_event"], 0xE3FF8002)
         self.assertEqual(result["enroll_result_service_event"], 0xE3FF8003)
         self.assertEqual(result["service_event_version"], 1)
+        self.assertEqual(result["service_event_range"],
+                         (0xE3FF8002, 0xE3FF800B))
 
     def test_rejects_wrong_architecture(self):
         bad = fixture(evidence.DAEMON_STRINGS, evidence.DAEMON_PATTERNS,
