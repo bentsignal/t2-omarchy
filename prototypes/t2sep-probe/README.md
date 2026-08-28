@@ -134,3 +134,18 @@ OOL page limits. Run its tests with:
 ```bash
 python -m unittest test_decode_message.py
 ```
+
+The next gated probe collects only passive discovery advertisements emitted
+after the validated NOP. It sends no discovery request. Collection is capped
+at 64 records and one second, requires endpoint `0xfd` opcode 0/1 records in
+KDK order, validates transport flags and uniqueness, and stops on the first
+unexpected message. `run-discovery.sh` also requires the exact model/device,
+an unbound SEP, two MSI vectors, verified NOP output, module cleanup, and a
+clean collector result:
+
+```bash
+pkexec ./run-discovery.sh
+```
+
+Build and review this runner without executing it until a privileged hardware
+test is explicitly intended.

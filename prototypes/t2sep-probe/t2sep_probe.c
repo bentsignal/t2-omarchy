@@ -12,6 +12,7 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/slab.h>
 
 #define PCI_VENDOR_ID_APPLE_LOCAL 0x106b
 #define PCI_DEVICE_ID_APPLE_T2_SEP 0x1802
@@ -83,8 +84,26 @@ module_param(apple_send_control_nop, bool, 0400);
 MODULE_PARM_DESC(apple_send_control_nop,
 	"Send one non-mutating Apple control-endpoint NOP and read its response");
 
+static bool apple_collect_discovery;
+module_param(apple_collect_discovery, bool, 0400);
+MODULE_PARM_DESC(apple_collect_discovery,
+	"After a validated NOP, collect a bounded stream of passive endpoint 0xfd advertisements");
+
 struct t2sep_irq_probe {
 	atomic_t count[2];
+};
+
+#define T2SEP_DISCOVERY_ENDPOINT 0xfd
+#define T2SEP_DISCOVERY_MAX_RECORDS 64
+
+struct t2sep_discovery_entry {
+	bool identity;
+	bool limits;
+	u32 name;
+	u8 in_min;
+	u8 in_max;
+	u8 out_min;
+	u8 out_max;
 };
 
 static irqreturn_t t2sep_probe_irq(int irq, void *data)
@@ -137,12 +156,148 @@ static void t2sep_teardown_msi(struct pci_dev *pdev,
 	pci_free_irq_vectors(pdev);
 }
 
+static int t2sep_read_intel_message(void __iomem *bar4, u32 words[4])
+{
+	u32 inbox = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
+
+	if (inbox & T2SEP_INTEL_INBOX_EMPTY)
+		return -EAGAIN;
+
+	/* Apple reads all four words in order; the final word commits the pop. */
+	words[0] = ioread32(bar4 + 0x810);
+	words[1] = ioread32(bar4 + 0x814);
+	words[2] = ioread32(bar4 + 0x818);
+	words[3] = ioread32(bar4 + 0x81c);
+	if (words[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))
+		return -EIO;
+	return 0;
+}
+
+static int t2sep_collect_discovery(struct pci_dev *pdev, void __iomem *bar4)
+{
+	struct t2sep_discovery_entry *entries;
+	u32 records = 0;
+	u32 identities = 0;
+	u32 idle_ms = 0;
+	u32 elapsed_ms;
+	bool saw_message = false;
+	int ret = 0;
+
+	entries = kcalloc(256, sizeof(*entries), GFP_KERNEL);
+	if (!entries)
+		return -ENOMEM;
+
+	for (elapsed_ms = 0; elapsed_ms < 1000; elapsed_ms += 10) {
+		u32 words[4];
+		u8 endpoint;
+		u8 opcode;
+		u8 endpoint_id;
+		u32 i;
+
+		ret = t2sep_read_intel_message(bar4, words);
+		if (ret == -EAGAIN) {
+			if (saw_message && (idle_ms += 10) >= 100) {
+				ret = 0;
+				break;
+			}
+			msleep(10);
+			continue;
+		}
+		if (ret) {
+			dev_err(&pdev->dev,
+				"discovery transport error after %u records\n", records);
+			break;
+		}
+
+		saw_message = true;
+		idle_ms = 0;
+		endpoint = words[0] & 0xff;
+		opcode = (words[0] >> 16) & 0xff;
+		endpoint_id = (words[0] >> 24) & 0xff;
+		dev_info(&pdev->dev,
+			 "discovery candidate %u: %08x %08x %08x %08x\n",
+			 records, words[0], words[1], words[2], words[3]);
+
+		if (endpoint != T2SEP_DISCOVERY_ENDPOINT || words[2] != 0) {
+			dev_err(&pdev->dev,
+				"bounded discovery stopped on non-discovery message\n");
+			ret = -EPROTO;
+			break;
+		}
+		if (++records > T2SEP_DISCOVERY_MAX_RECORDS) {
+			dev_err(&pdev->dev, "bounded discovery record cap exceeded\n");
+			ret = -E2BIG;
+			break;
+		}
+
+		if (opcode == 0) {
+			if (entries[endpoint_id].identity) {
+				dev_err(&pdev->dev,
+					"duplicate discovery endpoint ID %#02x\n",
+					endpoint_id);
+				ret = -EEXIST;
+				break;
+			}
+			for (i = 0; i < 256; i++) {
+				if (entries[i].identity && entries[i].name == words[1]) {
+					dev_err(&pdev->dev,
+						"duplicate discovery endpoint name %08x\n",
+						words[1]);
+					ret = -EEXIST;
+					break;
+				}
+			}
+			if (ret)
+				break;
+			entries[endpoint_id].identity = true;
+			entries[endpoint_id].name = words[1];
+			identities++;
+			dev_info(&pdev->dev,
+				 "discovery identity: id=%#02x name=%08x\n",
+				 endpoint_id, words[1]);
+		} else if (opcode == 1) {
+			if (!entries[endpoint_id].identity ||
+			    entries[endpoint_id].limits) {
+				dev_err(&pdev->dev,
+					"invalid OOL ordering for endpoint ID %#02x\n",
+					endpoint_id);
+				ret = -EPROTO;
+				break;
+			}
+			entries[endpoint_id].limits = true;
+			entries[endpoint_id].in_min = words[1] & 0xff;
+			entries[endpoint_id].in_max = (words[1] >> 8) & 0xff;
+			entries[endpoint_id].out_min = (words[1] >> 16) & 0xff;
+			entries[endpoint_id].out_max = (words[1] >> 24) & 0xff;
+			dev_info(&pdev->dev,
+				 "discovery OOL: id=%#02x in=%u..%u pages out=%u..%u pages\n",
+				 endpoint_id, entries[endpoint_id].in_min,
+				 entries[endpoint_id].in_max,
+				 entries[endpoint_id].out_min,
+				 entries[endpoint_id].out_max);
+		} else {
+			dev_err(&pdev->dev,
+				"unknown discovery opcode %#02x\n", opcode);
+			ret = -EPROTO;
+			break;
+		}
+	}
+
+	dev_info(&pdev->dev,
+		 "bounded discovery complete: records=%u identities=%u sbio=%s limits=%s result=%d\n",
+		 records, identities, entries[0x08].identity ? "yes" : "no",
+		 entries[0x08].limits ? "yes" : "no", ret);
+	kfree(entries);
+	return ret;
+}
+
 static void t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 {
 	u32 inbox_before = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
 	u32 outbox_before = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
 	u32 inbox = inbox_before;
 	u32 outbox = outbox_before;
+	bool nop_valid = false;
 	int i;
 
 	/* Exact ordering from AppleSEPIntelIOP::_startCPUGated(). */
@@ -218,16 +373,26 @@ static void t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4
 				} else {
 					dev_info(&pdev->dev,
 						"control NOP response passed strict validation\n");
+					nop_valid = true;
 				}
 			}
 		}
+	}
+	if (apple_collect_discovery) {
+		if (nop_valid)
+			t2sep_collect_discovery(pdev, bar4);
+		else
+			dev_err(&pdev->dev,
+				"discovery skipped because NOP did not validate\n");
 	}
 
 	/* Exact CPU-stop write from AppleSEPIntelIOP::_stopCPUGated(). */
 	iowrite32(5, bar4 + T2SEP_INTEL_CPU_STOP);
 	ioread32(bar4 + T2SEP_INTEL_CPU_STOP);
 	dev_info(&pdev->dev,
-		 "issued Apple CPU-stop value 5 at +0x8024; payload FIFOs untouched\n");
+		 "issued Apple CPU-stop value 5 at +0x8024; payload FIFOs %s\n",
+		 apple_send_control_nop ? "accessed only by explicit bounded gates" :
+					  "untouched");
 }
 
 static void t2sep_scan_aperture(struct pci_dev *pdev, int bar)
@@ -278,6 +443,13 @@ static int t2sep_probe(struct pci_dev *pdev,
 			"refusing unsupported model %s (read-only override exists)\n",
 			dmi_get_system_info(DMI_PRODUCT_NAME) ?: "unknown");
 		return -ENODEV;
+	}
+	if (apple_collect_discovery &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop)) {
+		dev_err(&pdev->dev,
+			"discovery requires CPU start, two MSI vectors, and validated control NOP\n");
+		return -EINVAL;
 	}
 
 	ret = pci_read_config_word(pdev, PCI_COMMAND, &command);
