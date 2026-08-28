@@ -1,3 +1,2 @@
-*.pkg.tar.*
-upstream/
-
+__pycache__/
+*.py[cod]
