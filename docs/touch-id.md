@@ -449,6 +449,11 @@ replies validate before either ownership transition is committed. Only then
 does it expose the already-fixtured command `0x73`, value `3`, empty-response
 generic-transfer initialization session. Skipping or repeating a phase fails.
 
+The future capture is also checked independently by `verify-ool-log.py`. It
+rejects mixed, incomplete, reordered, raw/decoded-inconsistent, nonzero-status,
+transport-error, or pre-stop-cleanup transcripts. Its only output is the two
+observed opcode/target pairs needed to instantiate the bootstrap reply profile.
+
 Linux currently reports both `dma_mask_bits` and `consistent_dma_mask_bits`
 as 32 for `0000:04:00.2`, consistent with this T2 wire format. A future live
 implementation must explicitly establish a 32-bit coherent DMA mask, use the

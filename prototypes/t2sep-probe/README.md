@@ -179,7 +179,7 @@ python -m unittest test_decode_message.py test_generic_transfer.py \
   test_endpoint_router.py \
   test_bridge_protocol.py test_bridge_query.py test_rsd_protocol.py \
   test_rsd_query.py test_verify_discovery_log.py test_kernel_ool_safety.py \
-  test_sbio_bootstrap.py
+  test_sbio_bootstrap.py test_verify_ool_log.py
 ```
 
 `bridge-protocol.py` models the separate Intel host-to-bridgeOS route recovered
@@ -287,6 +287,14 @@ offline but has not been loaded or executed against hardware.
 
 `test_kernel_ool_safety.py` guards the confirmation/discovery gate, bounded
 waits, tag/status checks, and stop-before-scrub-before-free ordering.
+
+`verify-ool-log.py` is the corresponding offline journal verifier. Given only
+a cursor-bounded capture on standard input, it requires successful `sbio`
+discovery, exact ordered opcode-2/3 request words and sizes, raw/decoded field
+agreement, endpoint-zero matching tags, zero status and transport flags, then
+CPU stop followed by successful cleanup. It outputs the independently observed
+reply opcode/target profile consumed by `sbio-bootstrap.py`; it never accesses
+the module or hardware.
 
 `sbio-bootstrap.py` composes the independently tested offline pieces into one
 ordered state machine. It refuses OOL planning before finalized usable `sbio`
