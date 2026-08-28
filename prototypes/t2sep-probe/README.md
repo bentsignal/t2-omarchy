@@ -162,7 +162,9 @@ then it uses a timeout of at most five seconds, caps bodies at 64 KiB, accepts
 at most four frames, and validates the exact bridge-version reply. Live mode
 requires both `--live` and a long confirmation token. Do not run it until the
 T2 interface has a scoped link-local configuration and a live passive query is
-explicitly intended.
+explicitly intended. Its connection path is additionally hard-disabled in
+source until port `52032`, currently proven only from Catalina 19H15, is
+verified against the newer bridgeOS installed on this machine.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,

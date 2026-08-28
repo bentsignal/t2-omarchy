@@ -24,6 +24,10 @@ SPEC.loader.exec_module(protocol)
 
 BODY_CAP = 64 * 1024
 CONFIRMATION = "I_UNDERSTAND_THIS_OPENS_T2_BIOMETRIC_SERVICE"
+# Port 52032 is proven for Catalina 19H15, not yet for the newer bridgeOS
+# installed on this machine. Keep live execution mechanically disabled until a
+# current macOS binary or trace confirms the named service still owns it.
+CURRENT_PORT_VERIFICATION = None
 
 
 class QueryError(RuntimeError):
@@ -95,6 +99,8 @@ def verify_t2_interface(name: str) -> int:
 
 
 def live_query(interface: str, timeout: float) -> tuple[int, int]:
+    if CURRENT_PORT_VERIFICATION is None:
+        raise QueryError("live query disabled: verify BiometricKit's port on current bridgeOS")
     ifindex = verify_t2_interface(interface)
     target = protocol.biometric_sockaddr(ifindex)
     with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:

@@ -34,6 +34,10 @@ def frame(kind, body):
 
 
 class PassiveQueryTests(unittest.TestCase):
+    def test_live_path_is_disabled_pending_current_port_evidence(self):
+        with self.assertRaisesRegex(query.QueryError, "current bridgeOS"):
+            query.live_query("does-not-matter", 1.0)
+
     def test_accepts_peer_helo_then_one_version_reply(self):
         reply = plistlib.dumps([0, 42], fmt=plistlib.FMT_BINARY)
         incoming = (frame(query.protocol.FRAME_HELO, b'{"peer":1}')

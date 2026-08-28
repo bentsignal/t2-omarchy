@@ -250,6 +250,10 @@ deadline, caps every body at 64 KiB, consumes at most four frames (to permit a
 peer HELO/no-op), sends only method `0`, and validates the two-number reply.
 It contains no method-3 or SBIO send path. Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
+Because `52032` is currently proven from Catalina 19H15 rather than this
+machine's newer bridgeOS, the connection function is mechanically disabled in
+source. A current macOS binary or successful-system trace must confirm that
+the named BiometricKit service still owns that port before enabling it.
 
 ## SBIO and the Intel xART split
 
