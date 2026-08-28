@@ -128,17 +128,27 @@ Current macOS does not use fixed ports `58783` or `52032` for this boot path.
 The directory ran on T2 port `59602`, and its returned BiometricKit service ran
 on T2 port `49165`. Linux must not hard-code either boot-dynamic value.
 
-The remaining bootstrap is likely DNS-SD, but this is not yet directly proven
-for the internal T2 link. go-ios commit `ced7e53d94a2`, `ios/discover.go`,
-discovers dynamic RSD endpoints by browsing `_remoted._tcp.local` and uses the
-advertised SRV port. The macOS capture did
-not obtain link packets, so it could not preserve that advertisement on the
-wire. The next Linux experiment should retry a bounded mDNS browse from the
-now-proven host address `...:1122` before attempting any TCP port. Only a
-strictly decoded same-boot SRV answer may supply the directory port.
+The bootstrap is a named DNS-SD endpoint. Independent verification of the
+installed x86_64 `remoted` slice shows
+`RSDRemoteNCMHostDevice::needsConnect` calling
+`nw_endpoint_create_bonjour_service("ncm", "_remoted._tcp", "local.")`.
+The exact sequence is at `0x100012aac` in slice SHA-256
+`88e78e65...4056`; `macos-rsd-bootstrap-evidence.py` verifies it. If that
+resolved endpoint is absent, the same method falls back to fixed port `58783`,
+which explains the previously misunderstood literal.
 
-The next fail-closed Linux experiment should reproduce only the directory
-connection. After a narrow NCM rebind and proof that TX advances, connect from
+A supervised Linux test from proven host address `...:1122` sent a generic
+PTR browse, an exact `ncm._remoted._tcp.local.` SRV question, and the same SRV
+question with the mDNS QU bit. TX advanced without errors and the T2 continued
+answering ICMPv6, but RX did not advance for any DNS-SD query. Avahi independently
+produced the same negative result. Thus the DNS-SD responder is dormant during
+Linux boot; merely reproducing Network.framework's lookup does not activate
+it. No port scan or TCP connection was attempted.
+
+The next reverse-engineering target is the action below `remoted` that makes
+the bridgeOS DNS-SD responder available under macOS. Once that activation is
+understood, the next fail-closed Linux experiment should reproduce only the
+directory connection. After proof that TX advances, connect from
 the proven host address to the T2 address using a freshly observed/discovered
 directory port, perform the already bounded HTTP/2 RemoteXPC handshake with TLS
 disabled, and passively recover `com.apple.eos.BiometricKit`. Keep the existing

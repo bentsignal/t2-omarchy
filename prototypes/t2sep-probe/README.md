@@ -228,23 +228,30 @@ one of them. The module can encode the passive directory handshake and
 strictly decode the named advertised service port, but contains no socket
 calls or fixed directory port.
 
-`rsd-mdns.py` models the missing same-boot bootstrap without sockets. It emits
-the exact `_remoted._tcp.local.` PTR query and incrementally validates at most
+`rsd-mdns.py` models the missing same-boot bootstrap without sockets. Installed
+`remoted` proves the named endpoint `ncm._remoted._tcp.local.`; the module emits
+its exact SRV query (including a strictly typed QU variant) and also retains a
+generic PTR fixture. It incrementally validates at most
 16 T2-sourced mDNS datagrams / 64 records / 64 KiB. Its DNS decoder bounds
 compression traversal, detects pointer cycles, enforces record boundaries,
-requires a PTR-to-SRV chain, rejects conflicting ports and non-T2 sources, and
+requires the exact named SRV (with a consistent PTR when present), rejects conflicting ports and non-T2 sources, and
 optionally checks the target AAAA against the wire-proven T2 address. The
 transcript-to-endpoint handoff derives the TCP port only from that validated
 SRV record; it has no caller-controlled port parameter. Live multicast remains
 disabled pending a supervised run from the corrected host address.
 
 `rsd-mdns-query.py` stages that supervised boundary. Its fake-socket-tested
-engine sends one exact PTR query and accepts only UDP/5353 datagrams from the
+engine sends one exact named SRV/QU query and accepts only UDP/5353 datagrams from the
 wire-proven T2 address with the expected IPv6 interface scope. It carries the
 complete bounded datagram transcript into the endpoint evidence. The live
 branch additionally verifies exact T2 USB/PCI ancestry, carrier, finite
 five-second timeout, multicast interface, and host bind address, but its source
 kill switch remains false and is checked before sysfs or socket access.
+
+The supervised SRV/QU query, a multicast SRV query, a generic PTR query, and an
+independent Avahi browse all produced no T2 DNS response despite healthy ICMPv6
+and advancing error-free TX. This establishes that the bridgeOS DNS-SD
+responder is dormant under Linux, rather than that Linux lacks the query codec.
 
 `discovered-rsd-query.py` is the final socket-constructor-free composition. It
 accepts an mDNS socket and a connector callback, derives the callback's sole

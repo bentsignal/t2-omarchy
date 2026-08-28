@@ -31,7 +31,7 @@ def response(records):
 
 
 SERVICE = "_remoted._tcp.local."
-INSTANCE = "T2._remoted._tcp.local."
+INSTANCE = "ncm._remoted._tcp.local."
 TARGET = "t2.local."
 SOURCE = "fe80::aede:48ff:fe33:4455"
 
@@ -41,6 +41,21 @@ class MDNSDiscoveryTests(unittest.TestCase):
         self.assertEqual(mdns.build_ptr_query(),
                          struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0)
                          + name(SERVICE) + struct.pack("!HH", 12, 1))
+        self.assertEqual(mdns.build_srv_query(),
+                         struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0)
+                         + name(INSTANCE) + struct.pack("!HH", 33, 1))
+        self.assertEqual(mdns.build_srv_query(unicast_response=True),
+                         struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0)
+                         + name(INSTANCE) + struct.pack("!HH", 33, 0x8001))
+        with self.assertRaises(mdns.MDNSError):
+            mdns.build_srv_query(unicast_response=1)
+
+    def test_direct_named_srv_needs_no_ptr_browse(self):
+        packet = response([record(
+            INSTANCE, 33, struct.pack("!HHH", 0, 0, 59602) + name(TARGET))])
+        parser = mdns.PassiveMDNSDiscovery()
+        parser.feed(packet, source_address=SOURCE)
+        self.assertEqual(parser.finish().port, 59602)
 
     def test_split_transcript_proves_dynamic_port(self):
         first = response([record(SERVICE, 12, name(INSTANCE))])
@@ -66,7 +81,7 @@ class MDNSDiscoveryTests(unittest.TestCase):
         header = struct.pack("!HHHHHH", 0, 0x8400, 0, 2, 0, 0)
         service_offset = len(header)
         ptr_owner = service
-        instance_wire = b"\x02T2" + struct.pack("!H", 0xC000 | service_offset)
+        instance_wire = b"\x03ncm" + struct.pack("!H", 0xC000 | service_offset)
         ptr = ptr_owner + struct.pack("!HHIH", 12, 1, 120, len(instance_wire)) + instance_wire
         instance_offset = len(header) + len(ptr_owner) + 10
         srv_owner = struct.pack("!H", 0xC000 | instance_offset)

@@ -1,10 +1,12 @@
 import importlib.util
 import io
+import json
 from pathlib import Path
 import struct
 import sys
 import unittest
 from unittest import mock
+import tempfile
 
 
 MODULE_PATH = Path(__file__).with_name("rsd-mdns-query.py")
@@ -48,7 +50,7 @@ class FakeSocket:
 class MDNSQueryTests(unittest.TestCase):
     def test_fragmented_advertisement_binds_endpoint(self):
         service = "_remoted._tcp.local."
-        instance = "T2._remoted._tcp.local."
+        instance = "ncm._remoted._tcp.local."
         target = "t2.local."
         source = "fe80::aede:48ff:fe33:4455"
         incoming = [
@@ -61,7 +63,8 @@ class MDNSQueryTests(unittest.TestCase):
         result = query.capture_socket(sock, 3)
         self.assertEqual(result.endpoint, (source, 59602, 0, 3))
         self.assertEqual(sock.sent,
-                         [(mdns.build_ptr_query(), ("ff02::fb", 5353, 0, 3))])
+                         [(mdns.build_srv_query(unicast_response=True),
+                           ("ff02::fb", 5353, 0, 3))])
 
     def test_gate_precedes_interface_and_socket(self):
         self.assertFalse(query.LIVE_MDNS_DISCOVERY_ENABLED)
@@ -92,6 +95,23 @@ class MDNSQueryTests(unittest.TestCase):
                     query.main()
         constructor.assert_not_called()
         self.assertIn("offline only", output.getvalue())
+
+    def test_capture_writer_is_private_exact_and_no_replace(self):
+        source = mdns.T2_LINK_LOCAL_ADDRESS
+        packet = response([])
+        evidence = mdns.DiscoveredRSDService(
+            "ncm._remoted._tcp.local.", "t2.local.", 59602, source, (packet,))
+        result = mdns.DiscoveredRSDEndpoint((source, 59602, 0, 7), evidence)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "capture.json"
+            query.write_capture(path, result)
+            decoded = json.loads(path.read_text())
+            self.assertEqual(decoded["endpoint"], [source, 59602, 0, 7])
+            self.assertEqual(bytes.fromhex(decoded["server_datagrams"][0]["hex"]),
+                             packet)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            with self.assertRaises(query.QueryError):
+                query.write_capture(path, result)
 
 
 if __name__ == "__main__":

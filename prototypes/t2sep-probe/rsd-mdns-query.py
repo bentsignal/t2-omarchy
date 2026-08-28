@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
+import json
 import math
+import os
 from pathlib import Path
 import socket
 import struct
@@ -35,7 +38,7 @@ def capture_socket(sock: socket.socket, interface_index: int) -> mdns.Discovered
     if (isinstance(interface_index, bool) or not isinstance(interface_index, int)
             or not 1 <= interface_index < 1 << 32):
         raise QueryError("interface index is out of range")
-    query = mdns.build_ptr_query()
+    query = mdns.build_srv_query(unicast_response=True)
     destination = (MULTICAST_ADDRESS, MULTICAST_PORT, 0, interface_index)
     sent = sock.sendto(query, destination)
     if sent != len(query):
@@ -113,19 +116,49 @@ def live_capture(interface: str, timeout: float) -> mdns.DiscoveredRSDEndpoint:
         return capture_socket(sock, interface_index)
 
 
+def write_capture(path: Path, result: mdns.DiscoveredRSDEndpoint) -> None:
+    """Create one private JSON evidence file without replacing anything."""
+    if not isinstance(path, Path) or path.exists() or path.is_symlink():
+        raise QueryError("capture output path must not already exist")
+    evidence = result.evidence
+    payload = {
+        "endpoint": list(result.endpoint),
+        "instance": evidence.instance,
+        "target": evidence.target,
+        "source_address": evidence.source_address,
+        "server_datagrams": [
+            {"hex": packet.hex(), "sha256": hashlib.sha256(packet).hexdigest()}
+            for packet in evidence.server_datagrams
+        ],
+    }
+    encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode()
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+    except OSError as error:
+        raise QueryError(f"cannot create capture output {path}") from error
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--interface", default="enp4s0f1u1")
     parser.add_argument("--timeout", type=float, default=2.0)
     parser.add_argument("--confirm", default="")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if not args.live:
-        print(f"offline only: ptr-query={mdns.build_ptr_query().hex()}")
+        print(f"offline only: srv-query={mdns.build_srv_query().hex()}")
         return
     if args.confirm != CONFIRMATION:
         parser.error(f"live mode requires --confirm={CONFIRMATION}")
+    if args.output is None:
+        parser.error("live mode requires --output with a new private file path")
+    if args.output.exists() or args.output.is_symlink():
+        parser.error("live output path must not already exist")
     result = live_capture(args.interface, args.timeout)
+    write_capture(args.output, result)
     print(f"T2 advertised RSD at [{result.endpoint[0]}]:{result.endpoint[1]}")
 
 

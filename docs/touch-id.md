@@ -8,7 +8,8 @@
 > Neither port may be hard-coded for Linux.
 
 The current offline continuation is `rsd-mdns.py`: a bounded DNS-SD codec for
-the `_remoted._tcp.local.` bootstrap used by go-ios. It binds a strictly
+the exact `ncm._remoted._tcp.local.` endpoint constructed by installed macOS
+`remoted`. It binds a strictly
 validated, T2-sourced PTR/SRV transcript to the RSD endpoint without accepting
 a caller-selected port. No multicast socket or live query is enabled yet.
 The companion `rsd-mdns-query.py` now contains the bounded multicast wrapper,
@@ -16,6 +17,13 @@ but `LIVE_MDNS_DISCOVERY_ENABLED` remains false in source. Tests prove that its
 kill switch precedes interface and socket access and that only correctly
 scoped UDP/5353 responses from the proven T2 address can become endpoint
 evidence.
+
+Supervised Linux PTR, named SRV, named SRV/QU, and independent Avahi queries
+from `fe80::aede:48ff:fe00:1122` all transmitted successfully but received no
+T2 DNS response. ICMPv6 remained healthy. The bridgeOS responder is therefore
+dormant, and the next unknown is its activation below `remoted`, not DNS packet
+encoding. `macos-rsd-bootstrap-evidence.py` independently pins the named
+Network.framework endpoint construction in the installed Intel binary.
 
 `discovered-rsd-query.py` now composes discovery into the passive directory
 handshake offline. The connector receives only the endpoint derived from the

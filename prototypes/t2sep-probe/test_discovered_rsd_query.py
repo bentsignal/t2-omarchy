@@ -27,7 +27,7 @@ def record(owner, kind, payload):
 
 def mdns_response():
     service = "_remoted._tcp.local."
-    instance = "T2._remoted._tcp.local."
+    instance = "ncm._remoted._tcp.local."
     target = "t2.local."
     records = (
         record(service, 12, name(instance)),

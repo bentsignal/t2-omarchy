@@ -9,6 +9,7 @@ import struct
 
 
 SERVICE_NAME = "_remoted._tcp.local."
+INSTANCE_NAME = "ncm._remoted._tcp.local."
 T2_LINK_LOCAL_ADDRESS = "fe80::aede:48ff:fe33:4455"
 DNS_HEADER = struct.Struct("!HHHHHH")
 TYPE_PTR = 12
@@ -124,6 +125,15 @@ def build_ptr_query() -> bytes:
     return DNS_HEADER.pack(0, 0, 1, 0, 0, 0) + _encode_name(SERVICE_NAME) + struct.pack("!HH", TYPE_PTR, CLASS_IN)
 
 
+def build_srv_query(*, unicast_response: bool = False) -> bytes:
+    """Build macOS remoted's direct named-instance lookup, offline."""
+    if not isinstance(unicast_response, bool):
+        raise MDNSError("unicast-response selector must be boolean")
+    question_class = CLASS_IN | (0x8000 if unicast_response else 0)
+    return (DNS_HEADER.pack(0, 0, 1, 0, 0, 0) + _encode_name(INSTANCE_NAME)
+            + struct.pack("!HH", TYPE_SRV, question_class))
+
+
 def _parse_message(packet: bytes) -> tuple[set[str], dict[str, tuple[int, str]], set[tuple[str, str]]]:
     if not isinstance(packet, bytes) or not DNS_HEADER.size <= len(packet) <= MAX_DATAGRAM:
         raise MDNSError("mDNS datagram size is invalid")
@@ -210,17 +220,16 @@ class PassiveMDNSDiscovery:
         self._total += len(packet)
 
     def finish(self) -> DiscoveredRSDService:
-        candidates = [(instance, *self._services[instance])
-                      for instance in self._pointers if instance in self._services]
-        if not candidates:
+        endpoint = self._services.get(INSTANCE_NAME)
+        if endpoint is None:
             raise MDNSIncompleteError("mDNS transcript does not yet prove an RSD service")
-        if len(candidates) != 1:
-            raise MDNSError("mDNS transcript proves multiple RSD services")
-        instance, port, target = candidates[0]
+        if self._pointers and INSTANCE_NAME not in self._pointers:
+            raise MDNSError("mDNS PTR evidence conflicts with the named NCM instance")
+        port, target = endpoint
         target_addresses = {address for owner, address in self._addresses if owner == target}
         if target_addresses and target_addresses != {T2_LINK_LOCAL_ADDRESS}:
             raise MDNSError("RSD target AAAA conflicts with the proven T2 address")
-        return DiscoveredRSDService(instance, target, port,
+        return DiscoveredRSDService(INSTANCE_NAME, target, port,
                                     T2_LINK_LOCAL_ADDRESS,
                                     tuple(self._datagrams))
 
@@ -245,4 +254,4 @@ def endpoint_from_transcript(datagrams: tuple[bytes, ...],
 
 
 if __name__ == "__main__":
-    print(build_ptr_query().hex())
+    print(build_srv_query().hex())
