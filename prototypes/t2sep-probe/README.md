@@ -246,6 +246,13 @@ branch additionally verifies exact T2 USB/PCI ancestry, carrier, finite
 five-second timeout, multicast interface, and host bind address, but its source
 kill switch remains false and is checked before sysfs or socket access.
 
+`discovered-rsd-query.py` is the final socket-constructor-free composition. It
+accepts an mDNS socket and a connector callback, derives the callback's sole
+endpoint argument from validated DNS-SD evidence, then runs the bounded passive
+directory capture. Its result retains both the complete mDNS datagrams and RSD
+server transcript. There is deliberately no directory-port argument and no
+real socket import or constructor in this handoff layer.
+
 Its `PassiveRSDTranscript` state machine validates a complete server transcript
 from fragmented offline bytes. It caps bytes, frames, controls, and XPC sizes;
 requires peer settings before data; accepts only streams 1 and 3; refuses

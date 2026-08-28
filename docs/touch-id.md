@@ -17,6 +17,13 @@ kill switch precedes interface and socket access and that only correctly
 scoped UDP/5353 responses from the proven T2 address can become endpoint
 evidence.
 
+`discovered-rsd-query.py` now composes discovery into the passive directory
+handshake offline. The connector receives only the endpoint derived from the
+validated SRV transcript, and the result preserves both discovery datagrams
+and the exact bounded RSD server transcript. Tests use independent fake UDP and
+TCP sockets to prove the observed directory port cannot be replaced by a
+caller-selected value.
+
 Status as of 2026-08-28: **transport and macOS activation sequence proven;
 Linux biometric path not working yet**. This document records the
 machine-specific evidence, current public research, safety boundaries, and a
