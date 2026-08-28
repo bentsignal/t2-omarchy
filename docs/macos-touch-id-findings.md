@@ -237,8 +237,8 @@ A final transport-layer distinction was tested without touching SEP or the T2
 PCI functions: an exact `USBDEVFS_RESET` request targeted only usbfs device
 `05ac:8233`, after validating its singleton configuration and ancestry below
 `0000:04:00.1/t2bce_core`. The T2 virtual host controller rejected the ioctl
-with `EPERM`, even for root; both `cdc_ncm` interfaces remained bound and no
-reset occurred. Thus Linux's generic USB device-reset path cannot reproduce a
+with `EPERM`, even for root after the exact NCM function was unbound; the exit
+trap restored both `cdc_ncm` interfaces and no reset occurred. Thus Linux's generic USB device-reset path cannot reproduce a
 deeper macOS enumeration transition on this VHCI. The helper remains
 source-disabled, and its capture contains only the rejected attempt.
 

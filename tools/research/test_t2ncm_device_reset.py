@@ -33,6 +33,13 @@ class DeviceResetTests(unittest.TestCase):
         self.assertIn('("05ac", "8233")', source)
         self.assertIn('"0000:04:00.1/t2bce_core"', source)
 
+    def test_capture_wrapper_restores_exact_driver_binding(self):
+        source = PATH.with_name("capture-t2ncm-device-reset.sh").read_text()
+        self.assertIn("interface=7-1:1.0", source)
+        self.assertIn('> "$driver/unbind"', source)
+        self.assertGreaterEqual(source.count('> "$driver/bind"'), 2)
+        self.assertIn("trap cleanup EXIT HUP INT TERM", source)
+
 
 if __name__ == "__main__":
     unittest.main()
