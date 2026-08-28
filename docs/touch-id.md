@@ -268,7 +268,7 @@ binary property list, but nothing in the module opens BridgeXPC, USB, PCI, or
 SEP. Sending raw SBIO application commands from the x86 host may bypass
 required bridgeOS state.
 
-### Recovered match, presence, and cancel commands
+### Recovered enrollment, identity, match, presence, and cancel commands
 
 Static disassembly of Catalina 19H15 `biometrickitd` and its
 `BiometricSupport` framework now recovers the first complete operation request.
@@ -300,6 +300,39 @@ an event envelope to be an array of exactly four objects and dispatches on a
 numeric first object. The complete operation/event correlation is not yet
 modeled.
 
+The Linux-native enrollment entry point is also now recovered. Ordinary,
+token-free enrollment is command `3`, version `1`, value zero, with this exact
+48-byte input and no synchronous output buffer:
+
+```text
+offset  size  ordinary-enrollment field
+0       4     flags/reserved = 0
+4       4     userID
+8       4     usingAuthToken = 0
+12      4     tokenLength = 0
+16      32    authorization token = zero
+```
+
+This starts a multi-stage asynchronous enrollment; command acceptance alone is
+not enrollment success. The offline codec deliberately cannot express Apple's
+authorization-token form. It also recovers the operations needed to manage
+Linux-created templates:
+
+| Command | Input | Output |
+| --- | --- | --- |
+| `0x0f` maximum identity count | none | exactly one 32-bit count |
+| `0x41` free identity count | 32-bit user ID | exactly one 32-bit count |
+| `0x42` identity list | 32-bit user ID | zero or more 20-byte identity records |
+| `0x0d` remove identity | one 20-byte identity record | none |
+
+Each identity record is a 32-bit user ID followed by a 16-byte UUID. The
+research codec caps lists/counts at 64, rejects malformed or duplicate records,
+and can verify that an enrollment snapshot added exactly one identity for the
+requested Linux user without removing or changing anything else. That snapshot
+delta is still only one condition: a live implementation must additionally
+correlate the asynchronous event with the active enrollment and require a
+known-success terminal status before persisting or exposing the new identity.
+
 The daemon's eventual match-result parser does expose a strict identity core.
 It requires at least `0xc70` bytes, reads a 32-bit user ID at offset zero and a
 16-byte identity UUID at offset four, then reads a lockout-list count at
@@ -311,8 +344,9 @@ stricter exact-length form and caps that list at 64 entries. A decoded pair is
 active request, establish a successful terminal status, and compare it with a
 trusted identity obtained from the sensor.
 
-The remaining event-kind/status mapping and current bridgeOS compatibility must
-be recovered before a live match can be interpreted safely.
+The remaining enrollment progress/result and match event/status mapping, plus
+current bridgeOS compatibility, must be recovered before a live match can be
+interpreted safely.
 
 `macos-biometric-command-evidence.py` verifies these constants and instruction
 sequences directly in the retained binaries. The finding is exact for Catalina

@@ -16,16 +16,24 @@ class BiometricCommandError(ValueError):
 
 
 COMMAND_VERSION = 1
+COMMAND_ENROLL = 0x03
 COMMAND_MATCH = 0x04
 COMMAND_CANCEL = 0x0C
+COMMAND_REMOVE_IDENTITY = 0x0D
+COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PRESENCE_DETECT = 0x26
+COMMAND_FREE_IDENTITY_COUNT = 0x41
+COMMAND_IDENTITY_LIST = 0x42
 DEFAULT_USER_ID = 0xFFFFFFFF
 ORDINARY_MATCH_FLAGS = 0
 MATCH_PAYLOAD = struct.Struct("<II60s")
+ENROLL_PAYLOAD = struct.Struct("<IIII32s")
 CATALINA_MATCH_RESULT_BASE_SIZE = 0xC70
 CATALINA_MATCH_RESULT_LOTL_COUNT_OFFSET = 0xC6C
 CATALINA_MATCH_RESULT_LOTL_OFFSET = 0xC70
 MAX_LOTL_USER_IDS = 64
+IDENTITY = struct.Struct("<I16s")
+MAX_IDENTITIES = 64
 
 
 @dataclass(frozen=True)
@@ -35,10 +43,24 @@ class OrdinaryMatchPayload:
 
 
 @dataclass(frozen=True)
+class OrdinaryEnrollPayload:
+    processed_flags: int
+    user_id: int
+    using_auth_token: int
+    token_length: int
+
+
+@dataclass(frozen=True)
 class CatalinaMatchIdentity:
     user_id: int
     uuid: bytes
     lotl_user_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class BiometricIdentity:
+    user_id: int
+    uuid: bytes
 
 
 def _u32(value: int, field: str) -> int:
@@ -60,6 +82,24 @@ def encode_ordinary_match_payload(*, user_id: int = DEFAULT_USER_ID) -> bytes:
     return MATCH_PAYLOAD.pack(ORDINARY_MATCH_FLAGS, user_id, bytes(60))
 
 
+def encode_ordinary_enroll_payload(*, user_id: int) -> bytes:
+    """Encode only Catalina's token-free 48-byte enrollment input."""
+    user_id = _u32(user_id, "user ID")
+    return ENROLL_PAYLOAD.pack(0, user_id, 0, 0, bytes(32))
+
+
+def decode_ordinary_enroll_payload(payload: bytes) -> OrdinaryEnrollPayload:
+    """Reject authorization-token and unknown enrollment variants."""
+    if not isinstance(payload, bytes) or len(payload) != ENROLL_PAYLOAD.size:
+        raise BiometricCommandError("ordinary enrollment payload must be exactly 48 bytes")
+    flags, user_id, using_token, token_length, token = ENROLL_PAYLOAD.unpack(payload)
+    if flags != 0:
+        raise BiometricCommandError("special or unknown enrollment flags are forbidden")
+    if using_token != 0 or token_length != 0 or token != bytes(32):
+        raise BiometricCommandError("authorization-token enrollment is forbidden")
+    return OrdinaryEnrollPayload(flags, user_id, using_token, token_length)
+
+
 def decode_ordinary_match_payload(payload: bytes) -> OrdinaryMatchPayload:
     """Accept only the exact ordinary form and reject all special variants."""
     if not isinstance(payload, bytes) or len(payload) != MATCH_PAYLOAD.size:
@@ -78,6 +118,12 @@ def ordinary_match_fields(*, user_id: int = DEFAULT_USER_ID) -> tuple[int, int, 
             encode_ordinary_match_payload(user_id=user_id), 0)
 
 
+def ordinary_enroll_fields(*, user_id: int) -> tuple[int, int, int, bytes, int]:
+    """Return token-free enrollment fields for offline Bridge composition."""
+    return (COMMAND_ENROLL, COMMAND_VERSION, 0,
+            encode_ordinary_enroll_payload(user_id=user_id), 0)
+
+
 def presence_detect_fields() -> tuple[int, int, int, bytes, int]:
     """Return Catalina's no-input presence-detect command fields."""
     return COMMAND_PRESENCE_DETECT, COMMAND_VERSION, 0, b"", 0
@@ -86,6 +132,86 @@ def presence_detect_fields() -> tuple[int, int, int, bytes, int]:
 def cancel_fields() -> tuple[int, int, int, bytes, int]:
     """Return Catalina's no-input cancellation command fields."""
     return COMMAND_CANCEL, COMMAND_VERSION, 0, b"", 0
+
+
+def max_identity_count_fields() -> tuple[int, int, int, bytes, int]:
+    return COMMAND_MAX_IDENTITY_COUNT, COMMAND_VERSION, 0, b"", 4
+
+
+def free_identity_count_fields(*, user_id: int) -> tuple[int, int, int, bytes, int]:
+    user_id = _u32(user_id, "user ID")
+    return COMMAND_FREE_IDENTITY_COUNT, COMMAND_VERSION, 0, struct.pack("<I", user_id), 4
+
+
+def identity_list_fields(*, user_id: int,
+                         max_identities: int = MAX_IDENTITIES) -> tuple[int, int, int, bytes, int]:
+    user_id = _u32(user_id, "user ID")
+    if (isinstance(max_identities, bool) or not isinstance(max_identities, int)
+            or not 1 <= max_identities <= MAX_IDENTITIES):
+        raise BiometricCommandError(f"max identities must be in 1..{MAX_IDENTITIES}")
+    return (COMMAND_IDENTITY_LIST, COMMAND_VERSION, 0,
+            struct.pack("<I", user_id), IDENTITY.size * max_identities)
+
+
+def decode_identity_count(output: bytes) -> int:
+    if not isinstance(output, bytes) or len(output) != 4:
+        raise BiometricCommandError("identity count output must be exactly 4 bytes")
+    count = struct.unpack("<I", output)[0]
+    if count > MAX_IDENTITIES:
+        raise BiometricCommandError("identity count exceeds the supported safety cap")
+    return count
+
+
+def decode_identity_list(output: bytes) -> tuple[BiometricIdentity, ...]:
+    if not isinstance(output, bytes):
+        raise BiometricCommandError("identity list output must be bytes")
+    if len(output) % IDENTITY.size:
+        raise BiometricCommandError("identity list is not a sequence of 20-byte records")
+    if len(output) > IDENTITY.size * MAX_IDENTITIES:
+        raise BiometricCommandError("identity list exceeds the supported safety cap")
+    identities = tuple(BiometricIdentity(*IDENTITY.unpack_from(output, offset))
+                       for offset in range(0, len(output), IDENTITY.size))
+    if len(set(identities)) != len(identities):
+        raise BiometricCommandError("identity list contains duplicates")
+    return identities
+
+
+def remove_identity_fields(identity: BiometricIdentity) -> tuple[int, int, int, bytes, int]:
+    """Return offline fields for Catalina's mutating identity removal."""
+    if not isinstance(identity, BiometricIdentity):
+        raise BiometricCommandError("identity must be a BiometricIdentity")
+    user_id = _u32(identity.user_id, "user ID")
+    if not isinstance(identity.uuid, bytes) or len(identity.uuid) != 16:
+        raise BiometricCommandError("identity UUID must be exactly 16 bytes")
+    return (COMMAND_REMOVE_IDENTITY, COMMAND_VERSION, 0,
+            IDENTITY.pack(user_id, identity.uuid), 0)
+
+
+def identify_enrollment_delta(
+        before: tuple[BiometricIdentity, ...],
+        after: tuple[BiometricIdentity, ...], *,
+        expected_user_id: int) -> BiometricIdentity:
+    """Require one new identity and no unrelated list mutation.
+
+    This is an offline completion check, not proof that an enrollment event is
+    authentic. A live caller must obtain both snapshots through its own
+    correlated operation and successful terminal-status state machine.
+    """
+    expected_user_id = _u32(expected_user_id, "expected user ID")
+    if not isinstance(before, tuple) or not isinstance(after, tuple):
+        raise BiometricCommandError("identity snapshots must be tuples")
+    if any(not isinstance(item, BiometricIdentity) for item in before + after):
+        raise BiometricCommandError("identity snapshots contain an invalid record")
+    if len(set(before)) != len(before) or len(set(after)) != len(after):
+        raise BiometricCommandError("identity snapshots contain duplicates")
+    removed = set(before) - set(after)
+    added = set(after) - set(before)
+    if removed or len(added) != 1:
+        raise BiometricCommandError("enrollment must add exactly one identity")
+    identity = next(iter(added))
+    if identity.user_id != expected_user_id:
+        raise BiometricCommandError("new identity belongs to an unexpected user")
+    return identity
 
 
 def decode_catalina_match_identity(blob: bytes) -> CatalinaMatchIdentity:

@@ -27,6 +27,8 @@ class CommandEvidenceTests(unittest.TestCase):
     def test_recovers_exact_safe_command_facts(self):
         result = evidence.inspect(self.daemon, self.support)
         self.assertEqual(result["command_version"], 1)
+        self.assertEqual(result["enroll_command"], 3)
+        self.assertEqual(result["enroll_payload_size"], 48)
         self.assertEqual(result["match_command"], 4)
         self.assertEqual(result["match_payload_size"], 68)
         self.assertEqual(result["ordinary_processed_flags"], 0)
@@ -35,6 +37,11 @@ class CommandEvidenceTests(unittest.TestCase):
         self.assertEqual(result["cancel_command"], 0x0C)
         self.assertEqual(result["match_result_base_size"], 0xC70)
         self.assertEqual(result["match_result_lotl_count_offset"], 0xC6C)
+        self.assertEqual(result["identity_list_command"], 0x42)
+        self.assertEqual(result["identity_record_size"], 20)
+        self.assertEqual(result["remove_identity_command"], 0x0D)
+        self.assertEqual(result["max_identity_count_command"], 0x0F)
+        self.assertEqual(result["free_identity_count_command"], 0x41)
 
     def test_rejects_wrong_architecture(self):
         bad = fixture(evidence.DAEMON_STRINGS, evidence.DAEMON_PATTERNS,

@@ -15,8 +15,13 @@ CPU_TYPE_X86_64 = 0x01000007
 DAEMON_STRINGS = (
     b"BiometricMatchOperationMesa\0",
     b"performMatchCommand:\0",
+    b"performEnrollCommand:\0",
     b"performPresenceDetectCommand:\0",
     b"performCancelCommand\0",
+    b"performGetIdentitiesListCommand:outBuffer:\0",
+    b"performRemoveIdentityCommand:\0",
+    b"performRequestMaxIdentityCountCommand:\0",
+    b"performGetFreeIdentityCountCommand:outCount:\0",
     b"performCommand:inValue:inData:inSize:outData:outSize:\0",
     b"processedFlags\0",
     b"userID\0",
@@ -30,6 +35,10 @@ DAEMON_STRINGS = (
 # biometrickitd 19H15. They jointly prove the zeroed 68-byte input and command
 # constants without depending on disassembler output or symbol addresses.
 DAEMON_PATTERNS = {
+    "zeroed 48-byte enrollment input": bytes.fromhex(
+        "0f57c00f2945c00f2945b00f2945a04885c00f84ca000000"),
+    "enrollment command 3 with 48-byte input": bytes.fromhex(
+        "31c041b9300000004c89e7ba03000000b9000000004989d85050"),
     "zeroed 68-byte match input": bytes.fromhex(
         "0f57c00f2945b00f2945a00f2945900f294580c745c000000000"),
     "match command 4 with 68-byte input": bytes.fromhex(
@@ -42,6 +51,16 @@ DAEMON_PATTERNS = {
         "0fb7d3450fb7c44c89efb901000000"),
     "match result has 0xc70 base and count at 0xc6c": bytes.fromhex(
         "418b8d6c0c0000488d0c8d700c00004839c8"),
+    "identity list command 0x42 with 4-byte user ID": bytes.fromhex(
+        "41b9040000004c89ffba42000000b9000000004d89e0415650"),
+    "identity list uses 20-byte records": bytes.fromhex(
+        "48bacdcccccccccccccc4889c848f7e248c1ea024883e2fc"),
+    "remove identity command 0x0d with 20-byte record": bytes.fromhex(
+        "41b9140000004c89f7ba0d000000b9000000005050"),
+    "maximum identity count command 0x0f": bytes.fromhex(
+        "ba0f000000b9000000004531c04531c9"),
+    "free identity count command 0x41 with 4-byte user ID": bytes.fromhex(
+        "41b9040000004c89f7ba41000000b9000000005350"),
 }
 
 SUPPORT_STRINGS = (
@@ -91,12 +110,19 @@ def inspect(daemon: bytes, support: bytes) -> dict[str, object]:
         "daemon_sha256": hashlib.sha256(daemon).hexdigest(),
         "support_sha256": hashlib.sha256(support).hexdigest(),
         "command_version": 1,
+        "enroll_command": 3,
+        "enroll_payload_size": 48,
         "match_command": 4,
         "match_payload_size": 68,
         "ordinary_processed_flags": 0,
         "default_user_id": 0xFFFFFFFF,
         "presence_command": 0x26,
         "cancel_command": 0x0C,
+        "identity_list_command": 0x42,
+        "identity_record_size": 20,
+        "remove_identity_command": 0x0D,
+        "max_identity_count_command": 0x0F,
+        "free_identity_count_command": 0x41,
         "match_result_base_size": 0xC70,
         "match_result_lotl_count_offset": 0xC6C,
     }
@@ -110,7 +136,8 @@ def main() -> None:
     result = inspect(args.biometrickitd.read_bytes(),
                      args.biometric_support.read_bytes())
     print("verified Catalina Intel biometric commands: "
-          f"match={result['match_command']} payload={result['match_payload_size']} "
+          f"enroll={result['enroll_command']} match={result['match_command']} "
+          f"match_payload={result['match_payload_size']} "
           f"presence={result['presence_command']:#x} cancel={result['cancel_command']:#x} "
           f"daemon_sha256={result['daemon_sha256']}")
 
