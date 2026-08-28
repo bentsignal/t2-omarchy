@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Compose an offline BridgeXPC plan from a validated RSD service port.
+"""Compose an offline BridgeXPC plan from a validated RSD transcript.
 
 This module has no socket API and performs no I/O.  It is the fail-closed
 handoff between the modern RSD directory decoder and the current BridgeXPC
-codec; a caller must supply the port returned by the strict RSD parser.
+codec.  The preferred entry point does not expose a caller-controlled port.
 """
 
 from __future__ import annotations
@@ -39,6 +39,12 @@ class DiscoveredBridgePlan:
     service_opened_query: bytes
 
 
+BIOMETRIC_SERVICE = "com.apple.eos.BiometricKit"
+RSD_FRAME_CAP = 64 * 1024
+RSD_FRAME_LIMIT = 16
+RSD_TOTAL_CAP = 256 * 1024
+
+
 def build_plan(advertised_port: int, interface_index: int, *,
                os_build: str = "Linux", bridge_version: int | float = 39,
                process_name: str = "t2-discovered-bridge",
@@ -62,3 +68,23 @@ def build_plan(advertised_port: int, interface_index: int, *,
     endpoint = (rsd.T2_LINK_LOCAL_ADDRESS_CANDIDATE, advertised_port, 0,
                 interface_index)
     return DiscoveredBridgePlan(endpoint, helo, version_query, opened_query)
+
+
+def build_plan_from_rsd_transcript(transcript: bytes, interface_index: int, **kwargs
+                                   ) -> DiscoveredBridgePlan:
+    """Strictly decode one passive RSD transcript and compose its bridge plan."""
+    if not isinstance(transcript, bytes):
+        raise PlanError("RSD transcript must be bytes")
+    try:
+        parser = rsd.PassiveRSDTranscript(
+            wanted_service=BIOMETRIC_SERVICE,
+            max_frame=RSD_FRAME_CAP,
+            max_frames=RSD_FRAME_LIMIT,
+            max_total=RSD_TOTAL_CAP,
+            max_xpc_body=RSD_FRAME_CAP,
+        )
+        parser.feed(transcript)
+        advertised_port = parser.finish()
+    except rsd.RSDProtocolError as error:
+        raise PlanError("RSD transcript did not prove a BiometricKit endpoint") from error
+    return build_plan(advertised_port, interface_index, **kwargs)

@@ -250,13 +250,16 @@ T2 USB/PCI ancestry, carrier, a maximum five-second deadline, and the
 transcript validator's byte/frame limits must all pass.
 
 `discovered-bridge-plan.py` is the socket-free handoff between those layers.
-Given only the strictly decoded RSD-advertised service port and a validated
-interface index, it builds the current link-local endpoint and bounded
-BridgeXPC HELO plus read-only method-0 and method-1 frames. It deliberately
-uses the current RSD-derived T2 address—not the different Catalina address in
-the legacy fixed-port runner—and contains no socket API. Its tests also caught
-and closed an encoder asymmetry: locally generated HELO strings now obey the
-same NUL and byte-length rules as received HELO strings.
+Its preferred entry point consumes the complete bounded passive RSD transcript
+itself, requires that the strict state machine prove the named BiometricKit
+service, and passes the resulting port directly into the plan without exposing
+a caller-controlled value. It combines that result with a validated interface
+index to build the current link-local endpoint and bounded BridgeXPC HELO plus
+read-only method-0 and method-1 frames. It deliberately uses the current
+RSD-derived T2 address—not the different Catalina address in the legacy
+fixed-port runner—and contains no socket API. Its tests also caught and closed
+an encoder asymmetry: locally generated HELO strings now obey the same NUL and
+byte-length rules as received HELO strings.
 
 `decode-message.py` also contains an offline Intel OOL-registration encoder.
 It models control opcodes 2/3 and validates endpoint range, 4 KiB alignment,

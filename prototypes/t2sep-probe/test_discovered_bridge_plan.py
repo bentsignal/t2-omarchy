@@ -1,8 +1,10 @@
 import importlib.util
 from pathlib import Path
 import plistlib
+import struct
 import sys
 import unittest
+import uuid
 
 
 SPEC = importlib.util.spec_from_file_location(
@@ -14,6 +16,22 @@ SPEC.loader.exec_module(plan)
 
 
 class DiscoveredBridgePlanTests(unittest.TestCase):
+    @staticmethod
+    def _transcript(port="49152", service=plan.BIOMETRIC_SERVICE):
+        message = plan.rsd.encode_xpc_message({
+            "MessageType": "Handshake",
+            "MessagingProtocolVersion": plan.rsd.UInt64(7),
+            "Properties": {},
+            "Services": {service: {"Port": port, "Properties": {}}},
+            "UUID": uuid.UUID(int=1),
+        }, message_id=0)
+        return b"".join((
+            plan.rsd.encode_http2_frame(plan.rsd.HTTP2_SETTINGS, 0, 0,
+                                        struct.pack(">HI", 3, 100)),
+            plan.rsd.encode_http2_frame(plan.rsd.HTTP2_DATA, 0,
+                                        plan.rsd.ROOT_CHANNEL, message),
+        ))
+
     def test_uses_current_rsd_address_and_advertised_port(self):
         result = plan.build_plan(49152, 7)
         self.assertEqual(result.endpoint, ("fe80::aede:48ff:fe00:11dd", 49152, 0, 7))
@@ -42,6 +60,25 @@ class DiscoveredBridgePlanTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 with self.assertRaises(plan.PlanError):
                     plan.build_plan(52032, 1, **kwargs)
+
+    def test_transcript_to_plan_has_no_caller_controlled_port(self):
+        result = plan.build_plan_from_rsd_transcript(self._transcript(), 9)
+        self.assertEqual(result.endpoint,
+                         ("fe80::aede:48ff:fe00:11dd", 49152, 0, 9))
+
+    def test_transcript_handoff_fails_closed(self):
+        malformed = (
+            b"",
+            self._transcript(port="0"),
+            self._transcript(service="com.example.not-biometric"),
+            self._transcript() + b"trailing",
+        )
+        for transcript in malformed:
+            with self.subTest(transcript=transcript[:16]):
+                with self.assertRaises(plan.PlanError):
+                    plan.build_plan_from_rsd_transcript(transcript, 1)
+        with self.assertRaises(plan.PlanError):
+            plan.build_plan_from_rsd_transcript("not bytes", 1)
 
 
 if __name__ == "__main__":

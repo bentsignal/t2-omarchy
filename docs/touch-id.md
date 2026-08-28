@@ -390,13 +390,14 @@ arbitrary UTF-8, rejects traversal-capable interface names and nonfinite
 timeouts, and proves all those gates run before sysfs or socket access.
 
 The offline `discovered-bridge-plan.py` now joins the modern discovery and
-BridgeXPC layers without weakening that gate. It accepts a port only in the
-range returned by the strict RSD directory validator, combines it with the
-current RSD-derived link-local T2 address and a nonzero interface index, then
-constructs only HELO, method 0 (`getBridgeVersion:`), and method 1
-(`getServiceOpened:`) frames. The module does not import or create sockets.
-This also prevents accidentally carrying Catalina's different fixed peer
-address into the modern dynamic-service path.
+BridgeXPC layers without weakening that gate. Its transcript entry point runs
+the complete bounded RSD state machine, requires the named BiometricKit
+service, and transfers the proven port directly into the plan. It combines
+that port with the current RSD-derived link-local T2 address and a nonzero
+interface index, then constructs only HELO, method 0 (`getBridgeVersion:`), and
+method 1 (`getServiceOpened:`) frames. The module does not import or create
+sockets. This prevents a caller-selected port or Catalina's different fixed
+peer address from entering the modern transcript-to-plan path.
 
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service
