@@ -255,6 +255,13 @@ Catalina disassembly confirms native BridgeXPC instead sends its HELO and queued
 method 0 back-to-back, so the runner preserves that ordering. The unresolved
 boundary is remote-service activation/handoff or bridgeOS policy, not packet
 delivery or Foundation serialization.
+
+`coupled-bridge-query.py` tests whether the advertised service lifetime is
+scoped to its Multiverse directory connection. It discovers the dynamic port
+and opens BridgeXPC method 0 while the same directory socket remains open. It
+has a separate false-by-default source gate and no method-3/SBIO path. A
+supervised run again received the peer HELO but no method reply, ruling out
+premature directory teardown as the missing activation step.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,

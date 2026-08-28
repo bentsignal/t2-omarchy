@@ -82,6 +82,13 @@ first-difference offsets; it never prints the captured bytes.
 the NCM-device listener class/method and its unique exact instruction storing
 port `58783`. It likewise performs no device or network access.
 
+`macos-rsd-service-socket-evidence.py` verifies the Catalina Intel
+RemoteServiceDiscovery client handoff. The exact function sends only local XPC
+keys `cmd=connect` and `connect_timeout` to a service-specific endpoint,
+duplicates the returned `fd`, and only polls that descriptor before giving it
+to BridgeXPC. It does not prove what `remoted` does before returning the fd,
+but proves the client framework adds no post-handoff activation bytes.
+
 `capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
 the transient network interface using binary `usbmon7`. It accepts only the
 exact private output path, requires the exact bound `7-1:1.0` function, and

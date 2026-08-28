@@ -589,6 +589,24 @@ barrier. The remaining gap is now above a healthy raw TCP stream and below the
 known BridgeXPC method ABI, most likely in remote-service activation/handoff or
 bridgeOS policy state. Method 3 remains gated.
 
+The directory-session lifetime has also been tested directly. A new coupled
+runner performed fresh Multiverse discovery, retained that exact directory TCP
+connection, opened the newly advertised BiometricKit port, and issued only
+HELO plus method 0 before allowing the directory context to close. The service
+again supplied its valid HELO but no method reply within five seconds. Thus a
+saved stale port or prematurely closed RSD directory is not the cause.
+
+Catalina's Intel RemoteServiceDiscovery framework further constrains the local
+handoff. Its exact `remote_service_create_connected_socket` implementation
+sends `{cmd: "connect", connect_timeout: ...}` over a service-specific local
+XPC endpoint, duplicates the returned `fd`, and invokes only
+`remote_socket_poll_connect_sync` on that descriptor. The reproducible verifier
+pins framework SHA-256
+`48d1c6ca89f7a774d02689b4bf662578669f4b81dfeccc26f26be22a8c20351f`.
+This proves the client library injects no post-handoff network preamble; it does
+not yet rule out an activation action performed inside macOS `remoted` before
+the descriptor is returned.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
