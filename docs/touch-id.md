@@ -260,6 +260,23 @@ USB connection, validate it read-only, and scrub before retrying. If direct
 connection is unavailable, a device-specific `usb-storage` UAS quirk is safer
 than retrying the same failing UAS path.
 
+The retry used the Seagate on USB path `4-1.3`, bypassing the Dell dock chain.
+A read-only Btrfs scrub first verified 41.43 GiB with no errors and the kernel
+reported no new UAS resets or I/O faults. The verified post-enrollment capture
+is stored at:
+
+```text
+OMARCHY_BACKUP/apfs-baselines/20260827-post-enrollment/nvme0n1p3.apfs.img
+logical size: 137440149504 bytes
+allocated size: about 23 GiB (sparse)
+SHA-256: 2ab37cd4ad9c859f7a90e7a32828cc3c7a3da178d58978fdebad3c523733c72a
+```
+
+The source and independently reread image hashes matched. The backup remained
+mounted read-write and no new transport errors appeared during capture or
+verification. This completes the required rollback checkpoint before bounded
+SEP endpoint discovery; it does not by itself back up SEP anti-replay state.
+
 ## Useful baseline commands
 
 ```bash
