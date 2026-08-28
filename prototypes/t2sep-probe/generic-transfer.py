@@ -10,10 +10,47 @@ VERSION = 1
 HEADER = struct.Struct("<7I")
 HEADER_SIZE = HEADER.size
 GENERIC_TRANSFER_MESSAGE_TYPE = 0xFC
+MESSAGE_FIRST = 0xFC
+MESSAGE_NEXT_IN = 0xFD
+MESSAGE_NEXT_OUT = 0xFE
+MESSAGE_ERROR = 0xFF
 
 
 class ProtocolError(ValueError):
     pass
+
+
+class Reassembler:
+    """Fail-closed reassembly of first (0xfc) and continuation (0xfd) packets."""
+
+    def __init__(self, maximum: int):
+        _u32("maximum", maximum)
+        self.maximum = maximum
+        self.packet: Packet | None = None
+        self.data = bytearray()
+
+    def add(self, message_type: int, raw: bytes) -> bytes | None:
+        packet = decode_packet(raw)
+        if self.packet is None:
+            if message_type != MESSAGE_FIRST or packet.offset != 0:
+                raise ProtocolError("transaction must begin with a 0xfc packet at offset zero")
+            if packet.total_length > self.maximum:
+                raise ProtocolError("transaction exceeds configured maximum")
+            self.packet = packet
+        else:
+            if message_type != MESSAGE_NEXT_IN:
+                raise ProtocolError("continuation must use message type 0xfd")
+            if (packet.total_length, packet.flags, packet.command) != (
+                    self.packet.total_length, self.packet.flags, self.packet.command):
+                raise ProtocolError("continuation header changed transaction metadata")
+            if packet.offset != len(self.data):
+                raise ProtocolError("continuation is overlapping, duplicated, or out of order")
+        self.data.extend(packet.payload)
+        if len(self.data) == packet.total_length:
+            return bytes(self.data)
+        if not packet.payload:
+            raise ProtocolError("incomplete transaction made no progress")
+        return None
 
 
 def _u32(name: str, value: int) -> None:

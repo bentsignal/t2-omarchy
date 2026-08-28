@@ -51,5 +51,26 @@ class GenericTransferTests(unittest.TestCase):
     def test_rejects_mailbox_overflow(self):
         with self.assertRaises(gt.ProtocolError): gt.encode_mailbox_notification(0x10000, 0)
 
+    def test_reassembles_ordered_packets(self):
+        stream = gt.Reassembler(8)
+        self.assertIsNone(stream.add(gt.MESSAGE_FIRST, gt.Packet(8, 0, 0, 0x73, b"abcd").encode()))
+        self.assertEqual(stream.add(gt.MESSAGE_NEXT_IN, gt.Packet(8, 4, 0, 0x73, b"efgh").encode()), b"abcdefgh")
+
+    def test_reassembler_rejects_out_of_order_chunk(self):
+        stream = gt.Reassembler(8)
+        stream.add(gt.MESSAGE_FIRST, gt.Packet(8, 0, 0, 0x73, b"abcd").encode())
+        with self.assertRaises(gt.ProtocolError):
+            stream.add(gt.MESSAGE_NEXT_IN, gt.Packet(8, 5, 0, 0x73, b"fgh").encode())
+
+    def test_reassembler_rejects_changed_command(self):
+        stream = gt.Reassembler(8)
+        stream.add(gt.MESSAGE_FIRST, gt.Packet(8, 0, 0, 0x73, b"abcd").encode())
+        with self.assertRaises(gt.ProtocolError):
+            stream.add(gt.MESSAGE_NEXT_IN, gt.Packet(8, 4, 0, 0x74, b"efgh").encode())
+
+    def test_reassembler_rejects_oversize_transaction(self):
+        with self.assertRaises(gt.ProtocolError):
+            gt.Reassembler(7).add(gt.MESSAGE_FIRST, gt.Packet(8, 0, 0, 0x73, b"abcd").encode())
+
 
 if __name__ == "__main__": unittest.main()

@@ -162,6 +162,14 @@ message type in bits 15–8, and zero in bits 7–0. The strict offline
 `generic-transfer.py` codec and tests capture these invariants and perform no
 device I/O.
 
+The notification state machine uses all four adjacent message types. The
+handler dispatches `0xfc` to first-packet parsing, `0xfd` to continuation
+parsing, `0xfe` to producing the next outbound packet, and `0xff` to error
+parsing. A transfer is complete only when the accumulated byte count equals
+the header's total length. The offline codec now includes a bounded reassembler
+that rejects a nonzero first offset, changed metadata, gaps, overlap, duplicate
+chunks, zero-progress continuations, and totals above its caller-supplied cap.
+
 `AppleMesaSEPDriver::initSbioCommunication()` also establishes the first SBIO
 transaction in Apple's ordering: after generic-transfer setup, it sends
 command `0x73` with one little-endian 32-bit input value, `3`, and requests no
