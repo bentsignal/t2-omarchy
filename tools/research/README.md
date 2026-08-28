@@ -106,6 +106,19 @@ python tools/research/bridgeos-bridgexpc-evidence.py /path/to/BridgeXPC \
   --expect-sha256 df97ee9ee6f37383303e153bc92f3528f1478fa1268f89b50c5e666c747c3b37
 ```
 
+`bridgeos39-bridgexpc-evidence.py` verifies the same four paths against the
+current arm64 BridgeXPC 39 extracted from Apple's exact bridgeOS 10.6
+`23P6068` restore image. The current receiver retains the historical state
+machine: connection writes HELO, starts reading, and flushes its queue; states
+1/2 queue while state 3 writes; kind 1 merely decodes/logs HELO and rejoins the
+read loop; kind 2 is dispatched immediately. This removes the former caveat
+that only bridgeOS 3 receiver behavior was available:
+
+```bash
+python tools/research/bridgeos39-bridgexpc-evidence.py /path/to/BridgeXPC \
+  --expect-sha256 f72baee6445b2d894e49b889055aebd57318332afdb5c11f24df4f7474cd002a
+```
+
 `xnu-intcoproc-evidence.py` verifies the relevant path for Darwin's private
 `SO_INTCOPROC_ALLOW` option in an Apple XNU source tree. The option is an
 entitlement-gated local PCB flag that permits traffic on an otherwise

@@ -6,11 +6,10 @@
 > not answer the byte-exact method-zero request. XNU source proves Darwin's
 > `SO_INTCOPROC_ALLOW` is a local interface access-control bit rather than a
 > peer-visible wire signal; Linux already passes its effective gate.
-> Historical bridgeOS 3.0
-> BridgeXPC has now also been recovered: it deserializes and logs peer HELO
-> without comparing fields or changing connection state, and immediately
-> dispatches kind-2 messages. Commit `1ede359` contains the verifier and this
-> result. The next task is a narrow comparison with the already successful
+> The exact current `23P6068` BridgeXPC 39 has now been recovered from Apple's
+> iBridge2,14 restore IPSW. It confirms that peer HELO is only decoded/logged,
+> never gates state, and kind-2 messages dispatch immediately. The next task is
+> a narrow comparison with the already successful
 > macOS boot connection; do not repeat enrollment or broad biometric captures.
 
 Give the macOS Codex session this exact instruction:
@@ -26,7 +25,7 @@ Give the macOS Codex session this exact instruction:
 > and bridge version. Use `macos-bridge-wire-compare.py` for the client frames.
 > Determine whether the successful connection has any bytes, socket metadata,
 > or TCP transition between HELO and method 0 that Linux lacks. Focus on
-> current bridgeOS 39 connection/handoff state; do not spend time on
+> RSD service handoff context and the daemon message/reply path; do not spend time on
 > `SO_INTCOPROC_ALLOW` or HELO JSON-field negotiation, because recovered source
 > shows neither can provide a peer-visible gate. If the old private capture is
 > insufficient, make one narrow boot capture that stops immediately after the

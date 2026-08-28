@@ -680,7 +680,7 @@ so the remaining mismatch is below `bkremoted` method dispatch—inside
 BridgeXPC's connection/HELO state or an equivalent current transport gate—not
 inside Touch ID initialization.
 
-The matching bridgeOS 3.0 BridgeXPC framework is now reconstructed from that
+The matching bridgeOS 3.0 BridgeXPC framework was reconstructed from that
 same recovery dyld cache with corrected Mach-O section offsets. Its connection
 state machine is more permissive than the remaining hypothesis suggested:
 `-connected` changes state 2 to state 3, writes its own HELO, starts the read,
@@ -693,12 +693,25 @@ state mutation before it rejoins the common read loop. The checksum-pinned
 sequences against framework SHA-256
 `df97ee9ee6f37383303e153bc92f3528f1478fa1268f89b50c5e666c747c3b37`.
 
-This historical evidence removes another proposed application-layer gate:
-legacy BridgeXPC does not wait for, authenticate, or negotiate fields from the
-peer HELO before allowing normal messages. It does not prove that bridgeOS
-`23P6068` retained identical behavior. For the current machine, however, a
-silent method 0 after both sides have exchanged structurally valid frames is
-now even more specifically a current service/socket policy distinction.
+The historical-version caveat is now removed. Apple's 742,609,165-byte restore
+IPSW for `iBridge2,14` has SHA-1
+`19e51a77d7d74c956f7aad83b724c46221502c3e`; its manifest identifies bridgeOS
+10.6 build `23P6068`, exactly matching the live T2. Read-only extraction of its
+APFS system image yielded current arm64 `bkremoted` (SHA-256
+`29b99cb5ba41ef18122d1920986707d5fc7893bf097e343d41f4ec0a87b32630`)
+and BridgeXPC 39 (SHA-256
+`f72baee6445b2d894e49b889055aebd57318332afdb5c11f24df4f7474cd002a`).
+
+The current framework retains the same exact logic. `-connected` changes state
+2 to 3, calls `writeHELO`, `readMessage`, and `flushQueue` in that order.
+`-send:` queues in states 1/2 and writes in state 3. Completed-body dispatch
+branches first on kind 1 and then kind 2. The entire kind-1 arm initializes a
+string with encoding 4, logs `Received HELO message`, and rejoins the common
+`readMessage` continuation without comparing a HELO field or changing
+connection state; kind 2 calls `processIncomingMessage:`. The checksum-pinned
+`bridgeos39-bridgexpc-evidence.py` verifier makes those current-firmware facts
+reproducible. Therefore HELO negotiation or a BridgeXPC connection-state gate
+cannot explain Linux's silent method 0.
 
 Apple's XNU `xnu-12377.1.9` source closes `SO_INTCOPROC_ALLOW` as a
 peer-visible candidate.
@@ -708,9 +721,10 @@ sockets lacking that flag on interfaces classified as internal coprocessors.
 It is not placed in a TCP option, IPv6 extension, BridgeXPC frame, or payload.
 Linux already sends, ACKs, and receives on this interface, so it has satisfied
 the behavior the Darwin flag unlocks. `xnu-intcoproc-evidence.py` makes this
-source chain reproducible. The remaining boundary is current bridgeOS 39
-connection/handoff state or another receiver-side distinction, not a missing
-Linux socket mark.
+source chain reproducible. The remaining boundary is now above the proven TCP
+delivery but outside BridgeXPC's HELO state machine—most likely the exact RSD
+service handoff context or the current daemon's message/reply path—not a
+missing Linux socket mark.
 
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
