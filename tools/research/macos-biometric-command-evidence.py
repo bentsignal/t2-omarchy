@@ -56,6 +56,8 @@ DAEMON_PATTERNS = {
         "0fb7d3450fb7c44c89efb901000000"),
     "match result has 0xc70 base and count at 0xc6c": bytes.fromhex(
         "418b8d6c0c0000488d0c8d700c00004839c8"),
+    "match succeeds only when identity user ID is not UINT32_MAX": bytes.fromhex(
+        "41837d00ff4c89ad00ffffff0f8478010000"),
     "identity list command 0x42 with 4-byte user ID": bytes.fromhex(
         "41b9040000004c89ffba42000000b9000000004d89e0415650"),
     "identity list uses 20-byte records": bytes.fromhex(
@@ -137,6 +139,7 @@ def inspect(daemon: bytes, support: bytes) -> dict[str, object]:
         "service_event_version": 1,
         "match_result_base_size": 0xC70,
         "match_result_lotl_count_offset": 0xC6C,
+        "no_match_user_id": 0xFFFFFFFF,
     }
 
 

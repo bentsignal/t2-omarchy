@@ -37,6 +37,7 @@ class CommandEvidenceTests(unittest.TestCase):
         self.assertEqual(result["cancel_command"], 0x0C)
         self.assertEqual(result["match_result_base_size"], 0xC70)
         self.assertEqual(result["match_result_lotl_count_offset"], 0xC6C)
+        self.assertEqual(result["no_match_user_id"], 0xFFFFFFFF)
         self.assertEqual(result["identity_list_command"], 0x42)
         self.assertEqual(result["identity_record_size"], 20)
         self.assertEqual(result["remove_identity_command"], 0x0D)

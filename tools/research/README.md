@@ -50,7 +50,9 @@ in `docs/touch-id.md`.
 operation ABI against both `biometrickitd` and `BiometricSupport`. It requires
 unique address-independent instruction runs for the zeroed 68-byte match
 input, match command `4`, presence command `0x26`, cancel command `0x0c`, and
-the legacy wrapper's command version `1`. The companion framework establishes
+the legacy wrapper's command version `1`. It also pins the match-result branch
+that treats first-dword user ID `0xffffffff` as no-match. The companion
+framework establishes
 the initialized `0xffffffff` user IDs and zero-initialized processed flags.
 It reads ordinary files only and never contacts the sensor:
 

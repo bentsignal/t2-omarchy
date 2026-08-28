@@ -360,9 +360,25 @@ It requires at least `0xc70` bytes, reads a 32-bit user ID at offset zero and a
 looking up the returned user-ID/UUID pair in its separately maintained identity
 list. User ID `0xffffffff` is the no-identity value. The offline codec accepts a
 stricter exact-length form and caps that list at 64 entries. A decoded pair is
-**not authentication proof by itself**: Linux must first bind the event to the
-active request, establish a successful terminal status, and compare it with a
-trusted identity obtained from the sensor.
+**not authentication proof by itself**. Disassembly now pins the daemon's
+actual success branch: it compares the result's first dword with
+`0xffffffff`; that value goes to `NO-MATCH`, while any other value enters the
+identity lookup path. Linux must still bind the event to the active request and
+compare the returned user-ID/UUID pair with a trusted identity obtained from a
+separate sensor enumeration.
+
+`authentication-result.py` makes those authorization conditions mechanical
+without adding I/O. Construction arms one match for one expected Unix user and
+requires a nonempty, duplicate-free trusted identity snapshot containing only
+that user. It accepts only service event `0xe3ff8002`, version `1`, and the
+strict Catalina result shape. `0xffffffff` completes as an explicit no-match;
+an exact trusted user-ID/UUID completes as a match; a different user, unknown
+UUID, malformed result, activity event, repeated terminal event, or missing
+terminal event fails closed. A rejected event permanently poisons that attempt,
+and timeout, cancellation, or transport loss can explicitly abort it. This is
+the first complete offline decision model
+that could eventually sit behind fprintd/PAM, but it is not connected to either
+until the current bridgeOS ABI and live event transport are verified.
 
 Current bridgeOS compatibility and the live transport still must be proven
 before a result can be interpreted on Linux.

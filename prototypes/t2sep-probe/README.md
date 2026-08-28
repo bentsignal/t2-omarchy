@@ -216,6 +216,16 @@ exact self-consistent length and explicitly does not treat parsing as proof of
 authentication; event/request correlation, terminal status, and trusted
 identity enumeration are still mandatory.
 
+`authentication-result.py` supplies that final offline authorization boundary.
+It arms exactly one match operation for one Unix user, consumes only the proven
+terminal match event/version, treats result user ID `0xffffffff` as no-match,
+and requires every successful user-ID/UUID pair to exist in a separately
+enumerated trusted snapshot. Unknown identities, cross-user results, activity
+events, malformed data, duplicate completion, and incomplete operations all
+fail closed. A rejected event cannot be followed by a retry on the same
+operation, and callers can permanently abort after timeout, cancellation, or
+transport loss. It has no PAM, fprintd, socket, USB, PCI, or SEP entry point.
+
 `read-only-biometric-plan.py` composes the eventual post-handshake inspection
 sequence entirely offline from a strictly validated RSD transcript. It emits
 Bridge methods 0 and 1 followed only by Catalina's maximum-identity-count
