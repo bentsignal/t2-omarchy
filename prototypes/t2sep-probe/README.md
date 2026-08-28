@@ -240,6 +240,15 @@ transcript-to-endpoint handoff derives the TCP port only from that validated
 SRV record; it has no caller-controlled port parameter. Live multicast remains
 disabled pending a supervised run from the corrected host address.
 
+`t2ncm-flags-probe.c` reproduces only AppleUSBNCM's four-byte device-to-host
+interface-flags read for USB `05ac:8233`. It verifies the exact T2 PCI/USB
+ancestry, control interface, and standard device descriptor before issuing
+`a1/a0/0000/0000/0004`; it requires an exact confirmation, a fresh private
+output file, and a source kill switch. `run-t2ncm-flags-probe.sh` temporarily
+unbinds only `7-1:1.0` and always rebinds it through an exit trap. The supervised
+result was `00 00 00 00`, and neither multicast nor direct RSD discovery woke
+afterward, so this read is now retained as disproven activation evidence.
+
 `rsd-mdns-query.py` stages that supervised boundary. Its fake-socket-tested
 engine sends one exact named SRV/QU query and accepts only UDP/5353 datagrams from the
 wire-proven T2 address with the expected IPv6 interface scope. It carries the

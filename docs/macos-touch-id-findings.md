@@ -178,6 +178,16 @@ limited to this exact device-to-host four-byte read, validate device and
 interface identity before opening usbfs, preserve the raw result privately,
 and remain source-disabled outside a supervised run.
 
+That bounded Linux read has now completed. The kernel initially refused it
+while `cdc_ncm` owned the control interface, so an exact `7-1:1.0` unbind/read/
+rebind wrapper used an exit trap to restore the driver. The standard USB device
+descriptor first reconfirmed `05ac:8233`; the Apple request then returned four
+zero bytes. Both NCM interfaces rebound successfully. Subsequent exact named
+SRV discovery, over multicast and directly to the proven T2 address, still
+received no response while ICMPv6 remained healthy. Therefore neither nonzero
+Apple interface flags nor the `0xa1/0xa0` read itself is the missing activation.
+No RSD capture file was created and no TCP or biometric request was sent.
+
 Only after independent transcript validation should a second supervised step
 request the advertised service, perform the bounded BridgeXPC HELO exchange,
 and stop before sending a Mesa command. The boot capture proves the sequence
