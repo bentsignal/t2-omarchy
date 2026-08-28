@@ -40,6 +40,14 @@ class DeviceResetTests(unittest.TestCase):
         self.assertGreaterEqual(source.count('> "$driver/bind"'), 2)
         self.assertIn("trap cleanup EXIT HUP INT TERM", source)
 
+    def test_reauthorize_wrapper_is_source_disabled_and_restores_authorization(self):
+        source = PATH.with_name("capture-t2ncm-reauthorize.sh").read_text()
+        self.assertIn("LIVE_T2_NCM_REAUTHORIZE_ENABLED=false", source)
+        self.assertIn("device=/sys/bus/usb/devices/7-1", source)
+        self.assertIn('printf \'0\' > "$device/authorized"', source)
+        self.assertGreaterEqual(source.count('printf \'1\' > "$device/authorized"'), 2)
+        self.assertIn("trap cleanup EXIT HUP INT TERM", source)
+
 
 if __name__ == "__main__":
     unittest.main()

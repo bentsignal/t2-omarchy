@@ -242,6 +242,15 @@ trap restored both `cdc_ncm` interfaces and no reset occurred. Thus Linux's gene
 deeper macOS enumeration transition on this VHCI. The helper remains
 source-disabled, and its capture contains only the rejected attempt.
 
+The supported sysfs reauthorization path did force a broader re-enumeration:
+writing zero and then one to the exact device's `authorized` attribute caused
+all T2 virtual USB functions to enumerate again, and an exit trap verified the
+NCM interfaces returned. Full usbmon payloads again contained only the T2's
+solicited-node MLDv2 reports—no DNS-SD advertisement. With the proven host
+address restored, ICMPv6 succeeded and both multicast and direct exact RSD
+queries timed out with clean TX/RX counters. Therefore even a complete Linux
+USB authorization cycle does not activate current bridgeOS `remoted`.
+
 Only after independent transcript validation should a second supervised step
 request the advertised service, perform the bounded BridgeXPC HELO exchange,
 and stop before sending a Mesa command. The boot capture proves the sequence

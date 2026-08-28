@@ -76,6 +76,13 @@ supervised attempt showed that `t2bce_vhci` rejects `USBDEVFS_RESET` with
 `EPERM` even for root after an exact unbind; the exit trap restored both NCM
 interfaces. The generic usbfs route therefore cannot perform this transition.
 
+`capture-t2ncm-reauthorize.sh` tests the supported broader alternative. It
+temporarily changes only the exact T2 USB device's authorization state under an
+exit trap, captures the resulting all-function enumeration, and verifies both
+NCM interfaces recover. Its live switch remains false. The supervised capture
+again contained only solicited-node MLDv2 traffic; subsequent healthy-link
+multicast and direct RSD queries both timed out.
+
 `pbzx-stream.py` incrementally decodes the PBZX payload inside older macOS
 installer packages. It exists because a whole-payload decoder expanded a
 roughly 15 GB archive in memory and caused `systemd-oomd` to kill the terminal
