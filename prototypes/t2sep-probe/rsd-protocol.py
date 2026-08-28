@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Strict offline codec for the modern remoted/RSD directory path.
 
-Nothing in this module opens a socket. The installed Intel macOS remoted proves
-the NCM endpoint construction; the T2 directory response remains unobserved.
+Nothing in this module opens a socket. A macOS boot trace proves the address
+roles and that both directory and service ports are boot-dynamic.
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ class RSDProtocolError(ValueError):
     pass
 
 
-RSD_PORT_CANDIDATE = 58783
 LINUX_CDC_DESCRIPTOR_MAC = bytes.fromhex("acde48001122")
 T2_NCM_MAC = bytes.fromhex("acde48334455")
 
@@ -38,9 +37,8 @@ def ncm_link_local_address(mac: bytes, *, peer: bool) -> str:
 
 LINUX_DESCRIPTOR_LINK_LOCAL_ADDRESS = ncm_link_local_address(
     LINUX_CDC_DESCRIPTOR_MAC, peer=False)
+HOST_LINK_LOCAL_ADDRESS = LINUX_DESCRIPTOR_LINK_LOCAL_ADDRESS
 T2_LINK_LOCAL_ADDRESS_CANDIDATE = ncm_link_local_address(T2_NCM_MAC, peer=False)
-T2_EXPECTED_HOST_LINK_LOCAL_ADDRESS = ncm_link_local_address(T2_NCM_MAC,
-                                                              peer=True)
 HTTP2_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 HTTP2_DATA = 0
 HTTP2_HEADERS = 1
@@ -113,14 +111,18 @@ class XPCMessage:
     value: Any | None
 
 
-def candidate_rsd_sockaddr(interface_index: int) -> tuple[str, int, int, int]:
-    """Return the statically verified modern RSD endpoint without opening a socket."""
+def observed_rsd_sockaddr(interface_index: int,
+                          directory_port: int) -> tuple[str, int, int, int]:
+    """Build an endpoint from a same-boot observed directory port, offline."""
     if isinstance(interface_index, bool) or not isinstance(interface_index, int):
         raise RSDProtocolError("interface index must be an integer")
     if not 1 <= interface_index < 1 << 32:
         raise RSDProtocolError("interface index is out of range")
-    return (T2_LINK_LOCAL_ADDRESS_CANDIDATE, RSD_PORT_CANDIDATE, 0,
-            interface_index)
+    if isinstance(directory_port, bool) or not isinstance(directory_port, int):
+        raise RSDProtocolError("directory port must be an integer")
+    if not 1 <= directory_port <= 65535:
+        raise RSDProtocolError("directory port is out of range")
+    return (T2_LINK_LOCAL_ADDRESS_CANDIDATE, directory_port, 0, interface_index)
 
 
 class PassiveRSDTranscript:

@@ -30,23 +30,25 @@ Codex session this instruction:
 > restarting Apple daemons, changing enrollment, or rebooting. Never commit
 > raw captures or private unified logs to the public repository.
 
-## Established evidence
+## Pre-capture evidence (superseded where noted)
+
+The capture is complete. [`macos-touch-id-findings.md`](macos-touch-id-findings.md)
+is authoritative when it conflicts with the pre-capture assumptions below.
 
 Do not redo these Linux experiments unless later evidence contradicts them:
 
 - The T2 CDC-NCM device transmits from Ethernet MAC
   `ac:de:48:33:44:55` and IPv6 link-local address
   `fe80::aede:48ff:fe33:4455`.
-- Disassembly of the installed macOS `remoted` address helper shows that the
-  host peer address for that MAC is `fe80::aede:48ff:fe33:44aa`.
+- The earlier address-helper inference predicted host address `...:44aa`.
+  macOS directly disproved this: its host address is `...:1122`.
 - After a narrow CDC-NCM USB rebind, Linux neighbor discovery and ICMPv6 echo
   to the T2 succeeded from that host peer address. The transport is real.
 - TCP ports `58783` (current `remoted` device-role listener candidate) and
   `52032` (legacy BiometricKit listener) both actively refused connections
   during Linux boot. No `_remoted._tcp` mDNS answer appeared.
-- Therefore the unresolved problem is activation: macOS starts or wakes a T2
-  service that is dormant when Linux boots. Guessing more application payloads
-  before capturing that activation exchange is not justified.
+- The capture subsequently resolved the activation sequence and proved that
+  the directory and BiometricKit service ports are boot-dynamic.
 - The current x86_64 `remoted` slice previously inspected has SHA-256
   `88e78e65b77e3c2338ca95c9ab201bfa0be90ce81e58ece1c4d1ad11273f4056`.
   Reconfirm this against the live installation rather than assuming it.

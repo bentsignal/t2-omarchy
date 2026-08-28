@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Hard-gated passive RSD directory query for the internal T2 link.
 
-Default execution prints deterministic offline fixtures.  Live execution is
-mechanically disabled until current installed-macOS evidence verifies the T2
-RSD address and port.  Even after that source gate is filled, the only request
-implemented here is the RemoteXPC service-directory handshake.
+Default execution prints deterministic offline fixtures. Live execution is
+mechanically disabled until Linux can obtain the boot-dynamic T2 directory
+port during that same boot. Even after that source gate is implemented, the
+only request here is the RemoteXPC service-directory handshake.
 """
 
 from __future__ import annotations
@@ -31,13 +31,10 @@ FRAME_CAP = 64 * 1024
 FRAME_LIMIT = 16
 TOTAL_CAP = 256 * 1024
 CONFIRMATION = "I_UNDERSTAND_THIS_ONLY_READS_THE_T2_RSD_DIRECTORY"
-# macOS 26.6.2 build 25G83 x86_64 remoted, SHA-256
-# 88e78e65b77e3c2338ca95c9ab201bfa0be90ce81e58ece1c4d1ad11273f4056,
-# RSDRemoteNCMDeviceDevice::createPortListener at 0x10001628a stores 0xe59f.
-CURRENT_RSD_PORT_VERIFICATION = (
-    protocol.RSD_PORT_CANDIDATE,
-    "installed macOS 26.6.2 remoted NCM-device listener",
-)
+# A macOS 26.6.2 boot trace observed directory port 59602 for that boot only.
+# It also proved that 58783 belongs to a different remoted role. No Linux
+# same-boot directory-port discovery mechanism has been implemented yet.
+SAME_BOOT_DIRECTORY_PORT_VERIFICATION = None
 # A supervised post-rebind Ethernet capture proves bridgeOS source MAC
 # ac:de:48:33:44:55 and source IPv6 fe80::aede:48ff:fe33:4455 directly.
 CURRENT_T2_ADDRESS_VERIFICATION = (
@@ -155,22 +152,22 @@ def verify_t2_interface(name: str) -> int:
 def live_capture(interface: str, timeout: float) -> PassiveDirectoryCapture:
     if not LIVE_DIRECTORY_CAPTURE_ENABLED:
         raise QueryError("live RSD query disabled: supervised capture not enabled")
-    expected = (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
-                protocol.RSD_PORT_CANDIDATE)
     address_verification = CURRENT_T2_ADDRESS_VERIFICATION
-    port_verification = CURRENT_RSD_PORT_VERIFICATION
+    port_verification = SAME_BOOT_DIRECTORY_PORT_VERIFICATION
     if (not isinstance(address_verification, tuple) or len(address_verification) != 2
-            or address_verification[0] != expected[0]
+            or address_verification[0] != protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE
             or not isinstance(address_verification[1], str) or not address_verification[1]
             or not isinstance(port_verification, tuple) or len(port_verification) != 2
-            or port_verification[0] != expected[1]
+            or isinstance(port_verification[0], bool)
+            or not isinstance(port_verification[0], int)
+            or not 1 <= port_verification[0] <= 65535
             or not isinstance(port_verification[1], str) or not port_verification[1]):
         raise QueryError("live RSD query disabled: malformed endpoint verification")
     if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
             or not math.isfinite(timeout) or not 0 < timeout <= 5):
         raise QueryError("timeout must be finite, positive, and no more than five seconds")
     ifindex = verify_t2_interface(interface)
-    target = protocol.candidate_rsd_sockaddr(ifindex)
+    target = protocol.observed_rsd_sockaddr(ifindex, port_verification[0])
     with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         sock.connect(target)
@@ -195,7 +192,9 @@ def main() -> None:
         opening = protocol.candidate_rsd_transport_opening()
         acknowledgment = protocol.candidate_rsd_settings_ack()
         handshake = protocol.candidate_rsd_device_handshake(identifier)
-        print(f"offline only: candidate endpoint={protocol.candidate_rsd_sockaddr(1)}")
+        print("offline only: T2 address="
+              f"{protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE}%<interface>")
+        print("offline only: directory port requires same-boot discovery")
         print(f"offline only: opening={opening.hex()}")
         print(f"offline only: settings-ack={acknowledgment.hex()}")
         print(f"offline only: device-handshake={handshake.hex()}")

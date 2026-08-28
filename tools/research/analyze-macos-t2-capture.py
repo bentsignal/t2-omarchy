@@ -14,7 +14,7 @@ from typing import Any
 MAX_PCAP_BYTES = 128 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024 * 1024
 MAX_PACKETS = 1_000_000
-INTERESTING_PORTS = {52032, 58783}
+WATCHED_PORTS = {49165, 52032, 58783, 59602}
 PCAP_MAGICS = {
     b"\xd4\xc3\xb2\xa1": "<",
     b"\xa1\xb2\xc3\xd4": ">",
@@ -122,8 +122,8 @@ def summarize_pcap(path: Path) -> dict[str, Any]:
         (item["ipv6_source"], item["source_port"],
          item["ipv6_destination"], item["destination_port"])
         for item in decoded
-        if item.get("source_port") in INTERESTING_PORTS
-        or item.get("destination_port") in INTERESTING_PORTS
+        if item.get("source_port") in WATCHED_PORTS
+        or item.get("destination_port") in WATCHED_PORTS
     })
     return {
         "file": path.name,
@@ -163,12 +163,15 @@ def analyze(directory: Path) -> dict[str, Any]:
         "capture_directory": str(directory),
         "pcaps": [summarize_pcap(path) for path in pcaps],
         "interesting_listener_lines": {
-            name: _matching_lines(directory / name, ("52032", "58783"))
+            name: _matching_lines(
+                directory / name,
+                ("remoted", "biometrickitd", "49165", "52032", "58783", "59602"))
             for name in listener_files
         },
         "activation_log_lines": _matching_lines(
             directory / "unified-log.ndjson",
-            ("biometric", "remote", "52032", "58783", "bridge")),
+            ("biometric", "remote", "49165", "52032", "58783", "59602",
+             "bridge")),
     }
 
 

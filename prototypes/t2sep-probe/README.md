@@ -216,15 +216,17 @@ The source gate must be an exact port plus nonempty evidence tuple. Peer HELO
 JSON must have the recovered four keys and valid types; invalid interface names
 and nonfinite/out-of-range timeouts are rejected before sysfs or socket access.
 
-`rsd-protocol.py` models the newer `remoted` directory route as an offline
-candidate only. The installed macOS 26.6.2 x86_64 `biometrickitd` now proves
+`rsd-protocol.py` models the newer `remoted` directory route offline. A macOS
+26.6.2 boot capture proves
 that the host asks RemoteServiceDiscovery for `com.apple.eos.BiometricKit`,
 constructs a `BridgeXPCConnection` with `initForRemoteService:`, and activates
-it. Independent implementations agree on HTTP/2 plus RemoteXPC framing and
-RSD port `58783`; the local encoder has been checked byte-for-byte against one
-of them. The module can encode the passive directory handshake and strictly
-decode the named advertised service port, but contains no socket calls. The T2
-directory's current answer remains unobserved.
+it. The live directory used boot-dynamic T2 port `59602`, then advertised
+boot-dynamic BiometricKit port `49165`; fixed port `58783` belongs to a
+different `remoted` role. Independent implementations agree on HTTP/2 plus
+RemoteXPC framing, and the local encoder has been checked byte-for-byte against
+one of them. The module can encode the passive directory handshake and
+strictly decode the named advertised service port, but contains no socket
+calls or fixed directory port.
 
 Its `PassiveRSDTranscript` state machine validates a complete server transcript
 from fragmented offline bytes. It caps bytes, frames, controls, and XPC sizes;
@@ -244,15 +246,14 @@ port and the exact bounded server transcript, so a supervised result can be
 revalidated by the socket-free handoff instead of trusting a copied number.
 The compatibility wrapper still returns only the port. The live branch
 is checked before sysfs or socket access and remains mechanically disabled by
-`LIVE_DIRECTORY_CAPTURE_ENABLED = False`. The installed macOS 26.6.2 x86_64
-`remoted` contains a device-role listener for port `58783` and derives both
-link-local addresses from the device MAC. A supervised rebind capture proved
+`LIVE_DIRECTORY_CAPTURE_ENABLED = False`. The macOS boot trace proved host
+address `fe80::aede:48ff:fe00:1122` on `en6`, while a supervised Linux rebind
+capture proved
 this T2 transmits as `ac:de:48:33:44:55` /
-`fe80::aede:48ff:fe33:4455`; the same algorithm yields the expected host peer
-`fe80::aede:48ff:fe33:44aa`. The Linux CDC descriptor MAC
-`ac:de:48:00:11:22` is recorded separately and is not used to infer the T2
-endpoint. Even if the kill
-switch is deliberately changed, both source gates, two CLI gates, exact internal
+`fe80::aede:48ff:fe33:4455`. The host address agrees with the Linux CDC
+descriptor MAC `ac:de:48:00:11:22`; the earlier `...:44aa` inference was
+wrong. No same-boot directory-port verifier exists yet. Even if the kill
+switch is deliberately changed, the source gates, two CLI gates, exact internal
 T2 USB/PCI ancestry, carrier, a maximum five-second deadline, and the
 transcript validator's byte/frame limits must all pass.
 

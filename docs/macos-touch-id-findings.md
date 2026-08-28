@@ -128,6 +128,15 @@ Current macOS does not use fixed ports `58783` or `52032` for this boot path.
 The directory ran on T2 port `59602`, and its returned BiometricKit service ran
 on T2 port `49165`. Linux must not hard-code either boot-dynamic value.
 
+The remaining bootstrap is likely DNS-SD, but this is not yet directly proven
+for the internal T2 link. go-ios commit `ced7e53d94a2`, `ios/discover.go`,
+discovers dynamic RSD endpoints by browsing `_remoted._tcp.local` and uses the
+advertised SRV port. The macOS capture did
+not obtain link packets, so it could not preserve that advertisement on the
+wire. The next Linux experiment should retry a bounded mDNS browse from the
+now-proven host address `...:1122` before attempting any TCP port. Only a
+strictly decoded same-boot SRV answer may supply the directory port.
+
 The next fail-closed Linux experiment should reproduce only the directory
 connection. After a narrow NCM rebind and proof that TX advances, connect from
 the proven host address to the T2 address using a freshly observed/discovered

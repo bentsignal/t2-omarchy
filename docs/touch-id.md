@@ -1,6 +1,14 @@
 # Touch ID on Linux: T2 research notes
 
-Status as of 2026-08-27: **transport working; biometric path not working yet**. This document records the
+> **Current result:** the macOS boot capture in
+> [`macos-touch-id-findings.md`](macos-touch-id-findings.md) supersedes earlier
+> fixed-port and host-address candidates retained below as research history.
+> macOS uses host `fe80::aede:48ff:fe00:1122`, reached a boot-dynamic directory
+> on T2 port `59602`, and received boot-dynamic BiometricKit port `49165`.
+> Neither port may be hard-coded for Linux.
+
+Status as of 2026-08-28: **transport and macOS activation sequence proven;
+Linux biometric path not working yet**. This document records the
 machine-specific evidence, current public research, safety boundaries, and a
 concrete bring-up plan for the built-in Touch ID sensor on this repository's
 `MacBookPro16,1`.
@@ -446,6 +454,12 @@ interface exists, and checks every `tcpdump` process before starting the
 interaction window. Root-attributed `lsof` listener snapshots complement
 `netstat`, so a missing or prematurely failed capture cannot be mistaken for
 negative protocol evidence.
+
+### Historical fixed-port candidate (superseded by the macOS boot capture)
+
+The following section records how the earlier `58783` hypothesis was derived.
+It is retained for provenance and for the other `remoted` role that owns that
+literal; it is not a valid Linux directory endpoint.
 
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service

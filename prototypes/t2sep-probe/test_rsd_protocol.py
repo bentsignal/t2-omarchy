@@ -16,14 +16,17 @@ SPEC.loader.exec_module(rsd)
 
 
 class XPCCodecTests(unittest.TestCase):
-    def test_candidate_endpoint_is_offline_and_scoped(self):
+    def test_observed_endpoint_is_offline_and_scoped(self):
         self.assertEqual(
-            rsd.candidate_rsd_sockaddr(3),
-            ("fe80::aede:48ff:fe33:4455", 58783, 0, 3),
+            rsd.observed_rsd_sockaddr(3, 59602),
+            ("fe80::aede:48ff:fe33:4455", 59602, 0, 3),
         )
         for bad in (0, -1, 1 << 32, True, "3"):
             with self.assertRaises(rsd.RSDProtocolError):
-                rsd.candidate_rsd_sockaddr(bad)
+                rsd.observed_rsd_sockaddr(bad, 59602)
+        for bad in (0, -1, 65536, True, "59602"):
+            with self.assertRaises(rsd.RSDProtocolError):
+                rsd.observed_rsd_sockaddr(3, bad)
 
     def test_current_remoted_ncm_address_derivation(self):
         mac = bytes.fromhex("acde48001122")
@@ -35,8 +38,8 @@ class XPCCodecTests(unittest.TestCase):
                          "fe80::aede:48ff:fe00:1122")
         self.assertEqual(rsd.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
                          "fe80::aede:48ff:fe33:4455")
-        self.assertEqual(rsd.T2_EXPECTED_HOST_LINK_LOCAL_ADDRESS,
-                         "fe80::aede:48ff:fe33:44aa")
+        self.assertEqual(rsd.HOST_LINK_LOCAL_ADDRESS,
+                         "fe80::aede:48ff:fe00:1122")
         for mac_value, peer in ((b"", False), (b"12345", False),
                                 (bytearray(mac), False), (mac, 1)):
             with self.subTest(mac=mac_value, peer=peer):

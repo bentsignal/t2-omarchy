@@ -110,7 +110,7 @@ class RSDQueryTests(unittest.TestCase):
         self.assertFalse(query.LIVE_DIRECTORY_CAPTURE_ENABLED)
         self.assertEqual(query.CURRENT_T2_ADDRESS_VERIFICATION[0],
                          "fe80::aede:48ff:fe33:4455")
-        self.assertEqual(query.CURRENT_RSD_PORT_VERIFICATION[0], 58783)
+        self.assertIsNone(query.SAME_BOOT_DIRECTORY_PORT_VERIFICATION)
         with mock.patch.object(query, "verify_t2_interface") as verify:
             with mock.patch.object(query.socket, "socket") as socket_constructor:
                 with self.assertRaisesRegex(query.QueryError, "disabled"):
@@ -125,9 +125,8 @@ class RSDQueryTests(unittest.TestCase):
         live.assert_called_once_with("t2", 1.0)
 
     def test_malformed_live_verification_still_precedes_all_io(self):
-        for malformed in ("yes", (), ("address", 58783, "evidence"),
-                          (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE,
-                           protocol.RSD_PORT_CANDIDATE, "")):
+        for malformed in ("yes", (), ("address", 59602, "evidence"),
+                          (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE, "", "")):
             with self.subTest(malformed=malformed):
                 with mock.patch.object(query, "LIVE_DIRECTORY_CAPTURE_ENABLED", True):
                     with mock.patch.object(query, "CURRENT_T2_ADDRESS_VERIFICATION",
@@ -146,20 +145,25 @@ class RSDQueryTests(unittest.TestCase):
                 with mock.patch.object(query, "CURRENT_T2_ADDRESS_VERIFICATION",
                                        verified):
                     with mock.patch.object(query, "LIVE_DIRECTORY_CAPTURE_ENABLED", True):
-                        with mock.patch.object(query, "verify_t2_interface") as verify:
-                            with mock.patch.object(query.socket, "socket") as constructor:
-                                with self.assertRaisesRegex(query.QueryError, "timeout"):
-                                    query.live_query("enp4s0f1u1", timeout)
+                        with mock.patch.object(
+                                query, "SAME_BOOT_DIRECTORY_PORT_VERIFICATION",
+                                (59602, "same-boot fixture evidence")):
+                            with mock.patch.object(query, "verify_t2_interface") as verify:
+                                with mock.patch.object(query.socket, "socket") as constructor:
+                                    with self.assertRaisesRegex(query.QueryError, "timeout"):
+                                        query.live_query("enp4s0f1u1", timeout)
                 verify.assert_not_called()
                 constructor.assert_not_called()
 
     def test_malformed_verified_port_still_precedes_all_io(self):
         address = (protocol.T2_LINK_LOCAL_ADDRESS_CANDIDATE, "fixture evidence")
-        for malformed in (None, (), (58783, ""), (52032, "old evidence")):
+        for malformed in (None, (), (59602, ""), (0, "evidence"),
+                          (65536, "evidence"), (True, "evidence")):
             with self.subTest(malformed=malformed):
                 with mock.patch.object(query, "CURRENT_T2_ADDRESS_VERIFICATION", address):
                     with mock.patch.object(query, "LIVE_DIRECTORY_CAPTURE_ENABLED", True):
-                        with mock.patch.object(query, "CURRENT_RSD_PORT_VERIFICATION", malformed):
+                        with mock.patch.object(query, "SAME_BOOT_DIRECTORY_PORT_VERIFICATION",
+                                               malformed):
                             with mock.patch.object(query, "verify_t2_interface") as verify:
                                 with mock.patch.object(query.socket, "socket") as constructor:
                                     with self.assertRaisesRegex(query.QueryError, "malformed"):
