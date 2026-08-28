@@ -143,7 +143,8 @@ def analyze(directory: Path) -> dict[str, Any]:
     pcaps = sorted(directory.glob("*.pcap"))
     if len(pcaps) > 32:
         raise CaptureError("capture contains too many pcap files")
-    listener_files = ("tcp-listeners-before.txt", "tcp-listeners-after.txt")
+    listener_files = ("tcp-listeners-before.txt", "tcp-listeners-after.txt",
+                      "tcp-processes-before.txt", "tcp-processes-after.txt")
     return {
         "capture_directory": str(directory),
         "pcaps": [summarize_pcap(path) for path in pcaps],

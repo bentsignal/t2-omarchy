@@ -31,9 +31,16 @@ t2_interfaces=$(ifconfig -a | awk '
   /^[[:space:]]*ether ac:de:48:/ { print iface }
 ' | sort -u)
 printf '%s\n' "$t2_interfaces" >"$capture_dir/t2-interfaces.txt"
+if [[ -z $t2_interfaces ]]; then
+  echo "No ac:de:48 T2 network interface was found; no capture was attempted." >&2
+  echo "Keep $capture_dir/ifconfig-before.txt and return to Codex for inspection." >&2
+  exit 3
+fi
 
 echo "A macOS authorization prompt may appear for the bounded packet capture."
 sudo -v
+sudo lsof -nP -iTCP -sTCP:LISTEN \
+  >"$capture_dir/tcp-processes-before.txt" 2>&1 || true
 
 pids=""
 for interface_name in $t2_interfaces; do
@@ -43,6 +50,18 @@ for interface_name in $t2_interfaces; do
   sudo tcpdump -i "$interface_name" -n -s 0 -U -w \
     "$capture_dir/$interface_name.pcap" >"$capture_dir/$interface_name-tcpdump.txt" 2>&1 &
   pids="$pids $!"
+done
+
+# Fail before the interaction window if tcpdump rejected an interface or the
+# output path. A zero-byte/empty capture must never look successful.
+sleep 1
+for capture_pid in $pids; do
+  if ! kill -0 "$capture_pid" 2>/dev/null; then
+    kill -INT $pids 2>/dev/null || true
+    wait $pids 2>/dev/null || true
+    echo "A T2 tcpdump process exited during startup; inspect *-tcpdump.txt." >&2
+    exit 4
+  fi
 done
 
 log stream --style ndjson --level debug \
@@ -61,6 +80,8 @@ wait "$log_pid" 2>/dev/null || true
 
 ifconfig -a >"$capture_dir/ifconfig-after.txt"
 netstat -anv -p tcp >"$capture_dir/tcp-listeners-after.txt" 2>&1 || true
+sudo lsof -nP -iTCP -sTCP:LISTEN \
+  >"$capture_dir/tcp-processes-after.txt" 2>&1 || true
 find "$capture_dir" -type f ! -name capture-sha256.txt \
   -exec shasum -a 256 {} + >"$capture_dir/capture-sha256.txt"
 

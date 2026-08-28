@@ -441,6 +441,11 @@ listener snapshots; it does not modify enrollment. Its companion
 `analyze-macos-t2-capture.py` is socket-free, caps every input and record
 count, rejects symlinks and malformed pcaps, and reports wire addresses,
 candidate-port flows, TCP resets, listener evidence, and activation log lines.
+The collector fails before requesting packet capture when no T2-range
+interface exists, and checks every `tcpdump` process before starting the
+interaction window. Root-attributed `lsof` listener snapshots complement
+`netstat`, so a missing or prematurely failed capture cannot be mistaken for
+negative protocol evidence.
 
 There is now a second, explicitly candidate transport model for that next
 capture. Two independent open implementations of Apple's modern Remote Service

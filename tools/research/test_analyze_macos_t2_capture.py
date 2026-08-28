@@ -70,12 +70,17 @@ class CaptureAnalysisTests(unittest.TestCase):
             root = Path(temporary)
             (root / "tcp-listeners-before.txt").write_text(
                 "tcp6 0 0 *.58783 *.* LISTEN\n")
+            (root / "tcp-processes-after.txt").write_text(
+                "remoted 42 root 9u IPv6 TCP *:52032 (LISTEN)\n")
             (root / "unified-log.ndjson").write_text(
                 '{"eventMessage":"Biometric service opened"}\n')
             result = capture.analyze(root)
         self.assertEqual(result["interesting_listener_lines"]
                          ["tcp-listeners-before.txt"],
                          ["tcp6 0 0 *.58783 *.* LISTEN"])
+        self.assertEqual(result["interesting_listener_lines"]
+                         ["tcp-processes-after.txt"],
+                         ["remoted 42 root 9u IPv6 TCP *:52032 (LISTEN)"])
         self.assertEqual(len(result["activation_log_lines"]), 1)
 
 
