@@ -387,6 +387,11 @@ def decode_perform_command_reply(reply: tuple[BridgeAtom, ...],
         raise BridgeProtocolError("perform-command reply must contain two objects")
     status, output = reply
     status = _signed(status, 32, "status")
+    # BridgeXPC's private BTNil singleton serializes as the same reserved UUID
+    # string used for no-reply transport calls. Current bridgeOS emits it in
+    # lower case for a nil method-3 output.
+    if output == NO_REPLY_UUID.lower():
+        output = None
     if output is not None and not isinstance(output, bytes):
         raise BridgeProtocolError("reply output must be bytes or None")
     if not isinstance(max_output, int) or isinstance(max_output, bool) or max_output < 0:

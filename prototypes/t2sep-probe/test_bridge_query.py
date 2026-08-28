@@ -89,6 +89,19 @@ class PassiveQueryTests(unittest.TestCase):
             bytes(sock.sent[offset + first_size:offset + first_size + second.body_size]))
         self.assertEqual(envelope, [1, False, reply_id, [1]])
 
+    def test_capped_perform_query(self):
+        reply_id = "01234567-89AB-4CDE-8FAB-0123456789AB"
+        request = query.protocol.biometric_perform_request(0x0F, 1, 0, b"", 4)
+        reply = plistlib.dumps([1, True, reply_id, [0, b"\x05\0\0\0"]],
+                               fmt=plistlib.FMT_BINARY)
+        sock = FakeSocket(frame(query.protocol.FRAME_MESSAGE, reply))
+        self.assertEqual(query.query_perform_connected_socket(
+            sock, request, max_output=4, reply_id=reply_id),
+            (0, b"\x05\0\0\0"))
+        with self.assertRaises(query.protocol.BridgeProtocolError):
+            query.query_perform_connected_socket(
+                FakeSocket(b""), (0,), max_output=4, reply_id=reply_id)
+
     def test_rejects_eof_malformed_reply_and_frame_flood(self):
         with self.assertRaises(query.QueryError):
             query.query_connected_socket(FakeSocket(b""))

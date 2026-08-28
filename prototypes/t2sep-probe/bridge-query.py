@@ -108,6 +108,18 @@ def query_service_opened_connected_socket(
                                                       max_body=BODY_CAP)
 
 
+def query_perform_connected_socket(
+        sock: socket.socket, request: tuple[protocol.BridgeAtom, ...], *,
+        max_output: int, reply_id: str | None = None) -> tuple[int, bytes | None]:
+    """Perform one preconstructed method-3 call and strictly cap its output."""
+    if (not isinstance(request, tuple) or len(request) != 4
+            or request[0] != protocol.PERFORM_COMMAND):
+        raise protocol.BridgeProtocolError("request is not a method-3 tuple")
+    logical_reply = exchange_connected_socket(sock, list(request), reply_id)
+    return protocol.decode_perform_command_reply(tuple(logical_reply),
+                                                  max_output=max_output)
+
+
 def _read_sysfs(path: Path) -> str:
     try:
         return path.read_text().strip()

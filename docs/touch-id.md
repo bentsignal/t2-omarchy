@@ -36,8 +36,8 @@ and the exact bounded RSD server transcript. Tests use independent fake UDP and
 TCP sockets to prove the observed directory port cannot be replaced by a
 caller-selected value.
 
-Status as of 2026-08-28: **transport and macOS activation sequence proven;
-Linux biometric path not working yet**. This document records the
+Status as of 2026-08-28: **Linux transport and synchronous read-only biometric
+commands work; enrollment and asynchronous event delivery remain**. This document records the
 machine-specific evidence, current public research, safety boundaries, and a
 concrete bring-up plan for the built-in Touch ID sensor on this repository's
 `MacBookPro16,1`.
@@ -809,6 +809,20 @@ showed a 110-byte request and 131-byte reply. Thus the daemon is not merely
 reachable: its BiometricKit service is active and reports itself open. The
 prototype exposes this query as a separate typed function; its command-line
 live path remains method-zero-only.
+
+The first method-3 biometric command is also confirmed. Linux wrapped the
+Catalina-derived command `0x0f` in the exact `0x4d42` header and received
+status zero plus a maximum identity count of 5. Command `0x41` returned a free
+count of 3 for UID 1000. Read-only command `0x42` returned no identities for
+Linux UID 1000 and exactly one identity belonging to macOS UID 501, consistent
+with the one fingerprint enrolled during reverse engineering. Identity UUID
+bytes were not logged or committed. The free count is not simply maximum minus
+identity records, so it is not used as an enrollment-completion predicate.
+
+This live exchange also identifies BridgeXPC's private `BTNil` property-list
+encoding: current bridgeOS serializes it as the lower-case reserved UUID string
+`d4161201-daf5-4bbd-ae4f-9bf319fabbe0`. The strict method-3 decoder maps only
+that exact value to `None`; other strings remain invalid.
 
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.

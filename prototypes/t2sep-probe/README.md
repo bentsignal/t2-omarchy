@@ -280,6 +280,11 @@ corrected runner now sends `[1, false, UUID, [0]]`, strictly correlates
 T2. The successful request and reply frames were 113 and 132 bytes.
 The same envelope around read-only method 1 subsequently returned
 `(status=0, opened=true)`; its request and reply frames were 110 and 131 bytes.
+The transport then carried capped read-only biometric commands successfully:
+maximum identities returned 5; UID 1000 enumerated zero identities; UID 501
+enumerated one. UUID bytes are intentionally omitted. Current bridgeOS's
+private `BTNil` output is the exact lower-case reserved UUID string and is
+accepted only in that form by the method-3 decoder.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,

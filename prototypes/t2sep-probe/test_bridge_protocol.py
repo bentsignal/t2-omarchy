@@ -77,6 +77,11 @@ class BridgeEnvelopeTests(unittest.TestCase):
             bridge.decode_perform_command_reply((-1, None), max_output=0),
             (-1, None),
         )
+        self.assertEqual(
+            bridge.decode_perform_command_reply(
+                (0, bridge.NO_REPLY_UUID.lower()), max_output=0),
+            (0, None),
+        )
         for reply in ((0,), (0, "bad"), (True, None), (0x80000000, None)):
             with self.assertRaises(bridge.BridgeProtocolError):
                 bridge.decode_perform_command_reply(reply, max_output=16)
