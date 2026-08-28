@@ -60,6 +60,22 @@ python tools/research/macos-biometric-command-evidence.py \
   /path/to/BiometricSupport.framework/Versions/A/BiometricSupport
 ```
 
+`extract-legacy-dyld-image.py` reconstructs one named 32-bit Mach-O from the
+old unslid dyld-cache format used by bridgeOS 3 recovery firmware. It accepts
+only bounded tables/mappings/segments, requires one exact image-path match,
+supports only little-endian 32-bit Mach-O segments, and creates a new mode-0600
+output without overwriting. It exists because modern dyld-cache tooling rejects
+the cache magic `dyld_v1  armv7k`.
+
+`bridgeos-bkremoted-evidence.py` verifies the extracted armv7k bridge daemon
+from bridgeOS 3.0 (`14Y910`). Its exact method-zero implementation stores
+bridge version `2` when given an output pointer, clears the client-version
+field, and returns status zero. A second unique sequence pins the dispatch
+range covering methods 0 through 10. This proves the historical bridgeOS
+server has no enrollment, service-open, or method-10 prerequisite for method
+0; it does not claim that this old daemon is byte-identical to current
+bridgeOS.
+
 `macos-bridgexpc-evidence.py` verifies the current thin x86_64 BridgeXPC
 framework's exact HELO/message header loads, binary-plist format load, HELO
 keys, and serialization import. It rejects the wrong architecture, duplicate

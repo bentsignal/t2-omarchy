@@ -305,6 +305,18 @@ timed out. The source gate was restored false. This rules out generic socket
 routing/blocking state; the Apple-only coprocessor marking itself cannot be
 reproduced through a Linux socket option.
 
+Offline extraction of the older T2 recovery firmware adds direct server-side
+evidence. The armv7k bridgeOS 3.0 `bkremoted` implementation of
+`getBridgeVersion:` unconditionally stores version `2` (when its required
+output pointer is present), clears client version, and returns status zero.
+Its connection dispatcher accepts methods 0 through 10 and sends method zero
+straight to that implementation; it has no enrollment, sensor-ready,
+service-open, or method-10 prerequisite. A checksum-pinned verifier records the
+exact sequences. Although current bridgeOS may differ, this proves the legacy
+server architecture would answer immediately once BridgeXPC dispatches the
+request. The current Linux silence is consequently evidence of a pre-dispatch
+BridgeXPC/transport-state mismatch rather than dormant biometric hardware.
+
 The supported sysfs reauthorization path did force a broader re-enumeration:
 writing zero and then one to the exact device's `authorized` attribute caused
 all T2 virtual USB functions to enumerate again, and an exit trap verified the

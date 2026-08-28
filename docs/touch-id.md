@@ -642,6 +642,28 @@ nonblocking connect. The T2 again supplied HELO but did not answer method 0 in
 five seconds, after which the live source gate was restored false. Ordinary
 socket selection and blocking state are therefore no longer plausible causes.
 
+The bridgeOS side is no longer inferred solely from host code. The Catalina
+`EmbeddedOSFirmware.pkg` contains an LZFSE-compressed `osrd` IM4P for
+`iBridge1,1`; after bounded extraction, its HFS+ recovery root supplies the
+actual armv7k `/usr/libexec/bkremoted` from bridgeOS 3.0 (`14Y910`). The new
+`bridgeos-bkremoted-evidence.py` pins SHA-256
+`453e1b81a9ea0a0fc7a3011b84d770a055340f7e7b47d132f23dbe76dcb08b8c`
+and two unique instruction sequences. `BiometricKitBridge::getBridgeVersion:`
+checks only whether its output pointer exists, stores literal version `2`,
+clears `_clientVersion`, and returns status zero. Separately,
+`BiometricKitBridgeConnection::performMessage:` accepts a nonempty array,
+extracts its first integer, and dispatches method values 0 through 10 through
+a jump table. There is no enrollment, service-open, sensor-ready, or preceding
+method-10 gate on method 0 in this real bridge daemon.
+
+This is historical server code rather than the current `23P6068` binary, so it
+cannot prove current implementation identity. It does establish the design
+boundary: a valid method-zero message that reaches the daemon dispatcher has
+an immediate reply independent of biometric state. Linux receives no reply,
+so the remaining mismatch is below `bkremoted` method dispatch—inside
+BridgeXPC's connection/HELO state or an equivalent current transport gate—not
+inside Touch ID initialization.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
