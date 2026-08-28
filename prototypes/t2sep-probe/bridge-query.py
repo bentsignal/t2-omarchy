@@ -14,6 +14,7 @@ from pathlib import Path
 import plistlib
 import socket
 import sys
+import uuid
 
 
 MODULE_PATH = Path(__file__).with_name("bridge-protocol.py")
@@ -55,12 +56,16 @@ def recv_frame(sock: socket.socket) -> tuple[protocol.BridgeFrameHeader, bytes]:
     return header, recv_exact(sock, header.body_size)
 
 
-def query_connected_socket(sock: socket.socket) -> tuple[int, int]:
+def query_connected_socket(sock: socket.socket,
+                           reply_id: str | None = None) -> tuple[int, int]:
     """Send only HELO and method 0, then accept one bounded message reply."""
     helo = protocol.encode_helo_frame(CURRENT_OS_BUILD, CURRENT_BRIDGE_VERSION,
                                       CURRENT_PROCESS_NAME,
                                       max_body=BODY_CAP)
-    query = protocol.encode_bridge_version_query_frame(max_body=BODY_CAP)
+    if reply_id is None:
+        reply_id = str(uuid.uuid4()).upper()
+    query = protocol.encode_transport_request_frame(
+        [protocol.GET_BRIDGE_VERSION], reply_id, max_body=BODY_CAP)
     # Catalina's -connected writes HELO, starts its read, and immediately
     # flushes requests queued before activation.  Preserve that wire order.
     sock.sendall(helo)
@@ -74,8 +79,12 @@ def query_connected_socket(sock: socket.socket) -> tuple[int, int]:
             protocol.decode_helo_body(body, max_body=BODY_CAP)
             continue
         if header.kind == protocol.FRAME_MESSAGE:
-            return protocol.decode_bridge_version_reply_body(body,
-                                                              max_body=BODY_CAP)
+            logical_reply = protocol.decode_transport_reply_body(
+                body, reply_id, max_body=BODY_CAP)
+            encoded_reply = plistlib.dumps(logical_reply, fmt=plistlib.FMT_BINARY,
+                                            sort_keys=False)
+            return protocol.decode_bridge_version_reply_body(
+                encoded_reply, max_body=BODY_CAP)
     raise QueryError("no message reply within the four-frame limit")
 
 
@@ -142,7 +151,9 @@ def main() -> None:
         helo = protocol.encode_helo_frame(CURRENT_OS_BUILD, CURRENT_BRIDGE_VERSION,
                                           CURRENT_PROCESS_NAME,
                                           max_body=BODY_CAP)
-        query = protocol.encode_bridge_version_query_frame(max_body=BODY_CAP)
+        reply_id = "00000000-0000-4000-8000-000000000001"
+        query = protocol.encode_transport_request_frame(
+            [protocol.GET_BRIDGE_VERSION], reply_id, max_body=BODY_CAP)
         print(f"offline only: HELO={helo.hex()}")
         print(f"offline only: query={query.hex()}")
         return

@@ -1,11 +1,17 @@
 # macOS Codex handoff: T2 bridgeOS service activation
 
-> **Current handoff (2026-08-28):** Linux now also mirrors every portable part
-> of MultiverseSupport's socket setup (`AF_INET6`, TCP, nonblocking connect,
-> exact address/scope, and interface binding). The T2 still sends HELO but does
-> not answer the byte-exact method-zero request. XNU source proves Darwin's
-> `SO_INTCOPROC_ALLOW` is a local interface access-control bit rather than a
-> peer-visible wire signal; Linux already passes its effective gate.
+> **Resolved on Linux (2026-08-28):** No further macOS handoff is currently
+> needed for method zero. Exact-current `bkremoted` disassembly exposed the
+> missing `BiometricKitBridgeTransport` envelope. Linux sent
+> `[1, false, UUID, [0]]` and received the correlated
+> `[1, true, UUID, [0, 3]]` reply. The live result is status zero, bridge
+> version three. All earlier references below to a "byte-exact" 62-byte
+> method-zero request refer only to the inner logical `[0]` array and are
+> superseded; the successful enveloped request frame is 113 bytes.
+>
+> XNU source still proves Darwin's `SO_INTCOPROC_ALLOW` is a local interface
+> access-control bit rather than a peer-visible wire signal; Linux already
+> passes its effective gate.
 > The exact current `23P6068` BridgeXPC 39 has now been recovered from Apple's
 > iBridge2,14 restore IPSW. It confirms that peer HELO is only decoded/logged,
 > never gates state, and kind-2 messages dispatch immediately. The next task is
@@ -47,11 +53,13 @@ complete.
 
 ## 2026-08-28 Foundation wire reconstruction
 
-Using the current macOS Foundation implementation, the first method-zero array
-serializes to a 46-byte binary plist. With the installed BridgeXPC 39 header,
-the complete request is exactly 62 bytes, byte-identical to
+Using the current macOS Foundation implementation, the inner method-zero array
+serializes to a 46-byte binary plist. With a BridgeXPC 39 header, the historical
+raw-inner test frame is 62 bytes, byte-identical to
 `bridge-query.py`, and SHA-256
 `a60083fc2ec4be95418906235ac3024e9d01eb8661d82a34c2dea0bf3d0f4b1d`.
+It is not a complete `BiometricKitBridgeTransport` request; that requires the
+four-object request/reply envelope described in the current handoff above.
 
 The HELO's four fields and types are also correct, but native Foundation does
 not preserve the source dictionary's key order. Twenty-four fresh serializer

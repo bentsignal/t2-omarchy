@@ -14,6 +14,7 @@ import math
 import plistlib
 import struct
 from typing import Union
+import uuid
 
 try:
     from typing import TypeAlias
@@ -51,6 +52,8 @@ FRAME_HELO = 1
 FRAME_MESSAGE = 2
 T2_LINK_LOCAL_ADDRESS = "fe80::aede:48ff:fe33:4455"
 BIOMETRIC_KIT_PORT = 52032
+TRANSPORT_ENVELOPE_TYPE = 1
+NO_REPLY_UUID = "D4161201-DAF5-4BBD-AE4F-9BF319FABBE0"
 
 
 @dataclass(frozen=True)
@@ -261,7 +264,7 @@ def decode_helo_body(body: bytes, *, max_body: int) -> dict[str, object]:
 
 
 def encode_bridge_version_query_frame(*, max_body: int) -> bytes:
-    """Encode the passive BiometricKit bridge-version request [0]."""
+    """Encode method 0's logical (unenveloped) request [0]."""
     if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
         raise BridgeProtocolError("max_body must be a nonnegative integer")
     body = plistlib.dumps([GET_BRIDGE_VERSION], fmt=plistlib.FMT_BINARY,
@@ -269,6 +272,64 @@ def encode_bridge_version_query_frame(*, max_body: int) -> bytes:
     if len(body) > max_body:
         raise BridgeProtocolError("serialized bridge-version query exceeds the body cap")
     return encode_frame_header(FRAME_MESSAGE, len(body)) + body
+
+
+def _reply_id(value: str, *, allow_sentinel: bool = False) -> str:
+    if not isinstance(value, str):
+        raise BridgeProtocolError("transport reply ID must be a UUID string")
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError) as error:
+        raise BridgeProtocolError("transport reply ID must be a UUID string") from error
+    canonical = str(parsed).upper()
+    if value.upper() != canonical:
+        raise BridgeProtocolError("transport reply ID is not canonical")
+    if not allow_sentinel and canonical == NO_REPLY_UUID:
+        raise BridgeProtocolError("transport reply ID is the no-reply sentinel")
+    return canonical
+
+
+def encode_transport_request_frame(message: list[object], reply_id: str, *,
+                                   max_body: int) -> bytes:
+    """Wrap one logical call in bkremoted's exact four-object envelope."""
+    if not isinstance(message, list):
+        raise BridgeProtocolError("logical transport message must be an array")
+    reply_id = _reply_id(reply_id)
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    body = plistlib.dumps(
+        [TRANSPORT_ENVELOPE_TYPE, False, reply_id, message],
+        fmt=plistlib.FMT_BINARY, sort_keys=False)
+    if len(body) > max_body:
+        raise BridgeProtocolError("serialized transport request exceeds the body cap")
+    return encode_frame_header(FRAME_MESSAGE, len(body)) + body
+
+
+def decode_transport_reply_body(body: bytes, reply_id: str, *,
+                                max_body: int) -> list[object]:
+    """Validate a reply envelope and correlate it to exactly one request."""
+    reply_id = _reply_id(reply_id)
+    if not isinstance(body, bytes):
+        raise BridgeProtocolError("transport reply body must be bytes")
+    if not isinstance(max_body, int) or isinstance(max_body, bool) or max_body < 0:
+        raise BridgeProtocolError("max_body must be a nonnegative integer")
+    if len(body) > max_body:
+        raise BridgeProtocolError("transport reply exceeds the body cap")
+    try:
+        envelope = plistlib.loads(body)
+    except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+        raise BridgeProtocolError("transport reply is not a property list") from error
+    if not isinstance(envelope, list) or len(envelope) != 4:
+        raise BridgeProtocolError("transport reply must contain four objects")
+    if type(envelope[0]) is not int or envelope[0] != TRANSPORT_ENVELOPE_TYPE:
+        raise BridgeProtocolError("transport reply has an unsupported envelope type")
+    if type(envelope[1]) is not bool or envelope[1] is not True:
+        raise BridgeProtocolError("transport message is not a reply")
+    if envelope[2] != reply_id:
+        raise BridgeProtocolError("transport reply ID does not match the request")
+    if not isinstance(envelope[3], list):
+        raise BridgeProtocolError("transport reply payload must be an array")
+    return envelope[3]
 
 
 def encode_service_opened_query_frame(*, max_body: int) -> bytes:

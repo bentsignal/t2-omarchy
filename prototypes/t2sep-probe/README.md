@@ -259,19 +259,25 @@ BridgeXPC reply within three seconds, even with the exact current 119-byte HELO.
 Its source gate was restored to false; the result points to an activation or
 pre-BridgeXPC transport step still to recover.
 
-The alternative of waiting for the server HELO before sending method 0 was
+The alternative of waiting for the server HELO before sending the historical
+raw logical method 0 was
 also tested. The T2 ACKed the complete request but emitted no reply or reset.
 Catalina disassembly confirms native BridgeXPC instead sends its HELO and queued
 method 0 back-to-back, so the runner preserves that ordering. The unresolved
-boundary is remote-service activation/handoff or bridgeOS policy, not packet
-delivery or Foundation serialization.
+boundary appeared to be remote-service activation/handoff rather than packet
+delivery. Exact-current `bkremoted` later showed the actual cause: the logical
+array had not been wrapped in `BiometricKitBridgeTransport`'s four-object
+request envelope.
 
 `coupled-bridge-query.py` tests whether the advertised service lifetime is
 scoped to its Multiverse directory connection. It discovers the dynamic port
 and opens BridgeXPC method 0 while the same directory socket remains open. It
 has a separate false-by-default source gate and no method-3/SBIO path. A
-supervised run again received the peer HELO but no method reply, ruling out
-premature directory teardown as the missing activation step.
+supervised raw-inner run again received the peer HELO but no method reply,
+ruling out premature directory teardown as the missing activation step. The
+corrected runner now sends `[1, false, UUID, [0]]`, strictly correlates
+`[1, true, UUID, [status, version]]`, and has returned `(0, 3)` from the live
+T2. The successful request and reply frames were 113 and 132 bytes.
 Because the directory marks BiometricKit `UsesRemoteXPC: false`, a subsequent
 bounded experiment prefixed the public `RSDCheckin` plist used for non-RemoteXPC
 services. The T2 then immediately supplied a valid HELO (`bkremoted`, `23P6068`,

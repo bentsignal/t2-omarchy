@@ -571,13 +571,15 @@ remaining mismatch is specifically in the reconstructed client HELO or first
 serialized method request. Exact current macOS outbound bytes are required
 before any further live command class is justified.
 
-Read-only macOS reconstruction with the current Foundation serializers narrows
-that mismatch. `NSPropertyListSerialization` produces an exact 46-byte binary
-plist body for `[0]`; with BridgeXPC's 16-byte header the complete 62-byte frame
-is byte-for-byte identical to `bridge-query.py` and has SHA-256
+Read-only macOS reconstruction with the current Foundation serializers narrowed
+the logical-message encoding. `NSPropertyListSerialization` produces an exact
+46-byte binary plist body for `[0]`; with BridgeXPC's 16-byte header the
+historical raw 62-byte test frame was byte-for-byte identical to
+`bridge-query.py` and had SHA-256
 `a60083fc2ec4be95418906235ac3024e9d01eb8661d82a34c2dea0bf3d0f4b1d`.
-The first method request is therefore not a Python-versus-Foundation encoding
-mismatch.
+This established the inner message bytes, but did not establish that the inner
+array was itself the top-level transport object. Current `bkremoted` later
+proved that assumption false.
 
 The HELO has no single process-independent byte encoding. Across 24 fresh
 Foundation processes, `NSJSONSerialization` emitted 15 different permutations
@@ -781,6 +783,25 @@ HELO, emitted periodic keepalive probes, and returned no application reply
 within five seconds. The cold-start hypothesis is therefore closed. TCP
 timestamps are deliberately not used as bridgeOS uptime evidence because
 modern stacks apply per-connection timestamp offsets.
+
+The silent-reply boundary is now solved. Disassembly of the exact current
+`bkremoted` (`23P6068`) shows that `BiometricKitBridgeTransport` requires every
+logical call to be wrapped in a four-object array:
+`[1, false, replyUUID, logicalMessage]`. Replies are
+`[1, true, sameReplyUUID, logicalReply]`. The previously transmitted `[0]` was
+a syntactically valid property list, so BridgeXPC kept the connection open, but
+`handleEnvelope:` rejected its array count before BiometricKit method dispatch.
+
+Linux now emits `[1, false, UUID, [0]]`, validates all four reply fields, rejects
+the daemon's no-reply sentinel, and requires exact UUID correlation. On
+2026-08-28 a bounded coupled query on a freshly directory-advertised port
+returned `(status=0, bridgeVersion=3)`. Packet metadata recorded a 119-byte
+client HELO, a 113-byte enveloped request, the peer's 117-byte HELO, and a
+132-byte enveloped reply, followed by an orderly close. This is the first
+confirmed working Linux BridgeXPC request/reply exchange with T2 BiometricKit
+in this investigation. Earlier 62-byte timeout experiments remain documented
+above as the evidence trail, but their conclusion that the method request was
+complete is superseded.
 
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.

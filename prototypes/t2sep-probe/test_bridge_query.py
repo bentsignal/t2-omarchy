@@ -47,24 +47,28 @@ class PassiveQueryTests(unittest.TestCase):
         constructor.assert_not_called()
 
     def test_accepts_peer_helo_then_one_version_reply(self):
-        reply = plistlib.dumps([0, 42], fmt=plistlib.FMT_BINARY)
+        reply_id = "01234567-89AB-4CDE-8FAB-0123456789AB"
+        reply = plistlib.dumps([1, True, reply_id, [0, 42]], fmt=plistlib.FMT_BINARY)
         peer_helo = query.protocol.encode_helo_frame(
             "19H15", 37.0, "peer", max_body=query.BODY_CAP
         )[query.protocol.BRIDGE_FRAME_HEADER.size:]
         incoming = (frame(query.protocol.FRAME_HELO, peer_helo)
                     + frame(query.protocol.FRAME_MESSAGE, reply))
         sock = FakeSocket(incoming)
-        self.assertEqual(query.query_connected_socket(sock), (0, 42))
+        self.assertEqual(query.query_connected_socket(sock, reply_id), (0, 42))
         first = query.protocol.decode_frame_header(bytes(sock.sent[:16]),
                                                    max_body=query.BODY_CAP)
         self.assertEqual(first.kind, query.protocol.FRAME_HELO)
         self.assertEqual(sock.events[:2], ["send", "send"])
 
     def test_handles_noop_and_fragmented_reads(self):
-        reply = plistlib.dumps([-1, 0], fmt=plistlib.FMT_BINARY)
+        reply_id = "01234567-89AB-4CDE-8FAB-0123456789AB"
+        reply = plistlib.dumps([1, True, reply_id, [-1, 0]],
+                               fmt=plistlib.FMT_BINARY)
         incoming = (frame(query.protocol.FRAME_NOOP, b"")
                     + frame(query.protocol.FRAME_MESSAGE, reply))
-        self.assertEqual(query.query_connected_socket(FakeSocket(incoming, 1)),
+        self.assertEqual(query.query_connected_socket(
+                             FakeSocket(incoming, 1), reply_id),
                          (-1, 0))
 
     def test_rejects_eof_malformed_reply_and_frame_flood(self):
