@@ -110,6 +110,18 @@ def perform_rsd_checkin(sock: socket.socket) -> dict | None:
     return None
 
 
+def receive_server_first_helo(sock: socket.socket) -> dict:
+    """Receive the HELO that current bkremoted emits immediately on accept."""
+    try:
+        header, body = bridge_query.recv_frame(sock)
+        if header.kind != bridge_query.protocol.FRAME_HELO:
+            raise CapturedBridgeError("BiometricKit did not begin with a HELO")
+        return bridge_query.protocol.decode_helo_body(
+            body, max_body=bridge_query.BODY_CAP)
+    except bridge_query.protocol.BridgeProtocolError as error:
+        raise CapturedBridgeError("BiometricKit server-first HELO is invalid") from error
+
+
 def _unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -174,7 +186,7 @@ def live_query(capture_path: Path, interface: str, timeout: float) -> tuple[int,
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
             sock.connect(target)
-            perform_rsd_checkin(sock)
+            receive_server_first_helo(sock)
             return bridge_query.query_connected_socket(sock)
     except (OSError, rsd_query.QueryError, bridge_query.QueryError) as error:
         raise CapturedBridgeError("bounded BridgeXPC version query failed") from error

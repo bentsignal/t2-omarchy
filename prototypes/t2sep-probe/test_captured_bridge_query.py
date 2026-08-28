@@ -102,6 +102,22 @@ class CapturedBridgeQueryTests(unittest.TestCase):
         self.assertEqual(query.perform_rsd_checkin(Socket(helo))["OSBuild"],
                          "bridgeOS")
 
+    def test_receives_server_first_helo(self):
+        class Socket:
+            def __init__(self, incoming):
+                self.incoming = bytearray(incoming)
+
+            def recv(self, size):
+                result = self.incoming[:min(size, 3)]
+                del self.incoming[:len(result)]
+                return bytes(result)
+
+        helo = query.bridge_query.protocol.encode_helo_frame(
+            "23P6068", 39, "bkremoted",
+            max_body=query.bridge_query.BODY_CAP)
+        peer = query.receive_server_first_helo(Socket(helo))
+        self.assertEqual(peer["ProcessName"], "bkremoted")
+
     def test_checkin_rejects_error_wrong_phase_and_oversize(self):
         class Socket:
             def __init__(self, incoming):

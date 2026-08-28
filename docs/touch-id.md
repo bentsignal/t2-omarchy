@@ -544,6 +544,16 @@ write wakes or advances the listener, but it is not yet proof that generic
 RSD check-in is the correct activation record. The next experiment must recover
 the exact macOS handoff/first-write boundary rather than guessing another
 biometric command.
+
+A clean follow-up established the actual ordering without that speculative
+prefix: the listener is server-first and immediately emits the same 101-byte
+HELO on accept. Linux now consumes and validates it before writing anything.
+The connection remains open after the exact reconstructed client HELO, but the
+subsequent method-0 request receives no bytes within three seconds. Thus the
+check-in experiment's reset came from contaminating the stream, while the live
+remaining mismatch is specifically in the reconstructed client HELO or first
+serialized method request. Exact current macOS outbound bytes are required
+before any further live command class is justified.
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

@@ -1,12 +1,31 @@
 # macOS Codex handoff: T2 bridgeOS service activation
 
-> **Current handoff (2026-08-28):** The macOS activation follow-up is complete.
-> Read-only live inspection and installed-binary verification established that
-> the internal T2 uses Multiverse with fixed directory port `59602`, not the
-> dormant NCM DNS-SD path tested by Linux. Continue with the fail-closed Linux
-> directory-only experiment documented below; do not repeat the broad capture.
+> **Current handoff (2026-08-28):** Linux completed Multiverse discovery and
+> recovered the live BiometricKit port. A clean connection proves the service
+> is server-first: it immediately sends a 101-byte BridgeXPC 39 HELO identifying
+> `bkremoted` on bridgeOS `23P6068`. Linux validates that HELO and sends the
+> reconstructed 119-byte macOS client HELO plus method 0, but receives no
+> method reply. The next macOS task is a narrow exact-byte capture of the first
+> client HELO and first queued `[0]` request; do not repeat broad activation or
+> fingerprint captures.
 
 Give the macOS Codex session this exact instruction:
+
+> Continue from `b0be814` or later. Read this file and `docs/touch-id.md`.
+> Linux now reaches the T2 BiometricKit listener and receives its valid
+> server-first BridgeXPC HELO, but the reconstructed client HELO/method-0 bytes
+> get no reply. On macOS, capture or otherwise derive the exact raw bytes that
+> `/usr/libexec/biometrickitd` writes for only (1) its initial BridgeXPC HELO and
+> (2) its first `getBridgeVersion:` request after boot. Prefer read-only dynamic
+> tracing, debugger inspection, or deterministic reconstruction from the exact
+> current binaries. Do not capture fingerprint templates, run enrollment or
+> match, modify the enrolled finger, disable SIP, or publish raw private data.
+> Compare those bytes byte-for-byte with `bridge-query.py`, add a sanitized
+> verifier/fixture and tests, document the mismatch or exact equality, commit,
+> and push the handback for Linux.
+
+The older activation instruction below is retained as history and is already
+complete.
 
 > Continue the T2 Touch ID Linux investigation from the current `main` branch.
 > Read `docs/touch-id.md`, `docs/macos-touch-id-findings.md`, and
