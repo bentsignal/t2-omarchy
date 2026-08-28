@@ -164,6 +164,20 @@ five-second, byte/frame, ancestry, and source kill-switch gates. The successful
 result must include the complete bounded server transcript and the named
 service port. Do not send CONNECT or a biometric command in that first run.
 
+An offline inspection of Sonoma 14.6.1's x86_64
+`BootKernelExtensions.kc` identified one Apple-specific operation absent from
+the USB descriptors. `AppleUSBNCMControl::cacheAppleInterfaceFlags` recognizes
+vendor/product `05ac:8233` and issues an IN control transfer with
+`bmRequestType=0xa1`, `bRequest=0xa0`, `wValue=0`, `wIndex=0`, and `wLength=4`.
+The method is at `0xffffff8001db5002`; its call from
+`AppleUSBNCMControl::start` is at `0xffffff8001db4ad6`. The returned interface
+flags influence Apple-specific NCM behavior. This is a concrete candidate for
+the pre-IP activation boundary, but it is not yet proven against the installed
+macOS 26 driver or a Linux USB trace. A first live probe must therefore be
+limited to this exact device-to-host four-byte read, validate device and
+interface identity before opening usbfs, preserve the raw result privately,
+and remain source-disabled outside a supervised run.
+
 Only after independent transcript validation should a second supervised step
 request the advertised service, perform the bounded BridgeXPC HELO exchange,
 and stop before sending a Mesa command. The boot capture proves the sequence
