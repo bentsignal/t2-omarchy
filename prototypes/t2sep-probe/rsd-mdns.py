@@ -26,6 +26,10 @@ class MDNSError(ValueError):
     pass
 
 
+class MDNSIncompleteError(MDNSError):
+    pass
+
+
 @dataclass(frozen=True)
 class DiscoveredRSDService:
     instance: str
@@ -208,8 +212,10 @@ class PassiveMDNSDiscovery:
     def finish(self) -> DiscoveredRSDService:
         candidates = [(instance, *self._services[instance])
                       for instance in self._pointers if instance in self._services]
+        if not candidates:
+            raise MDNSIncompleteError("mDNS transcript does not yet prove an RSD service")
         if len(candidates) != 1:
-            raise MDNSError("mDNS transcript does not prove exactly one RSD service")
+            raise MDNSError("mDNS transcript proves multiple RSD services")
         instance, port, target = candidates[0]
         target_addresses = {address for owner, address in self._addresses if owner == target}
         if target_addresses and target_addresses != {T2_LINK_LOCAL_ADDRESS}:

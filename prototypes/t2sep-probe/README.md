@@ -236,7 +236,15 @@ requires a PTR-to-SRV chain, rejects conflicting ports and non-T2 sources, and
 optionally checks the target AAAA against the wire-proven T2 address. The
 transcript-to-endpoint handoff derives the TCP port only from that validated
 SRV record; it has no caller-controlled port parameter. Live multicast remains
-unimplemented pending a supervised run from the corrected host address.
+disabled pending a supervised run from the corrected host address.
+
+`rsd-mdns-query.py` stages that supervised boundary. Its fake-socket-tested
+engine sends one exact PTR query and accepts only UDP/5353 datagrams from the
+wire-proven T2 address with the expected IPv6 interface scope. It carries the
+complete bounded datagram transcript into the endpoint evidence. The live
+branch additionally verifies exact T2 USB/PCI ancestry, carrier, finite
+five-second timeout, multicast interface, and host bind address, but its source
+kill switch remains false and is checked before sysfs or socket access.
 
 Its `PassiveRSDTranscript` state machine validates a complete server transcript
 from fragmented offline bytes. It caps bytes, frames, controls, and XPC sizes;

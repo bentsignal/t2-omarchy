@@ -11,6 +11,11 @@ The current offline continuation is `rsd-mdns.py`: a bounded DNS-SD codec for
 the `_remoted._tcp.local.` bootstrap used by go-ios. It binds a strictly
 validated, T2-sourced PTR/SRV transcript to the RSD endpoint without accepting
 a caller-selected port. No multicast socket or live query is enabled yet.
+The companion `rsd-mdns-query.py` now contains the bounded multicast wrapper,
+but `LIVE_MDNS_DISCOVERY_ENABLED` remains false in source. Tests prove that its
+kill switch precedes interface and socket access and that only correctly
+scoped UDP/5353 responses from the proven T2 address can become endpoint
+evidence.
 
 Status as of 2026-08-28: **transport and macOS activation sequence proven;
 Linux biometric path not working yet**. This document records the
