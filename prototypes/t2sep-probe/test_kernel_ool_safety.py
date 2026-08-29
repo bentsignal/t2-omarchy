@@ -151,7 +151,9 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "key_revoke(key)", "memzero_explicit(&keybag_handle",
                 "if (reply_received)",
                 "memzero_explicit(send, T2SEP_CREDENTIAL_OOL_SIZE)",
-                "password_bytes=not-logged", "device_state=not-logged"):
+                "password_bytes=not-logged", "device_state=not-logged",
+                "AKS verify-secret service rejection:",
+                "A service rejection is not evidence that the password was wrong"):
             self.assertIn(fragment, SOURCE)
         revoke = SOURCE.index("key_revoke(key)",
                               SOURCE.index("t2sep_probe_aks_verify_password"))

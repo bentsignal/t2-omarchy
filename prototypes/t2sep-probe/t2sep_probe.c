@@ -1111,6 +1111,7 @@ static int t2sep_probe_aks_verify_password(
 	size_t request_size;
 	u64 keybag_handle;
 	s32 selector;
+	s8 service_status;
 	bool reply_received = false;
 	int ret;
 
@@ -1198,10 +1199,27 @@ out_revoke:
 	dev_info(&pdev->dev,
 		 "AKS verify-secret envelope: raw=%08x %08x %08x %08x\n",
 		 response[0], response[1], response[2], response[3]);
-	if (response[0] != 0x0003a107 || response[1] != 0x00600000 ||
+	if ((response[0] & 0x00ffffff) != 0x0003a107 ||
 	    response[2] != 0 ||
 	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))) {
 		ret = -EREMOTEIO;
+		goto out_scrub;
+	}
+	service_status = (s8)(response[0] >> 24);
+	if (service_status) {
+		if (response[1] != 0) {
+			ret = -EPROTO;
+			goto out_scrub;
+		}
+		dev_info(&pdev->dev,
+			 "AKS verify-secret service rejection: status=%d reply_size=0 authorization=not-established\n",
+			 service_status);
+		/* A service rejection is not evidence that the password was wrong. */
+		ret = -ENOKEY;
+		goto out_scrub;
+	}
+	if (response[1] != 0x00600000) {
+		ret = -EPROTO;
 		goto out_scrub;
 	}
 	dma_rmb();

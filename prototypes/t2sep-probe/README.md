@@ -117,8 +117,15 @@ operation-`0x21` request in coherent memory, revokes the key before sending,
 and erases both AKS buffers immediately after a reply. It always attempts to
 delete the ephemeral ACM context, then stops SEP and scrubs all four buffers.
 The independent verifier accepts only a correlated 96-byte success reply,
-authorization-before-delete ordering, and complete combined teardown. This
-path is built and tested but has not yet consumed a real password.
+authorization-before-delete ordering, and complete combined teardown. The
+first live attempt reached operation `0x21` and received the correlated,
+bodyless service status `-1` (`ff03a107 00000000 ...`). Static inspection of
+the pinned AppleKeyStore implementation shows that its handler first calls
+`keybag_for_handle` and returns exactly `-1` when the requested keybag is not
+loaded. Linux had started a fresh client namespace but had neither created nor
+loaded a keybag, so this result must not be labeled a wrong password. The next
+authorization stage is an explicit create/load-keybag lifecycle under the same
+client namespace, followed by verification using the returned handle.
 
 `run-acm-context-lifecycle-probe.sh` is a different, mutually exclusive
 wrapper. It uses the observed ACM `(1/10, 1/10)` OOL profile, sends exact SCRD

@@ -2278,8 +2278,35 @@ After any received reply the AKS DMA buffers are erased immediately; if no
 reply arrives, CPU stop retains precedence over DMA scrub. Context deletion is
 attempted after the verification exchange, and the ordinary four-buffer
 stop/scrub teardown remains mandatory. This implementation and its strict
-success-transcript verifier pass offline tests; no real password attempt has
-yet been made.
+success-transcript verifier pass offline tests.
+
+The first live attempt on 2026-08-29 completed capabilities, environment
+setup, ACM initialization, and creation of a fresh 21-byte context. T2 then
+returned the correlated bodyless envelope `ff03a107 00000000 00000000 ...`
+for operation `0x21`; ACM context deletion and the full stop/scrub/unbind path
+still completed. The high byte is signed service status `-1`, not a malformed
+mailbox tag.
+
+This is not evidence of an incorrect password. In the checksum-pinned macOS
+14.5 KDK AppleKeyStore x86_64 image
+(`f1067b2a93022fa0dfa7ceb82b13478634a913a4f93124c8711c4aa2b24676b0`),
+the service-side `_ipc_verify_secret_v1` at `0x738cb` calls
+`_keybag_for_handle` at `0x7391c` before it inspects the supplied secret or ACM
+external form. A null lookup branches at `0x7392a` to the return path with
+status `-1`. The same function also maps an unlock failure to `-1`, so the
+wire status alone is intentionally ambiguous; however, this Linux run had
+created a fresh random client namespace and never created or loaded any
+keybag under it. A keybag lookup therefore could not succeed regardless of
+password correctness.
+
+The earlier live gate incorrectly treated the per-client namespace handle and
+negative macOS session selector as sufficient metadata. They identify a bag
+that must already exist; they do not instantiate one. Repeating password
+attempts in that state cannot add evidence and risks needless retry accounting.
+The next Linux-native dependency is operation `0x01` keybag creation (or
+operation `0x03` loading for compatibility with an existing macOS user), with
+the returned runtime handle retained under the same namespace through
+verify-secret and unloaded during bounded teardown.
 
 ## Useful baseline commands
 
