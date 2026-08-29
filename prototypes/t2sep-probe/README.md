@@ -41,6 +41,13 @@ AKS acknowledgement profile `(opcode 1, target 7)` for both mappings; ACM is
 still unobserved. The pure bootstrap deliberately has no kernel or
 DMA-allocation path.
 
+`run-aks-capabilities-probe.sh` is the separately confirmed next-stage wrapper.
+Its default-off kernel gate sends only the non-mutating empty operation `0x4d`
+after the proven AKS registrations and strictly validates its protected
+100-byte reply. The code is built and tested but intentionally unexecuted;
+the kernproc execution-context identity remains source-grounded inference
+until a supervised run confirms or rejects it.
+
 The kernel module now contains a separate, default-off capture gate for the
 two fixed credential endpoints. It registers two 16 KiB zeroed mappings and
 captures only their control acknowledgements; it sends no ACM or AKS service

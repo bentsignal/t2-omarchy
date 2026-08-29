@@ -1061,10 +1061,18 @@ data: version at `0x10`, `mach_continuous_time` converted to microseconds at
 `0x14`, zero flags and reserved qword at `0x1c` and `0x20`, process unique ID
 at `0x28`, the process credential's 32-bit field at `0x30`, and the 20-byte
 code-directory hash at `0x34`. Version 2 adds calendar seconds at `0x48`.
-`get_platform_cdhash` uses `cs_get_cdhash`; if that fails, Apple stores
-SHA-1 of the process unique ID instead. The model deliberately has no Linux
-identity defaults: these Apple kernel-process values must not be guessed for
-a live SEP request.
+`get_platform_cdhash` uses `cs_get_cdhash`. More precisely, a null cdhash with
+a valid `proc_self` is explicitly zero-filled and still returns success; the
+SHA-1 fallback is reached only if acquiring the process itself fails. XNU
+initializes `kernproc->p_uniqueid` to zero and defines the default audit
+session ID as zero. Combined with the KDK load sequence through
+`proc_self`/`kauth_cred_proc_ref` and the direct `ai_asid` load, this yields a
+source-grounded candidate kernproc identity of unique ID 0, audit session 0,
+and a zero 20-byte cdhash. It remains an inference that AppleKeyStore endpoint
+startup executes in kernproc context, so the live path is separately gated.
+Primary source anchors are XNU's
+[`bsd_init.c`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/bsd_init.c)
+and [`audit.h`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/bsm/audit.h).
 
 AKS does not use the SBIO generic-transfer notification. Its Intel mailbox
 envelope is exactly 12 bytes: endpoint `0x07`; a 7-bit selector in byte 1 with
@@ -1111,6 +1119,20 @@ bug: the normal unsigned out-of-tree-module warning contains `verification
 failed:`. The verifier now ignores loader-wide messages and admits evidence
 only from the PCI-qualified `t2sep_probe 0000:04:00.2:` state machine; a
 regression test preserves that boundary. No AKS service request was sent.
+
+A next-stage kernel path is prepared but unexecuted. It requires a new
+capabilities-specific 64-bit confirmation and is mutually exclusive with all
+other OOL modes. Only after the proven `(1/7, 1/7)` registrations does it
+construct the exact 100-byte version-1 empty operation-`0x4d` request using
+the source-grounded kernproc candidate above and a fresh monotonic-microsecond
+timestamp. It uses the kernel's exported SHA-256 implementation, sends exactly
+one endpoint-7 selector-`0x4d` envelope, and accepts only a correlated
+selector-`0xcd`, tag-4, length-100 reply. The receive path requires header
+length 80, version 1, zero flags, empty blob, constant-time digest equality,
+zero status, and a supported remote version before teardown. A separate
+wrapper and transcript verifier enforce model/PCI/driver checks, human
+confirmation, cursor-bounded evidence, stop-before-scrub, unload, and unbind.
+It will not be run without the user present.
 
 The same offline model computes the exact verify-secret serialized size
 without accepting secret bytes: an `0x54`-byte serialized header, the variant

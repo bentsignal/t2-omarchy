@@ -13,7 +13,11 @@
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
+#include <linux/ktime.h>
 #include <linux/slab.h>
+#include <linux/unaligned.h>
+#include <crypto/algapi.h>
+#include <crypto/sha2.h>
 
 #define PCI_VENDOR_ID_APPLE_LOCAL 0x106b
 #define PCI_DEVICE_ID_APPLE_T2_SEP 0x1802
@@ -115,6 +119,16 @@ module_param(credential_ool_confirmation, ulong, 0400);
 MODULE_PARM_DESC(credential_ool_confirmation,
 	"Required explicit confirmation value 0x435245444f4f4c41 for credential OOL capture");
 
+static bool apple_probe_aks_capabilities;
+module_param(apple_probe_aks_capabilities, bool, 0400);
+MODULE_PARM_DESC(apple_probe_aks_capabilities,
+	"Send one non-mutating AKS operation-0x4d capabilities request after fixed OOL registration");
+
+static ulong aks_capabilities_confirmation;
+module_param(aks_capabilities_confirmation, ulong, 0400);
+MODULE_PARM_DESC(aks_capabilities_confirmation,
+	"Required explicit confirmation value 0x414b534341504142 for the AKS capabilities probe");
+
 struct t2sep_irq_probe {
 	atomic_t count[2];
 };
@@ -127,9 +141,13 @@ struct t2sep_irq_probe {
 #define T2SEP_SBIO_OUT_PAGES 75
 #define T2SEP_OOL_CONFIRMATION 0x5345504f4f4c4143UL
 #define T2SEP_CREDENTIAL_OOL_CONFIRMATION 0x435245444f4f4c41UL
+#define T2SEP_AKS_CAPABILITIES_CONFIRMATION 0x414b534341504142UL
 #define T2SEP_AKS_ENDPOINT 0x07
 #define T2SEP_ACM_ENDPOINT 0x0a
 #define T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)
+#define T2SEP_AKS_CAPABILITIES_SIZE 100
+#define T2SEP_AKS_HEADER_SIZE 0x50
+#define T2SEP_AKS_SERIALIZED_HEADER_SIZE 0x54
 #define T2SEP_SBIO_IN_SIZE (T2SEP_SBIO_IN_PAGES * PAGE_SIZE)
 #define T2SEP_SBIO_OUT_SIZE (T2SEP_SBIO_OUT_PAGES * PAGE_SIZE)
 
@@ -419,7 +437,8 @@ static int t2sep_wait_intel_message(void __iomem *bar4, u32 words[4])
 
 static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
 				      void __iomem *bar4, u8 target, u8 opcode,
-				      u8 tag, dma_addr_t dma, size_t size)
+				      u8 tag, dma_addr_t dma, size_t size,
+				      int expected_ack_opcode, int expected_ack_target)
 {
 	u32 request[3] = {
 		target << 24 | opcode << 16 | tag << 8,
@@ -444,9 +463,98 @@ static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
 		 response[0] & 0xff, (response[0] >> 8) & 0xff,
 		 (response[0] >> 16) & 0xff, (response[0] >> 24) & 0xff);
 	if ((response[0] & 0xff) != 0 || ((response[0] >> 8) & 0xff) != tag ||
-	    response[1] != 0)
+	    response[1] != 0 ||
+	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL)))
+		return -EPROTO;
+	if (expected_ack_opcode >= 0 &&
+	    (((response[0] >> 16) & 0xff) != expected_ack_opcode ||
+	     ((response[0] >> 24) & 0xff) != expected_ack_target))
 		return -EPROTO;
 	return 0;
+}
+
+static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
+					void __iomem *bar4,
+					void *send_buffer, void *receive_buffer)
+{
+	u8 hash_input[0x48];
+	u8 digest[SHA256_DIGEST_SIZE];
+	u8 reply_digest[SHA256_DIGEST_SIZE];
+	u8 *send = send_buffer;
+	u8 *receive = receive_buffer;
+	u32 request[3] = { 0x00044d07, 0x00640000, 0 };
+	u32 response[4];
+	u64 continuous_usec = ktime_get_mono_fast_ns() / NSEC_PER_USEC;
+	u32 status;
+	u64 remote_version;
+	int ret;
+
+	/*
+	 * Exact version-1 empty operation-0x4d body. The identity fields mirror
+	 * XNU kernproc: unique ID 0, default audit session 0, and no cdhash.
+	 * This probe remains separately gated because that execution context is
+	 * source-derived but has not yet been accepted by this T2.
+	 */
+	memset(send, 0, T2SEP_AKS_CAPABILITIES_SIZE);
+	put_unaligned_le32(T2SEP_AKS_HEADER_SIZE, send);
+	put_unaligned_le32(1, send + 4 + 0x10);
+	put_unaligned_le64(continuous_usec, send + 4 + 0x14);
+	memcpy(hash_input, send + 4 + 0x10, 0x38);
+	memcpy(hash_input + 0x38, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE, 0x10);
+	sha256(hash_input, sizeof(hash_input), digest);
+	memcpy(send + 4, digest, 16);
+	dma_wmb();
+
+	ret = t2sep_send_intel_message(bar4, request);
+	if (ret)
+		goto out_scrub;
+	dev_info(&pdev->dev,
+		 "AKS capabilities request: endpoint=7 selector=0x4d tag=4 length=100 header_version=1\n");
+	ret = t2sep_wait_intel_message(bar4, response);
+	if (ret)
+		goto out_scrub;
+	dev_info(&pdev->dev,
+		 "AKS capabilities envelope: raw=%08x %08x %08x %08x\n",
+		 response[0], response[1], response[2], response[3]);
+	if (response[0] != 0x0004cd07 || response[1] != 0x00640000 ||
+	    response[2] != 0 ||
+	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
+
+	dma_rmb();
+	if (get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE ||
+	    get_unaligned_le32(receive + 4 + 0x10) != 1 ||
+	    get_unaligned_le32(receive + 4 + 0x1c) != 0 ||
+	    get_unaligned_le32(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 12) != 0) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
+	memcpy(hash_input, receive + 4 + 0x10, 0x38);
+	memcpy(hash_input + 0x38,
+	       receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE, 0x10);
+	sha256(hash_input, sizeof(hash_input), reply_digest);
+	if (crypto_memneq(receive + 4, reply_digest, 16)) {
+		ret = -EBADMSG;
+		goto out_scrub;
+	}
+	status = get_unaligned_le32(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE);
+	remote_version = get_unaligned_le64(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
+	if (status || remote_version < 1 || remote_version > 2) {
+		ret = status ? -EREMOTEIO : -EPROTONOSUPPORT;
+		goto out_scrub;
+	}
+	dev_info(&pdev->dev,
+		 "AKS capabilities reply passed strict validation: status=%d remote_header_version=%llu\n",
+		 (s32)status, remote_version);
+	ret = 0;
+
+out_scrub:
+	memzero_explicit(hash_input, sizeof(hash_input));
+	memzero_explicit(digest, sizeof(digest));
+	memzero_explicit(reply_digest, sizeof(reply_digest));
+	return ret;
 }
 
 static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
@@ -463,6 +571,8 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	size_t in_size = T2SEP_SBIO_IN_SIZE;
 	size_t out_size = T2SEP_SBIO_OUT_SIZE;
 	u8 ool_target = T2SEP_SBIO_ENDPOINT;
+	bool credential_ool = apple_capture_credential_ool_acks ||
+			      apple_probe_aks_capabilities;
 	int ret = 0;
 	int i;
 
@@ -553,19 +663,20 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			ret = -EPROTO;
 		}
 	}
-	if (apple_capture_credential_ool_acks && !nop_valid) {
+	if (credential_ool && !nop_valid) {
 		dev_err(&pdev->dev,
 			"credential OOL capture skipped because NOP did not validate\n");
 		ret = -EPROTO;
 	}
 
-	if (apple_capture_credential_ool_acks) {
+	if (credential_ool) {
 		in_size = T2SEP_CREDENTIAL_OOL_SIZE;
 		out_size = T2SEP_CREDENTIAL_OOL_SIZE;
-		ool_target = credential_endpoint;
+		ool_target = apple_probe_aks_capabilities ? T2SEP_AKS_ENDPOINT :
+			     credential_endpoint;
 	}
 
-	if ((apple_capture_ool_acks || apple_capture_credential_ool_acks) && !ret) {
+	if ((apple_capture_ool_acks || credential_ool) && !ret) {
 		ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 		if (ret)
 			goto out_stop;
@@ -587,11 +698,16 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		dev_info(&pdev->dev,
 			 "pinned OOL buffers: target=%u in_dma=%pad in_size=%zu out_dma=%pad out_size=%zu\n",
 			 ool_target, &in_dma, in_size, &out_dma, out_size);
-		ret = t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 2, 2,
-						 in_dma, in_size);
+		ret = t2sep_capture_one_ool_ack(
+			pdev, bar4, ool_target, 2, 2, in_dma, in_size,
+			ool_target == T2SEP_AKS_ENDPOINT ? 1 : -1, ool_target);
 		if (!ret)
-			ret = t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 3, 3,
-							 out_dma, out_size);
+			ret = t2sep_capture_one_ool_ack(
+				pdev, bar4, ool_target, 3, 3, out_dma, out_size,
+				ool_target == T2SEP_AKS_ENDPOINT ? 1 : -1, ool_target);
+		if (!ret && apple_probe_aks_capabilities)
+			ret = t2sep_probe_aks_capabilities(pdev, bar4,
+						   in_buffer, out_buffer);
 	}
 
 out_stop:
@@ -612,7 +728,7 @@ out_stop:
 		dma_free_coherent(&pdev->dev, out_size,
 				  out_buffer, out_dma);
 	}
-	if (apple_capture_ool_acks || apple_capture_credential_ool_acks)
+	if (apple_capture_ool_acks || credential_ool)
 		dev_info(&pdev->dev,
 			 "OOL buffers scrubbed and released after CPU stop; result=%d\n",
 			 ret);
@@ -694,9 +810,20 @@ static int t2sep_probe(struct pci_dev *pdev,
 			T2SEP_CREDENTIAL_OOL_CONFIRMATION);
 		return -EINVAL;
 	}
-	if (apple_capture_ool_acks && apple_capture_credential_ool_acks) {
+	if (apple_probe_aks_capabilities &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop ||
+	     aks_capabilities_confirmation != T2SEP_AKS_CAPABILITIES_CONFIRMATION)) {
 		dev_err(&pdev->dev,
-			"sbio and credential OOL captures are mutually exclusive\n");
+			"AKS capabilities probe requires start/MSI/NOP and confirmation 0x%lx\n",
+			T2SEP_AKS_CAPABILITIES_CONFIRMATION);
+		return -EINVAL;
+	}
+	if ((apple_capture_ool_acks &&
+	     (apple_capture_credential_ool_acks || apple_probe_aks_capabilities)) ||
+	    (apple_capture_credential_ool_acks && apple_probe_aks_capabilities)) {
+		dev_err(&pdev->dev,
+			"SBIO, credential OOL, and AKS capabilities modes are mutually exclusive\n");
 		return -EINVAL;
 	}
 

@@ -21,10 +21,8 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn("for (i = 0; i < 500; i++)", SOURCE)
         self.assertIn("((response[0] >> 8) & 0xff) != tag", SOURCE)
         self.assertIn("response[1] != 0", SOURCE)
-        self.assertIn(
-            "t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 2, 2", SOURCE)
-        self.assertIn(
-            "t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 3, 3", SOURCE)
+        self.assertIn("pdev, bar4, ool_target, 2, 2, in_dma, in_size", SOURCE)
+        self.assertIn("pdev, bar4, ool_target, 3, 3, out_dma, out_size", SOURCE)
 
     def test_credential_capture_is_default_off_and_triply_gated(self) -> None:
         self.assertIn("static bool apple_capture_credential_ool_acks;", SOURCE)
@@ -38,7 +36,18 @@ class KernelOolSafetyTests(unittest.TestCase):
             SOURCE,
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
-        self.assertIn("sbio and credential OOL captures are mutually exclusive", SOURCE)
+        self.assertIn(
+            "SBIO, credential OOL, and AKS capabilities modes are mutually exclusive",
+            SOURCE)
+
+    def test_aks_capabilities_is_separately_gated_and_nonsecret(self) -> None:
+        self.assertIn("static bool apple_probe_aks_capabilities;", SOURCE)
+        self.assertIn(
+            "aks_capabilities_confirmation != T2SEP_AKS_CAPABILITIES_CONFIRMATION",
+            SOURCE)
+        self.assertIn("response[0] != 0x0004cd07", SOURCE)
+        self.assertIn("crypto_memneq(receive + 4, reply_digest, 16)", SOURCE)
+        self.assertNotIn("password", SOURCE.lower())
 
     def test_credential_capture_sends_no_service_envelope(self) -> None:
         self.assertNotIn("VERIFY_SECRET", SOURCE)
