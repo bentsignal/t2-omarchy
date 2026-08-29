@@ -300,6 +300,14 @@ def load_catacomb_fields(*, user_id: int, blob: bytes):
     return COMMAND_LOAD_CATACOMB, COMMAND_VERSION, 0, blob, 0
 
 
+def current_catacomb_secure_data_fields(blob: bytes):
+    """Encode current macOS's decoded opaque CatacombSecureData object."""
+    if (not isinstance(blob, bytes) or not blob
+            or len(blob) > MAX_CATACOMB_BLOB_SIZE):
+        raise BiometricCommandError("current catacomb secure data is outside safe bounds")
+    return COMMAND_LOAD_CATACOMB, COMMAND_VERSION, 0, blob, 0
+
+
 def validate_opaque_record_array(output: bytes, *, record_size: int,
                                  maximum_records: int) -> int:
     """Validate only an opaque array's shape; never decode or expose records."""

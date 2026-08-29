@@ -42,6 +42,11 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         struct.pack_into("<I", blob, 8, 501)
         self.assertEqual(command.load_catacomb_fields(user_id=501, blob=bytes(blob)),
                          (0x40, 1, 0, bytes(blob), 0))
+        self.assertEqual(command.current_catacomb_secure_data_fields(b"opaque"),
+                         (0x40, 1, 0, b"opaque", 0))
+        for invalid in (b"", bytes(command.MAX_CATACOMB_BLOB_SIZE + 1), bytearray(b"x")):
+            with self.assertRaises(command.BiometricCommandError):
+                command.current_catacomb_secure_data_fields(invalid)
 
     def test_catacomb_persistence_codecs_reject_unbounded_or_wrong_user_data(self):
         for output in (b"", b"123", struct.pack("<I", 32),

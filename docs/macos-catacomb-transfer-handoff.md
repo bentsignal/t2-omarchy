@@ -73,3 +73,30 @@ root-only temporary input, extract exactly the secure-data object without
 logging values, then send only that object to command `0x40`. This pass did not
 perform that broader transfer because it was outside the original validation
 gate and would have produced an artifact the current Linux loader rejects.
+
+## Authorized follow-up: encrypt only decoded secure data
+
+Linux now has a distinct, bounded one-shot loader for current macOS's decoded
+`CatacombSecureData`; it does not weaken the separately retained KDK save-blob
+validator. Perform this narrower transfer on macOS:
+
+1. Revalidate the active keyed archive by its known path/ownership, byte length
+   708, decoded `CatacombUserID` 501, and the archive structure established
+   above. Do not require or synthesize `CAT1`.
+2. Decode only the `CatacombSecureData` `NSData` through the same Foundation
+   keyed-archive semantics used by the daemon. Require a nonempty length no
+   greater than 307200 bytes. Do not print, hash, retain separately, or inspect
+   the bytes.
+3. Stream those decoded bytes directly into CMS/S/MIME AES-256 enveloped
+   encryption using `t2-touchid-transfer-cert.pem` on the mounted 2 GiB EFI
+   partition. Write only `/Volumes/EFI/t2-touchid-transfer.cms`; use an atomic
+   temporary ciphertext name if needed, never a plaintext temporary file.
+4. Record only success/failure, decoded secure-data byte length, and ciphertext
+   byte length. Do not commit or upload the CMS artifact. Leave the source
+   archive and enrolled fingerprint untouched. Commit and push only the
+   sanitized report/tooling.
+
+Linux will decrypt this ciphertext directly to a mode-0600 root-only temporary
+file, run the separately confirmed one-shot command-`0x40` load, report only
+status/policy length/identity count, and remove both temporary ciphertext and
+plaintext immediately afterward.
