@@ -132,9 +132,15 @@ class SessionKeybagHandle:
 
 
 @dataclass(frozen=True)
+class SessionKeybagSelector:
+    """Opaque selector derived from an authenticated login-session identity."""
+    value: int
+
+
+@dataclass(frozen=True)
 class VerifySecretMetadata:
     keybag_handle: SessionKeybagHandle
-    selector: int
+    selector: SessionKeybagSelector
 
 
 @dataclass(frozen=True)
@@ -324,15 +330,34 @@ def derive_session_keybag_handle(namespace_nonce: int,
     return SessionKeybagHandle((namespace_nonce + client_unique_id) & ((1 << 64) - 1))
 
 
+def derive_session_keybag_selector(session_uid: int) -> SessionKeybagSelector:
+    """Mirror ``evaluate_session_keybag_handle`` for a login session.
+
+    Apple maps session UID zero to the special selector ``-4`` and UIDs from
+    10 through INT32_MAX-1 to their negation.  Values outside those domains
+    fail.  The caller must supply an authenticated session identity; this
+    function intentionally never consults the ambient process UID.
+    """
+    session_uid = _uint(session_uid, 32, "session UID")
+    if session_uid == 0:
+        return SessionKeybagSelector(-4)
+    if 10 <= session_uid <= (1 << 31) - 2:
+        return SessionKeybagSelector(-session_uid)
+    raise AKSTransportError("session UID has no AppleKeyStore session selector")
+
+
 def verify_secret_metadata(keybag_handle: SessionKeybagHandle,
-                           selector: int) -> VerifySecretMetadata:
+                           selector: SessionKeybagSelector) -> VerifySecretMetadata:
     """Validate non-secret, session-derived fields without inventing defaults."""
     if not isinstance(keybag_handle, SessionKeybagHandle):
         raise AKSTransportError(
             "keybag handle must come from the session-handle derivation")
     _uint(keybag_handle.value, 64, "keybag handle")
-    if (isinstance(selector, bool) or not isinstance(selector, int)
-            or not -(1 << 31) <= selector < (1 << 31)):
+    if not isinstance(selector, SessionKeybagSelector):
+        raise AKSTransportError(
+            "verify-secret selector must come from the session selector policy")
+    if (isinstance(selector.value, bool) or not isinstance(selector.value, int)
+            or not -(1 << 31) <= selector.value < (1 << 31)):
         raise AKSTransportError("verify-secret selector must be a signed 32-bit integer")
     return VerifySecretMetadata(keybag_handle, selector)
 
@@ -372,7 +397,7 @@ class AuthorizationPlan:
 
     def plan_verify_secret(self, tag: int, password_length: int, *,
                            keybag_handle: SessionKeybagHandle,
-                           selector: int) -> bytes:
+                           selector: SessionKeybagSelector) -> bytes:
         if self.header_version is None or self.verify_request is not None:
             raise AKSTransportError("verify-secret request is out of order")
         metadata = verify_secret_metadata(keybag_handle, selector)

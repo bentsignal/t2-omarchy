@@ -1178,8 +1178,20 @@ bare integer, so future Linux code cannot silently substitute a convenient
 identity value. The eventual kernel implementation must obtain a fresh
 64-bit nonce from its CSPRNG once per driver lifetime and allocate a stable,
 non-reused 64-bit client ID. The model deliberately does not nominate Linux
-PID as that ID. The selector still has to come from the recovered AKS selector
-policy/session path and remains explicit and signed-32-bit checked.
+PID as that ID.
+
+The ordinary login-session selector policy is recovered as well.
+`ImplicitHandleTranslate` changes an eligible operation's caller-supplied
+implicit zero into `-3`, and `effective_bag_handle_actual` sends `-3` to
+`evaluate_session_keybag_handle`. That function maps authenticated session UID
+zero to special selector `-4`, maps session UIDs `10` through
+`INT32_MAX - 1` to their signed negation, and rejects all other values. The
+model exposes this mapping without consulting the ambient Linux process UID
+and returns an opaque `SessionKeybagSelector`; the authorization planner now
+rejects bare selector integers too. A future login broker must supply the UID
+from its authenticated PAM/logind session rather than letting an untrusted
+client choose it. This proves the arithmetic and policy boundary, not that a
+Linux UID can reuse any macOS keybag.
 
 It also exposes a non-secret layout descriptor for later locked-buffer code.
 For a 12-byte password, the variant, keybag, and selector begin at offsets

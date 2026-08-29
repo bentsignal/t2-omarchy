@@ -93,7 +93,8 @@ class AKSTransportTests(unittest.TestCase):
         plan.capabilities_request = aks.AKSEnvelope(0x4d, 1, 100, False)
         plan.header_version = 1
         plan.plan_verify_secret(
-            2, 12, keybag_handle=aks.SessionKeybagHandle(7), selector=-2)
+            2, 12, keybag_handle=aks.SessionKeybagHandle(7),
+            selector=aks.SessionKeybagSelector(-2))
         body = struct.pack("<IQ", 1, 7)
         header = aks.protect_header(self._identity(), body)
         payload = struct.pack("<I", 0x50) + header + body
@@ -251,13 +252,18 @@ class AKSTransportTests(unittest.TestCase):
 
     def test_verify_secret_metadata_has_no_defaults_or_truncation(self):
         handle = aks.derive_session_keybag_handle(0x1122334455667780, 8)
-        self.assertEqual(aks.verify_secret_metadata(handle, -10),
+        selector = aks.derive_session_keybag_selector(10)
+        self.assertEqual(aks.verify_secret_metadata(handle, selector),
                          aks.VerifySecretMetadata(
-                             aks.SessionKeybagHandle(0x1122334455667788), -10))
-        for handle, selector in ((-1, 0), (1 << 64, 0), (0, 0),
-                                 (aks.SessionKeybagHandle(0), -(1 << 31) - 1),
-                                 (aks.SessionKeybagHandle(0), 1 << 31),
-                                 (True, 0), (aks.SessionKeybagHandle(0), False)):
+                             aks.SessionKeybagHandle(0x1122334455667788),
+                             aks.SessionKeybagSelector(-10)))
+        for handle, selector in (
+                (-1, selector), (1 << 64, selector), (0, selector),
+                (aks.SessionKeybagHandle(0), -(1 << 31) - 1),
+                (aks.SessionKeybagHandle(0), aks.SessionKeybagSelector(
+                    -(1 << 31) - 1)),
+                (aks.SessionKeybagHandle(0), aks.SessionKeybagSelector(1 << 31)),
+                (True, selector), (aks.SessionKeybagHandle(0), False)):
             with self.subTest(handle=handle, selector=selector):
                 with self.assertRaises(aks.AKSTransportError):
                     aks.verify_secret_metadata(handle, selector)
@@ -276,11 +282,26 @@ class AKSTransportTests(unittest.TestCase):
                 with self.assertRaises(aks.AKSTransportError):
                     aks.derive_session_keybag_handle(nonce, unique_id)
 
+    def test_session_keybag_selector_matches_apple_session_policy(self):
+        self.assertEqual(aks.derive_session_keybag_selector(0),
+                         aks.SessionKeybagSelector(-4))
+        self.assertEqual(aks.derive_session_keybag_selector(10),
+                         aks.SessionKeybagSelector(-10))
+        self.assertEqual(aks.derive_session_keybag_selector(501),
+                         aks.SessionKeybagSelector(-501))
+        self.assertEqual(aks.derive_session_keybag_selector((1 << 31) - 2),
+                         aks.SessionKeybagSelector(-((1 << 31) - 2)))
+        for uid in (-1, 1, 9, (1 << 31) - 1, 1 << 32, True):
+            with self.subTest(uid=uid):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.derive_session_keybag_selector(uid)
+
     def test_authorization_plan_requires_capabilities_before_verify(self):
         plan = aks.AuthorizationPlan()
         with self.assertRaises(aks.AKSTransportError):
             plan.plan_verify_secret(
-                2, 12, keybag_handle=aks.SessionKeybagHandle(7), selector=-10)
+                2, 12, keybag_handle=aks.SessionKeybagHandle(7),
+                selector=aks.SessionKeybagSelector(-10))
         request_wire = plan.request_capabilities(1)
         self.assertEqual(aks.decode_envelope(request_wire),
                          aks.AKSEnvelope(0x4d, 1, 100, False))
@@ -292,15 +313,18 @@ class AKSTransportTests(unittest.TestCase):
             reply_wire, payload), 2)
         verify_wire = plan.plan_verify_secret(
             2, 12, keybag_handle=aks.derive_session_keybag_handle(
-                0x1122334455667780, 8), selector=-10)
+                0x1122334455667780, 8),
+            selector=aks.derive_session_keybag_selector(10))
         self.assertEqual(aks.decode_envelope(verify_wire),
                          aks.AKSEnvelope(0x21, 2, 144, False))
         self.assertEqual(plan.verify_metadata,
                          aks.VerifySecretMetadata(
-                             aks.SessionKeybagHandle(0x1122334455667788), -10))
+                             aks.SessionKeybagHandle(0x1122334455667788),
+                             aks.SessionKeybagSelector(-10)))
         with self.assertRaises(aks.AKSTransportError):
             plan.plan_verify_secret(
-                3, 12, keybag_handle=aks.SessionKeybagHandle(7), selector=-10)
+                3, 12, keybag_handle=aks.SessionKeybagHandle(7),
+                selector=aks.SessionKeybagSelector(-10))
 
     def test_authorization_plan_rejects_uncorrelated_capabilities_reply(self):
         plan = aks.AuthorizationPlan()

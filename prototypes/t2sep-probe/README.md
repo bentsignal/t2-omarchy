@@ -31,7 +31,10 @@ authorization plan requires explicit range-checked keybag-handle and selector
 metadata from the active session and supplies no guessed Linux defaults. It
 models the KDK-proven handle as a per-driver random 64-bit namespace plus a
 non-reused client-unique ID (modulo 2^64), returns an opaque handle type, and
-rejects bare integers so UID/PID constants cannot be substituted accidentally. It
+rejects bare integers so UID/PID constants cannot be substituted accidentally.
+It also mirrors AppleKeyStore's authenticated login-session selector mapping
+(UID 0 to `-4`, UID 10 through `INT32_MAX-1` to its negation), returns a
+separate opaque selector type, and never reads the ambient process UID. It
 performs no MMIO, DMA, password handling, Linux identity substitution, or
 secret serialization.
 
