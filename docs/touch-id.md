@@ -1116,6 +1116,16 @@ before scrubbing/freeing either mapping, and never constructs an ACM or AKS
 service envelope. The wrapper adds an independent cursor-bounded transcript
 verifier and a separate human-readable confirmation.
 
+That verifier now rejects a missing journal cursor instead of falling back to
+recent kernel lines. It binds opcode-2/tag-2 and opcode-3/tag-3 requests to the
+exact distinct, page-aligned 16 KiB DMA addresses logged for the same capture;
+requires zero acknowledgement status and reserved word; and requires nonzero
+counts on both MSI vectors, CPU stop before scrub/free, PCI-command restoration
+and release, and final probe removal in order. The kernel path independently
+rejects a nonzero acknowledgement reserved word. The complete historical
+endpoint-7 transcript still passes these stronger rules; they do not infer an
+endpoint-10 profile.
+
 That bounded endpoint-7 run passed the control NOP, received both registrations,
 stopped the T2, scrubbed and released both buffers, observed three interrupts
 on each MSI vector, restored the original PCI command word, and left neither a

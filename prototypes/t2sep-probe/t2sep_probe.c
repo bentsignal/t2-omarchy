@@ -463,7 +463,7 @@ static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
 		 response[0] & 0xff, (response[0] >> 8) & 0xff,
 		 (response[0] >> 16) & 0xff, (response[0] >> 24) & 0xff);
 	if ((response[0] & 0xff) != 0 || ((response[0] >> 8) & 0xff) != tag ||
-	    response[1] != 0 ||
+	    response[1] != 0 || response[2] != 0 ||
 	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL)))
 		return -EPROTO;
 	if (expected_ack_opcode >= 0 &&

@@ -70,7 +70,12 @@ def verify(text: str) -> int:
             if remote_version < 1:
                 raise VerificationError("AKS capabilities version is unsupported")
             state = 3
-    if state != 3 or remote_version is None:
+            continue
+        if "issued Apple CPU-stop value 5" in line:
+            if state != 3:
+                raise VerificationError("AKS capabilities did not finish before CPU stop")
+            state = 4
+    if state != 4 or remote_version is None:
         raise VerificationError("AKS capabilities transcript is incomplete")
     return remote_version
 

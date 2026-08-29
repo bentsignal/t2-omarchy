@@ -23,6 +23,8 @@ class CredentialOolRunnerSafetyTests(unittest.TestCase):
         self.assertNotIn("verify_secret", SOURCE.lower())
         self.assertNotIn("contextcreate", SOURCE.lower())
         self.assertIn("verify-credential-ool-log.py", SOURCE)
+        self.assertIn("could not obtain a fresh kernel-journal cursor", SOURCE)
+        self.assertNotIn("journalctl -k -n 80", SOURCE)
         self.assertIn("trap cleanup EXIT", SOURCE)
         self.assertIn("rmmod t2sep_probe", SOURCE)
 

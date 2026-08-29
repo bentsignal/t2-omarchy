@@ -64,7 +64,11 @@ two fixed credential endpoints. It registers two 16 KiB zeroed mappings and
 captures only their control acknowledgements; it sends no ACM or AKS service
 message. `run-credential-ool-capture.sh` adds model/PCI/driver checks, an exact
 interactive confirmation, cursor-bounded logs, independent verification, and
-unload checks. Do not run it unattended. Its only accepted endpoints are `7`
+unload checks. It now refuses to run without a fresh journal cursor and has no
+recent-log fallback. The verifier binds the requests to the logged distinct
+DMA mappings, requires exact tags, zero status/reserved words, both MSI
+vectors, stop-before-scrub, PCI restoration/release, and final probe removal.
+Do not run it unattended. Its only accepted endpoints are `7`
 (AKS) and `10` (ACM), and the two services must be captured in separate runs.
 
 Build against the running kernel:
