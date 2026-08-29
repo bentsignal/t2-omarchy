@@ -26,6 +26,7 @@ COMMAND_PRESENCE_DETECT = 0x26
 COMMAND_GET_PROTECTED_CONFIG = 0x2E
 COMMAND_SET_PROTECTED_CONFIG = 0x2F
 COMMAND_NO_CATACOMB = 0x31
+COMMAND_GET_CATACOMB_UUID = 0x38
 COMMAND_GET_CATACOMB_STATE = 0x3C
 COMMAND_PREPARE_SAVE_CATACOMB = 0x3D
 COMMAND_COMPLETE_SAVE_CATACOMB = 0x3E
@@ -198,6 +199,12 @@ def no_catacomb_fields(*, user_id: int):
     """Initialize one empty in-memory user catacomb using the current KDK ABI."""
     return (COMMAND_NO_CATACOMB, COMMAND_VERSION, 0,
             struct.pack("<I", _u32(user_id, "user ID")), 0)
+
+
+def catacomb_uuid_fields(*, user_id: int):
+    """Query only the opaque catacomb identifier's exact response shape."""
+    return (COMMAND_GET_CATACOMB_UUID, 0, 0,
+            struct.pack("<I", _u32(user_id, "user ID")), 16)
 
 
 def consume_user_policy_credential(*, user_id: int, policy: UserProtectedPolicy,

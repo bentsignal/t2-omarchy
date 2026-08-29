@@ -2608,6 +2608,23 @@ used by the current Settings enrollment path and any keybag/session operation
 between verification and command 3; repeating command 3 with the current
 credential cannot add evidence.
 
+The macOS return pass proved that Settings uses zero for the operation-`0x21`
+input device-state word and performs no hidden AKS call between password
+verification and exporting the same ACM context. Its caller-facing selector
+`-3` resolves to the same SEP-side `-501` selector Linux uses. These fields must
+not be changed experimentally.
+
+An expanded read-only Linux state query then returned requested and effective
+UID 501 policies both equal to `(1, 1, 1, 0)`, maximum identity count 5, free
+identity count 3, and an empty UID 501 identity list. The exact catacomb-UUID
+getter, state getter, and group-state getter all returned
+`kIOReturnBadArgument`. Thus neither disabled effective policy nor exhausted
+sensor capacity explains status 261. Two global slots are occupied while the
+Linux user component has no addressable catacomb UUID, making recovery and a
+local-only load of the existing macOS catacomb the next controlled comparison.
+The opaque file must never be committed or printed because it contains
+biometric database material.
+
 That static comparison is now complete. In the checksum-pinned current
 Settings extension, `ACMContextGetExternalForm` invokes a callback that calls
 the local `_aks_verify_password` wrapper with caller-facing keybag handle `-3`,

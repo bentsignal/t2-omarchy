@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import plistlib
+import struct
 import sys
 import unittest
 
@@ -34,7 +35,7 @@ class FakeSocket:
 
 
 class UserStateProbeTests(unittest.TestCase):
-    IDS = tuple(f"{index}2345678-89AB-4CDE-8FAB-0123456789AB" for index in range(6))
+    IDS = tuple(f"{index}2345678-89AB-4CDE-8FAB-0123456789AB" for index in range(10))
 
     def run_probe(self, replies):
         ids = iter(self.IDS)
@@ -45,15 +46,22 @@ class UserStateProbeTests(unittest.TestCase):
         finally:
             probe.coupled.bridge_query.uuid.uuid4 = original
 
-    def test_reports_only_status_lengths_and_counts(self):
+    def test_reports_nonsecret_policy_status_lengths_and_counts(self):
+        policy = struct.pack("<8I", 1, 1, 1, 0, 1, 0, 0, 0)
         replies = (envelope(self.IDS[0], [0, 3])
                    + envelope(self.IDS[1], [0])
                    + envelope(self.IDS[2], [0, True])
-                   + envelope(self.IDS[3], [0, bytes(32)])
-                   + envelope(self.IDS[4], [0, bytes(16)])
-                   + envelope(self.IDS[5], [0, bytes(112)]))
+                   + envelope(self.IDS[3], [0, policy])
+                   + envelope(self.IDS[4], [0, struct.pack("<I", 5)])
+                   + envelope(self.IDS[5], [0, struct.pack("<I", 4)])
+                   + envelope(self.IDS[6], [0, struct.pack("<I", 501) + bytes(16)])
+                   + envelope(self.IDS[7], [0, bytes(16)])
+                   + envelope(self.IDS[8], [0, bytes(16)])
+                   + envelope(self.IDS[9], [0, bytes(112)]))
         result = self.run_probe(replies)
-        self.assertEqual(result, probe.UserStateResult(0, 32, 0, 2, 0, 2))
+        self.assertEqual(result, probe.UserStateResult(
+            0, 32, (1, 1, 1, 0), (1, 0, 0, 0),
+            0, 5, 0, 4, 0, 1, 0, 16, 0, 2, 0, 2))
         self.assertNotIn("bytes", repr(result))
 
     def test_invalid_success_shapes_fail_closed(self):

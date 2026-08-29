@@ -7,6 +7,7 @@ import argparse
 from dataclasses import dataclass
 import importlib.util
 from pathlib import Path
+import struct
 import sys
 
 
@@ -34,6 +35,16 @@ class UserStateProbeError(RuntimeError):
 class UserStateResult:
     protected_status: int
     protected_length: int | None
+    requested_policy: tuple[int, int, int, int] | None
+    effective_policy: tuple[int, int, int, int] | None
+    max_identity_status: int
+    max_identity_count: int | None
+    free_identity_status: int
+    free_identity_count: int | None
+    identity_list_status: int
+    identity_count: int | None
+    catacomb_uuid_status: int
+    catacomb_uuid_length: int | None
     catacomb_status: int
     catacomb_records: int | None
     group_status: int
@@ -65,6 +76,45 @@ def probe_socket(sock, *, user_id: int) -> UserStateResult:
             not isinstance(protected, bytes)
             or len(protected) != biometric.PROTECTED_CONFIG_SIZE):
         raise UserStateProbeError("successful protected config has invalid size")
+    requested_policy = None
+    effective_policy = None
+    if protected_status == 0:
+        words = struct.unpack("<8I", protected)
+        requested_policy = words[:4]
+        effective_policy = words[4:]
+    max_status, max_output = _perform(session, biometric.max_identity_count_fields())
+    max_count = None
+    if max_status == 0:
+        try:
+            max_count = biometric.decode_identity_count(max_output or b"")
+        except biometric.BiometricCommandError as error:
+            raise UserStateProbeError("maximum identity count has invalid shape") from error
+    free_status, free_output = _perform(
+        session, biometric.free_identity_count_fields(user_id=user_id))
+    free_count = None
+    if free_status == 0:
+        try:
+            free_count = biometric.decode_identity_count(free_output or b"")
+        except biometric.BiometricCommandError as error:
+            raise UserStateProbeError("free identity count has invalid shape") from error
+    list_status, list_output = _perform(
+        session, biometric.identity_list_fields(user_id=user_id))
+    identity_count = None
+    if list_status == 0:
+        try:
+            identities = biometric.decode_identity_list(list_output or b"")
+        except biometric.BiometricCommandError as error:
+            raise UserStateProbeError("identity list has invalid shape") from error
+        if any(identity.user_id != user_id for identity in identities):
+            raise UserStateProbeError("identity list contains a foreign user")
+        identity_count = len(identities)
+    uuid_status, uuid_output = _perform(
+        session, biometric.catacomb_uuid_fields(user_id=user_id))
+    uuid_length = None
+    if uuid_status == 0:
+        if not isinstance(uuid_output, bytes) or len(uuid_output) != 16:
+            raise UserStateProbeError("catacomb UUID has invalid shape")
+        uuid_length = len(uuid_output)
     catacomb_status, catacomb = _perform(session, biometric.catacomb_state_fields())
     catacomb_records = None
     if catacomb_status == 0:
@@ -86,6 +136,9 @@ def probe_socket(sock, *, user_id: int) -> UserStateResult:
     return UserStateResult(
         protected_status,
         len(protected) if protected_status == 0 and isinstance(protected, bytes) else None,
+        requested_policy, effective_policy,
+        max_status, max_count, free_status, free_count, list_status, identity_count,
+        uuid_status, uuid_length,
         catacomb_status, catacomb_records, group_status, group_records)
 
 
@@ -135,6 +188,16 @@ def main() -> None:
     print("user biometric state: "
           f"protected_status={result.protected_status} "
           f"protected_length={result.protected_length} "
+          f"requested_policy={result.requested_policy} "
+          f"effective_policy={result.effective_policy} "
+          f"max_identity_status={result.max_identity_status} "
+          f"max_identity_count={result.max_identity_count} "
+          f"free_identity_status={result.free_identity_status} "
+          f"free_identity_count={result.free_identity_count} "
+          f"identity_list_status={result.identity_list_status} "
+          f"identity_count={result.identity_count} "
+          f"catacomb_uuid_status={result.catacomb_uuid_status} "
+          f"catacomb_uuid_length={result.catacomb_uuid_length} "
           f"catacomb_status={result.catacomb_status} "
           f"catacomb_records={result.catacomb_records} "
           f"group_status={result.group_status} "

@@ -49,7 +49,9 @@ class NoCatacombProbeTests(unittest.TestCase):
         finally:
             probe.state.coupled.bridge_query.uuid.uuid4 = original
         self.assertEqual(status, 0)
-        self.assertEqual(result, probe.state.UserStateResult(0, 32, 0, 1, 0, 1))
+        self.assertEqual(result, probe.state.UserStateResult(
+            0, 32, (0, 0, 0, 0), (0, 0, 0, 0),
+            -1, None, -1, None, -1, None, -1, None, 0, 1, 0, 1))
 
     def test_live_gate_closed(self):
         self.assertFalse(probe.LIVE_NO_CATACOMB_ENABLED)

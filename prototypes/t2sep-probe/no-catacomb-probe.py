@@ -43,10 +43,13 @@ def probe_socket(sock, *, user_id: int):
     group_status, groups = state._perform(
         session, state.biometric.catacomb_group_state_fields())
     protected_length = None
+    requested_policy = effective_policy = None
     if protected_status == 0:
         if not isinstance(protected, bytes) or len(protected) != 32:
             raise NoCatacombProbeError("protected config success shape is invalid")
         protected_length = len(protected)
+        words = state.struct.unpack("<8I", protected)
+        requested_policy, effective_policy = words[:4], words[4:]
     catacomb_records = group_records = None
     if catacomb_status == 0:
         catacomb_records = state.biometric.validate_opaque_record_array(
@@ -55,8 +58,9 @@ def probe_socket(sock, *, user_id: int):
         group_records = state.biometric.validate_opaque_record_array(
             groups or b"", record_size=56, maximum_records=64)
     return status, state.UserStateResult(
-        protected_status, protected_length, catacomb_status, catacomb_records,
-        group_status, group_records)
+        protected_status, protected_length, requested_policy, effective_policy,
+        -1, None, -1, None, -1, None, -1, None,
+        catacomb_status, catacomb_records, group_status, group_records)
 
 
 def live_probe(*, user_id: int, interface: str = "enp4s0f1u1", timeout: float = 5.0):

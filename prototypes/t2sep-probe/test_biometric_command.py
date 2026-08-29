@@ -24,6 +24,8 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
     def test_current_user_protected_config_getter_envelope(self):
         self.assertEqual(command.protected_config_fields(user_id=501),
                          (0x2e, 1, 0, b"\xf5\x01\0\0", 32))
+        self.assertEqual(command.catacomb_uuid_fields(user_id=501),
+                         (0x38, 0, 0, b"\xf5\x01\0\0", 16))
 
     def test_current_catacomb_save_and_load_codecs(self):
         context = struct.pack("<II16s", 501, 1, bytes(16))
