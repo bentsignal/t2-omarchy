@@ -484,7 +484,8 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	u8 *receive = receive_buffer;
 	u32 request[3] = { 0x00044d07, 0x00640000, 0 };
 	u32 response[4];
-	u64 continuous_usec = ktime_get_mono_fast_ns() / NSEC_PER_USEC;
+	/* mach_continuous_time includes suspend; Linux boottime is its analogue. */
+	u64 continuous_usec = ktime_get_boottime_ns() / NSEC_PER_USEC;
 	u32 status;
 	u64 remote_version;
 	int ret;

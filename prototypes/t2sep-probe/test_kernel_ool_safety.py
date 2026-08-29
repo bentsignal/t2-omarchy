@@ -47,6 +47,8 @@ class KernelOolSafetyTests(unittest.TestCase):
             SOURCE)
         self.assertIn("response[0] != 0x0004cd07", SOURCE)
         self.assertIn("crypto_memneq(receive + 4, reply_digest, 16)", SOURCE)
+        self.assertIn("ktime_get_boottime_ns() / NSEC_PER_USEC", SOURCE)
+        self.assertNotIn("ktime_get_mono_fast_ns", SOURCE)
         self.assertNotIn("password", SOURCE.lower())
 
     def test_credential_capture_sends_no_service_envelope(self) -> None:

@@ -1124,8 +1124,9 @@ A next-stage kernel path is prepared but unexecuted. It requires a new
 capabilities-specific 64-bit confirmation and is mutually exclusive with all
 other OOL modes. Only after the proven `(1/7, 1/7)` registrations does it
 construct the exact 100-byte version-1 empty operation-`0x4d` request using
-the source-grounded kernproc candidate above and a fresh monotonic-microsecond
-timestamp. It uses the kernel's exported SHA-256 implementation, sends exactly
+the source-grounded kernproc candidate above and a fresh boot-continuous
+microsecond timestamp (`ktime_get_boottime_ns`, matching the suspend-inclusive
+semantics of `mach_continuous_time`). It uses the kernel's exported SHA-256 implementation, sends exactly
 one endpoint-7 selector-`0x4d` envelope, and accepts only a correlated
 selector-`0xcd`, tag-4, length-100 reply. The receive path requires header
 length 80, version 1, zero flags, empty blob, constant-time digest equality,
