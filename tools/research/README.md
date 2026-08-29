@@ -1,5 +1,21 @@
 # Bounded research helpers
 
+`macos-objc-methods.m` is a macOS-only, read-only shared-cache inspection
+helper. It loads one framework and prints Objective-C method type encodings,
+implementations, and image-relative offsets. Optional environment selectors
+can print selector references, known NSString constants, or copy code bytes to
+`/tmp/macos-objc-method.bin` for offline disassembly. It never invokes the
+reported methods or reads their object state:
+
+```bash
+clang -fobjc-arc -framework Foundation \
+  tools/research/macos-objc-methods.m -o /tmp/macos-objc-methods
+MACOS_OBJC_PRINT_SELECTORS='parseAuthDict:toAuthData:' \
+  /tmp/macos-objc-methods \
+  /System/Library/PrivateFrameworks/BiometricSupport.framework/BiometricSupport \
+  BiometricKitXPCServer parseAuthDict:
+```
+
 Run memory-heavy research commands through `run-bounded.sh`. It creates a
 separate systemd user scope capped at 1 GiB RAM, 256 MiB swap, and 64 tasks, so
 an unexpectedly hungry decoder or disassembler is killed without taking the

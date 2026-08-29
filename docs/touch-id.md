@@ -899,6 +899,44 @@ No probe waited for a touch or added an identity. Reproducing Apple's legitimate
 token acquisition path, rather than weakening or guessing it, is the next
 enrollment milestone.
 
+That macOS enrollment-authorization path is now statically recovered for
+macOS 26.6.2 build 25G83. The built-in `Touch ID & Password` settings
+extension (universal SHA-256 `14cc6fe7...e4798b3`, x86_64 slice SHA-256
+`e86ab74e...c359f1`) creates a fresh ACM context, validates the password with
+AppleKeyStore `_aks_verify_password`, and exports the authenticated context
+with `ACMContextGetExternalForm`. The latter is exactly 16 bytes: its x86_64
+implementation passes length `0x10` to the context serializer/copy callback.
+The settings extension stores that `NSData` as `credset`, stores the current
+UID as `userid`, and gives both to `BiometricKitUI`. The UI assigns the bytes
+with `-[BKEnrollOperation setCredentialSet:]` before starting enrollment.
+
+Current `BiometricSupport` recognizes the credential under the exact key
+`BKOptionEnrollWithCredentialSet`. Its
+`-[BiometricKitXPCServer parseAuthDict:toAuthData:]` also recognizes separate
+credential-set keys for ordinary authentication and extend-enrollment, and
+separate auth-token keys including `BKOptionEnrollWithAuthToken`. It requires
+the selected object to be `NSData`, rejects lengths above 32, and accepts the
+credential-set external form at length 16. For the ordinary settings path it
+constructs the command-3 authorization field as:
+
+```text
+offset  size  value
+0       4     usingAuthToken = 0
+4       4     tokenLength = 16
+8       16    opaque ACM context external form
+24      16    zero padding
+```
+
+This closes the macOS request structure but does not make the opaque bytes a
+portable password derivative. They are a reference to state created by
+AppleCredentialManager/AppleKeyStore after successful password verification.
+Linux must reproduce that authenticated ACM/AKS operation against the T2/SEP,
+or use another Apple-supported credential provider, before submitting
+enrollment. Capturing or replaying a macOS context across a reboot is not
+treated as a design: validity across the macOS-to-Linux boot transition is
+unproven and the context must be presumed boot/session-bound and fail closed.
+No password or context bytes were observed during this analysis.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

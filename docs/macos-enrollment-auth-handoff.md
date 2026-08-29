@@ -63,3 +63,44 @@ state is strictly necessary and the user explicitly agrees.
 Do not modify/delete the existing enrolled fingerprint, disable SIP, weaken
 system security, or reboot without asking. Leave a concise Linux return handoff
 in this file or a sibling document and push every durable finding.
+
+## macOS 25G83 result (2026-08-28)
+
+Static analysis closed the ordinary built-in enrollment request path without
+capturing a password, authorization context, or biometric data:
+
+1. `/System/Library/ExtensionKit/Extensions/Touch ID & Password.appex` creates
+   an ACM context, calls `_aks_verify_password` with the entered password and
+   that context, then calls `ACMContextGetExternalForm`.
+2. `ACMContextGetExternalForm` serializes exactly 16 bytes. The extension wraps
+   them in `NSData` under `credset`, adds `userid`, and passes the dictionary to
+   `BiometricKitUI`.
+3. `BKUIFingerprintEnrollViewController` calls
+   `-[BKEnrollOperation setCredentialSet:]`, `setUserID:`, and
+   `startWithError:`.
+4. Current `BiometricSupport` consumes the bytes under
+   `BKOptionEnrollWithCredentialSet`. Its `parseAuthDict:toAuthData:` emits
+   `usingAuthToken=0`, `tokenLength=16`, the 16-byte opaque external form, and
+   16 zero padding bytes. `BKOptionEnrollWithAuthToken` is a distinct path and
+   sets `usingAuthToken=1`; it is not the normal System Settings flow.
+
+Linux should stop testing all-zero `authData`. The next bounded task is to
+recover and implement the AppleCredentialManager/AppleKeyStore request used by
+`_aks_verify_password` on T2, including context-create and external-form
+semantics. Treat the 16-byte external form as an opaque, probably
+boot/session-bound capability—not a password hash or replayable token. Do not
+log it, persist it, copy it between OS boots, or accept it after transport reset
+without evidence that the issuing state remains valid.
+
+Useful pins: settings extension universal SHA-256
+`14cc6fe7cccce11aad741af346df0e1275d98c16853574b0d7c634ef2e4798b3`;
+x86_64 slice SHA-256
+`e86ab74e0246bbd7b88cec36fd901106a49bab8e95edfc687e77d06083c359f1`.
+Relevant x86_64 settings IMPs are `+[PSBiometricIdentity
+getCredentialsData:ctp:]` at `0x100007a20` and
+`-[SecurityShared(TouchIDEnrollment)
+presentEnrollmentSheetInWindow:withData:completionHandler:]` at
+`0x10000a3e8`. In the live dyld cache, `BiometricSupport` method offsets from
+its image base are `0x19dc6` for `parseAuthDict:toAuthData:` and
+`BiometricKit` uses `0x25f71` for
+`-[BKEnrollOperation optionsDictionaryWithError:]`.
