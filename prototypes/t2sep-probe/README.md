@@ -47,10 +47,10 @@ or returns the opaque context bytes. It likewise has no device-I/O path.
 
 `credential-services-bootstrap.py` composes fixed ACM/AKS OOL registration,
 independently observed acknowledgement profiles, and stop-scrub-release
-ownership. The supervised 2026-08-28 endpoint-7 capture established the fixed
-AKS acknowledgement profile `(opcode 1, target 7)` for both mappings; ACM is
-still unobserved. The pure bootstrap deliberately has no kernel or
-DMA-allocation path.
+ownership. Separate supervised 2026-08-28 captures established fixed
+acknowledgement profiles for both mappings of each service: AKS `(opcode 1,
+target 7)` and ACM `(opcode 1, target 10)`. The pure bootstrap deliberately has
+no kernel or DMA-allocation path.
 
 `run-aks-capabilities-probe.sh` is the separately confirmed next-stage wrapper.
 Its default-off kernel gate sends only the non-mutating empty operation `0x4d`

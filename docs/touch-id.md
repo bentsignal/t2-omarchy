@@ -1123,8 +1123,9 @@ requires zero acknowledgement status and reserved word; and requires nonzero
 counts on both MSI vectors, CPU stop before scrub/free, PCI-command restoration
 and release, and final probe removal in order. The kernel path independently
 rejects a nonzero acknowledgement reserved word. The complete historical
-endpoint-7 transcript still passes these stronger rules; they do not infer an
-endpoint-10 profile.
+endpoint-7 transcript still passes these stronger rules. A separate
+cursor-bounded endpoint-10 transcript also passes them; no profile is inferred
+across endpoints.
 
 That bounded endpoint-7 run passed the control NOP, received both registrations,
 stopped the T2, scrubbed and released both buffers, observed three interrupts
@@ -1138,6 +1139,15 @@ bug: the normal unsigned out-of-tree-module warning contains `verification
 failed:`. The verifier now ignores loader-wide messages and admits evidence
 only from the PCI-qualified `t2sep_probe 0000:04:00.2:` state machine; a
 regression test preserves that boundary. No AKS service request was sent.
+
+A separately supervised endpoint-10 run at 2026-08-28 23:36 EDT passed the
+same bounded lifecycle. Both ACM registrations returned acknowledgement opcode
+`1`, target `10`, their original tags, and zero status/reserved words. Three
+interrupts arrived on each MSI vector; the probe then stopped the T2, scrubbed
+and released both mappings, restored PCI state, and unloaded cleanly. The
+independent verifier therefore establishes `ACM_REPLY_PROFILE` as
+`(send=1/10, receive=1/10)`. No ACM service envelope, credential, or biometric
+command was sent.
 
 A next-stage kernel path is prepared but unexecuted. It requires a new
 capabilities-specific 64-bit confirmation and is mutually exclusive with all

@@ -46,9 +46,10 @@ class ReplyProfile:
     receive_target: int
 
 
-# Observed on the MacBookPro16,1 T2 at 2026-08-28 22:55 EDT and accepted by
-# verify-credential-ool-log.py from the cursor-bounded kernel transcript.
+# Observed on the MacBookPro16,1 T2 in separate supervised runs on 2026-08-28
+# and accepted by verify-credential-ool-log.py from cursor-bounded transcripts.
 AKS_REPLY_PROFILE = ReplyProfile(1, AKS.endpoint, 1, AKS.endpoint)
+ACM_REPLY_PROFILE = ReplyProfile(1, ACM.endpoint, 1, ACM.endpoint)
 
 
 class CredentialServiceBootstrap:

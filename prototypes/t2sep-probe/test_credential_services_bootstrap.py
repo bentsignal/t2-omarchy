@@ -30,14 +30,20 @@ class CredentialServicesBootstrapTests(unittest.TestCase):
                                   0x200, 0x4000, 0])
 
     def test_registration_requires_exact_independent_reply_profile(self):
-        state = bootstrap.CredentialServiceBootstrap(bootstrap.AKS)
-        send, receive = state.registration_requests(
-            0x100000, 0x200000, send_tag=4, receive_tag=5)
-        profile = bootstrap.AKS_REPLY_PROFILE
-        state.accept_registration_replies(reply(send, 1, 7),
-                                          reply(receive, 1, 7), profile)
-        self.assertTrue(state.ready)
-        self.assertEqual(state.stop_and_release(), ("aks-receive", "aks-send"))
+        for service, profile in (
+                (bootstrap.AKS, bootstrap.AKS_REPLY_PROFILE),
+                (bootstrap.ACM, bootstrap.ACM_REPLY_PROFILE)):
+            with self.subTest(service=service.name):
+                state = bootstrap.CredentialServiceBootstrap(service)
+                send, receive = state.registration_requests(
+                    0x100000, 0x200000, send_tag=4, receive_tag=5)
+                state.accept_registration_replies(
+                    reply(send, 1, service.endpoint),
+                    reply(receive, 1, service.endpoint), profile)
+                self.assertTrue(state.ready)
+                self.assertEqual(
+                    state.stop_and_release(),
+                    (f"{service.name}-receive", f"{service.name}-send"))
 
     def test_failure_never_commits_partial_ownership(self):
         state = bootstrap.CredentialServiceBootstrap(bootstrap.ACM)
