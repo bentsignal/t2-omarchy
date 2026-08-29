@@ -57,6 +57,15 @@ distinct control tags and four non-overlapping mappings, validates every ACK
 before committing either endpoint, and stops both idle endpoints before any
 mapping can be scrubbed or released.
 
+`run-dual-credential-ool-capture.sh` is the next separately gated, unexecuted
+hardware discriminator for that model. It allocates four zeroed 16 KiB DMA
+mappings under the existing 32-bit mask, registers AKS with tags 2/3 and ACM
+with tags 4/5, sends no service envelope, stops the CPU, then scrubs and frees
+all four mappings. A cursor-bounded independent verifier requires the exact
+already observed `(1/7, 1/7, 1/10, 1/10)` ACK sequence, distinct non-overlapping
+addresses, nonzero observations on both MSI vectors, and complete PCI/module
+teardown. It must not be run without the user present.
+
 `credential-session.py` is the socket- and device-free boundary that joins
 that dual transport lifetime to `credential-authorization.py`. No ACM or AKS
 request can be built until all four registrations are accepted. It permits one

@@ -37,8 +37,23 @@ class KernelOolSafetyTests(unittest.TestCase):
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
         self.assertIn(
-            "SBIO, credential OOL, AKS capabilities/startup, and ACM context modes are mutually exclusive",
+            "SBIO, single/dual credential OOL, AKS capabilities/startup, and ACM context modes are mutually exclusive",
             SOURCE)
+
+    def test_dual_credential_capture_is_separately_gated_and_nonsecret(self):
+        self.assertIn("static bool apple_capture_dual_credential_ool_acks;", SOURCE)
+        self.assertIn(
+            "dual_credential_ool_confirmation !=\n"
+            "\t\tT2SEP_DUAL_CREDENTIAL_OOL_CONFIRMATION", SOURCE)
+        for fragment in (
+                "pdev, bar4, T2SEP_AKS_ENDPOINT, 2, 2",
+                "pdev, bar4, T2SEP_AKS_ENDPOINT, 3, 3",
+                "pdev, bar4, T2SEP_ACM_ENDPOINT, 2, 4",
+                "pdev, bar4, T2SEP_ACM_ENDPOINT, 3, 5"):
+            self.assertIn(fragment, SOURCE)
+        self.assertIn("second_in_buffer", SOURCE)
+        self.assertIn("second_out_buffer", SOURCE)
+        self.assertNotIn("VERIFY_SECRET", SOURCE)
 
     def test_aks_capabilities_is_separately_gated_and_nonsecret(self) -> None:
         self.assertIn("static bool apple_probe_aks_capabilities;", SOURCE)

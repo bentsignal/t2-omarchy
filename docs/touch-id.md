@@ -1182,7 +1182,23 @@ to either endpoint, and readiness requires both ACM and AKS. Teardown first
 preflights both endpoints as idle, stops both, and only then scrubs and releases
 any mapping; an active operation on either endpoint leaves both running and all
 four mappings retained. This does not establish a live combined registration
-sequence: no dual-endpoint kernel probe has been added or executed.
+sequence: the corresponding dual-endpoint kernel probe has not been executed.
+
+A separately gated dual-endpoint probe is now prepared but remains
+unexecuted. It is the minimal empirical test of that exact assumption: after
+the already validated control NOP it allocates four zeroed 16 KiB coherent
+mappings, registers AKS send/receive with global tags 2/3, then ACM
+send/receive with tags 4/5, and sends no ACM or AKS service envelope. CPU stop
+precedes scrubbing and freeing every mapping even on partial failure. The
+wrapper requires the exact confirmation
+`I_UNDERSTAND_NONSECRET_DUAL_CREDENTIAL_OOL_CAPTURE`, a fresh journal cursor,
+the supported PCI identity with no bound driver, and post-run unload/unbind.
+Its independent verifier binds all four request words to four distinct,
+non-overlapping logged DMA ranges, requires the previously observed exact ACK
+profiles and ordering, nonzero counts on both MSI vectors, stop-before-free,
+PCI restoration/release, and probe removal. Passing would prove simultaneous
+registration only—not AKS startup, ACM context creation, password verification,
+or enrollment—and it will not be executed while the user is unavailable.
 
 The corresponding kernel capture path is default-off and was executed once
 under direct user supervision on this MacBookPro16,1 at 2026-08-28 22:55 EDT.
