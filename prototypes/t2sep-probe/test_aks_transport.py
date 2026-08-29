@@ -392,6 +392,9 @@ class AKSTransportTests(unittest.TestCase):
             aks.verify_secret_serialized_size(b"password")
 
     def test_create_keybag_layout_is_exact_and_nonoverlapping(self):
+        self.assertEqual(aks.DEVICE_KEYBAG_STORE.value, 0)
+        self.assertEqual(aks.BACKUP_KEYBAG_STORE.value, 1)
+        self.assertEqual(aks.OTA_BACKUP_KEYBAG_STORE.value, 3)
         self.assertEqual(aks.create_keybag_layout(3), aks.CreateKeybagLayout(
             total_size=116,
             variant_offset=84,

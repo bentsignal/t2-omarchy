@@ -41,7 +41,10 @@ The same module now has an offline operation-`0x01` variant-1 keybag-create
 codec, which addresses the prerequisite exposed by the first live
 verify-secret rejection. It requires an explicit typed store value, client
 namespace, requested selector, and two caller-owned mutable secret buffers; it
-supplies no guessed Apple bag type. It serializes the exact protected header,
+supplies no implicit Apple bag type. Exact bridgeOS 23P6068 clients establish
+device `0`, backup `1`, and OTA-backup `3`: `keybagd`'s user-session creation
+path passes `0` to `_aks_create_bag`, while MobileKeyBag's named backup and OTA
+wrappers pass `1` and `3`. It serializes the exact protected header,
 qword namespace, two metadata words, and two four-byte-aligned
 length-prefixed blobs recovered from `_code_ipc_create_keybag`. Both input
 buffers are consumed and wiped, and closing the request wipes its complete

@@ -170,6 +170,14 @@ class KeybagStoreType:
     value: int
 
 
+# Exact values recovered from bridgeOS 23P6068's keybagd and MobileKeyBag.
+# These are named constants rather than codec defaults: callers must still
+# deliberately select the semantics appropriate to their operation.
+DEVICE_KEYBAG_STORE = KeybagStoreType(0)
+BACKUP_KEYBAG_STORE = KeybagStoreType(1)
+OTA_BACKUP_KEYBAG_STORE = KeybagStoreType(3)
+
+
 @dataclass(frozen=True)
 class CreateKeybagReply:
     selector: "SessionKeybagSelector"

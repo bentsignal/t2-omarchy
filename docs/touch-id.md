@@ -2324,6 +2324,19 @@ when it finds no matching bag, so that proof must come from a subsequent
 operation-`0x02` copy returning the service's absent-bag status; unload success
 alone is not evidence of removal.
 
+The remaining store-type ambiguity is now closed for the relevant user-session
+path. The official bridgeOS 23P6068 `keybagd` binary (SHA-256
+`9e05a68827a6be486e2cf14a592dbc493a53161df4d51695b3e35666677d31ba`)
+implements `createKeybagForUserSession...` with an immediate zero in the store
+type argument immediately before its `_aks_create_bag` call at virtual address
+`0x10000cc28`. The same build's extracted MobileKeyBag image (SHA-256
+`6500d9ad97f1dd5518dad5b8773164f8efd41938ef58e0786ba52acd5a379420`)
+independently passes `1` in `MKBKeyBagCreateBackup` and `3` in
+`MKBKeyBagCreateOTABackup`. Thus device/user-session store type `0` is an exact
+Apple-client value, not a gap filled by enumeration. The offline codec exposes
+named typed constants for those three values but still requires explicit
+selection and performs no live mutation.
+
 ## Useful baseline commands
 
 ```bash
