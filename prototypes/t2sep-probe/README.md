@@ -20,6 +20,10 @@ The preferred status probe uses the Intel PCIe layout recovered from Apple's
 reads the status and CPU-control registers only; it does not access either FIFO
 or reproduce Apple's startup writes.
 
+`aks-transport.py` separately models only AppleKeyStore's recovered endpoint-7
+mailbox envelope and reply correlation. It performs no MMIO, DMA, password
+handling, or AKS IPC serialization.
+
 Build against the running kernel:
 
 ```bash

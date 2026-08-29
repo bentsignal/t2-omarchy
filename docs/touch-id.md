@@ -1005,6 +1005,18 @@ it continue with environment and entropy initialization. A Linux client must
 therefore not hard-code the richer version-2 header or send verify-secret as
 its first AKS transaction.
 
+AKS does not use the SBIO generic-transfer notification. Its Intel mailbox
+envelope is exactly 12 bytes: endpoint `0x07`; a 7-bit selector in byte 1 with
+bit 7 set only on replies; a wrapping correlation byte; zero at byte 3 and
+bytes 4–5; the OOL payload length as a little-endian 16-bit value at bytes
+6–7; and zero at bytes 8–11. Apple masks the request selector to seven bits,
+copies the serialized request into the send OOL buffer, sends this envelope,
+and correlates the response before consuming the receive OOL buffer.
+`aks-transport.py` is a pure strict codec for that layer. It caps lengths at
+`0x4000`, rejects reserved data and wrong endpoints, and requires the reply
+bit, selector, and tag to match before exposing a response length. It has no
+password input and no device-I/O path.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
