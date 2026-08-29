@@ -102,6 +102,49 @@ def validate_protected_header(header: bytes, payload: bytes) -> None:
         raise AKSTransportError("AKS IPC payload digest mismatch")
 
 
+def encode_capabilities_request(identity_header: bytes) -> bytes:
+    """Encode operation 0x4d's empty-input request body exactly."""
+    _require_plain_identity_header(identity_header)
+    payload = struct.pack("<IQI", 0, 0, 0)
+    protected = protect_header(identity_header, payload)
+    wire = struct.pack("<I", IPC_HEADER_SIZE) + protected + payload
+    if len(wire) != CAPABILITIES_SERIALIZED_SIZE:
+        raise AssertionError("capabilities request size invariant failed")
+    return wire
+
+
+@dataclass(frozen=True)
+class CapabilitiesReply:
+    status: int
+    remote_version: int
+
+
+def decode_capabilities_reply(wire: bytes) -> CapabilitiesReply:
+    """Validate and decode the fixed empty-blob operation-0x4d response."""
+    if not isinstance(wire, bytes) or len(wire) != CAPABILITIES_SERIALIZED_SIZE:
+        raise AKSTransportError("AKS capabilities reply must be exactly 100 bytes")
+    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS capabilities reply has the wrong header length")
+    header = wire[4:SERIALIZED_HEADER_SIZE]
+    payload = wire[SERIALIZED_HEADER_SIZE:]
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("AKS capabilities reply has unsupported header flags")
+    validate_protected_header(header, payload)
+    status, remote_version, blob_length = struct.unpack("<iQI", payload)
+    if blob_length != 0:
+        raise AKSTransportError("AKS capabilities reply blob must be empty")
+    return CapabilitiesReply(status, remote_version)
+
+
+def _require_plain_identity_header(header: bytes) -> None:
+    if not isinstance(header, bytes) or len(header) != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS IPC header must be exactly 0x50 bytes")
+    if header[:IPC_DIGEST_SIZE] != bytes(IPC_DIGEST_SIZE):
+        raise AKSTransportError("identity header already contains a digest")
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("identity header flags must be zero")
+
+
 @dataclass(frozen=True)
 class AKSEnvelope:
     selector: int
@@ -213,12 +256,15 @@ class AuthorizationPlan:
         return wire
 
     def accept_capabilities_transport(self, reply_data: bytes,
-                                      *, status: int,
-                                      remote_version: int | None) -> int:
+                                      payload: bytes) -> int:
         if self.capabilities_request is None or self.header_version is not None:
             raise AKSTransportError("capabilities reply is out of order")
-        validate_reply(self.capabilities_request, reply_data)
-        self.header_version = negotiated_header_version(status, remote_version)
+        envelope = validate_reply(self.capabilities_request, reply_data)
+        if envelope.payload_length != len(payload):
+            raise AKSTransportError("capabilities envelope length does not match payload")
+        reply = decode_capabilities_reply(payload)
+        remote = reply.remote_version if reply.status == 0 else None
+        self.header_version = negotiated_header_version(reply.status, remote)
         return self.header_version
 
     def plan_verify_secret(self, tag: int, password_length: int) -> bytes:

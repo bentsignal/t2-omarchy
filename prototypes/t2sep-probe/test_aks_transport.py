@@ -15,6 +15,44 @@ SPEC.loader.exec_module(aks)
 
 
 class AKSTransportTests(unittest.TestCase):
+    def _identity(self, version=1):
+        kwargs = dict(continuous_usec=1, process_unique_id=2,
+                      credential_id=3, cdhash=bytes(range(20)))
+        if version == 2:
+            kwargs["calendar_seconds"] = 4
+        return aks.build_identity_header(version, **kwargs)
+
+    def test_capabilities_request_exact_layout(self):
+        wire = aks.encode_capabilities_request(self._identity())
+        self.assertEqual(len(wire), 100)
+        self.assertEqual(struct.unpack_from("<I", wire)[0], 0x50)
+        self.assertEqual(wire[0x54:], struct.pack("<IQI", 0, 0, 0))
+        aks.validate_protected_header(wire[4:0x54], wire[0x54:])
+
+    def test_capabilities_reply_validation(self):
+        payload = struct.pack("<iQI", 0, 2, 0)
+        header = aks.protect_header(self._identity(2), payload)
+        wire = struct.pack("<I", 0x50) + header + payload
+        self.assertEqual(aks.decode_capabilities_reply(wire),
+                         aks.CapabilitiesReply(0, 2))
+        for offset in (0, 4, 0x54, 0x5c):
+            changed = bytearray(wire)
+            changed[offset] ^= 1
+            with self.assertRaises(aks.AKSTransportError):
+                aks.decode_capabilities_reply(bytes(changed))
+
+    def test_capabilities_codec_rejects_noncanonical_inputs(self):
+        protected = aks.protect_header(self._identity(), bytes(16))
+        with self.assertRaises(aks.AKSTransportError):
+            aks.encode_capabilities_request(protected)
+        for wire in (b"", bytes(99), bytes(101)):
+            with self.assertRaises(aks.AKSTransportError):
+                aks.decode_capabilities_reply(wire)
+        payload = struct.pack("<iQI", -1, 1, 1)
+        header = aks.protect_header(self._identity(), payload)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.decode_capabilities_reply(struct.pack("<I", 0x50) + header + payload)
+
     def test_build_identity_header_layout(self):
         cdhash = bytes(range(20))
         header = aks.build_identity_header(
@@ -144,9 +182,12 @@ class AKSTransportTests(unittest.TestCase):
         request_wire = plan.request_capabilities(1)
         self.assertEqual(aks.decode_envelope(request_wire),
                          aks.AKSEnvelope(0x4d, 1, 100, False))
-        reply_wire = bytes.fromhex("07cd010000000c0000000000")
+        payload_body = struct.pack("<iQI", 0, 4, 0)
+        payload_header = aks.protect_header(self._identity(), payload_body)
+        payload = struct.pack("<I", 0x50) + payload_header + payload_body
+        reply_wire = bytes.fromhex("07cd01000000640000000000")
         self.assertEqual(plan.accept_capabilities_transport(
-            reply_wire, status=0, remote_version=4), 2)
+            reply_wire, payload), 2)
         verify_wire = plan.plan_verify_secret(2, 12)
         self.assertEqual(aks.decode_envelope(verify_wire),
                          aks.AKSEnvelope(0x21, 2, 144, False))
@@ -158,8 +199,7 @@ class AKSTransportTests(unittest.TestCase):
         plan.request_capabilities(1)
         with self.assertRaises(aks.AKSTransportError):
             plan.accept_capabilities_transport(
-                bytes.fromhex("07cd020000000c0000000000"),
-                status=0, remote_version=2)
+                bytes.fromhex("07cd02000000640000000000"), bytes(100))
 
 
 if __name__ == "__main__":

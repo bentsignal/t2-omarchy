@@ -1036,8 +1036,18 @@ blob. `AuthorizationPlan` now enforces correlated operation-`0x4d`
 capabilities transport and successful version selection before it will even
 plan an operation-`0x21` verify-secret envelope. It accepts only the password
 length, not password bytes, and uses the bounded size calculation above. This
-closes the ordering layer while deliberately leaving process-identity header
-generation and secret-buffer serialization unwired.
+closes the ordering layer while deliberately leaving live process-identity
+sourcing and secret-buffer serialization unwired.
+
+The operation-`0x4d` body is now byte-exact as well. Both its empty-input
+request and normal empty-blob reply are 100 bytes: a little-endian header
+length of `0x50`, the 80-byte protected header, a signed 32-bit status, a
+64-bit capability/header version, and a zero 32-bit blob length. The request
+sets all three body values to zero. The offline decoder requires exact length,
+header length, zero flags, a valid truncated-SHA-256 digest, and an empty blob
+before exposing status or remote version. This gives a mechanical validator
+for the first eventual AKS service response; it is not connected to device
+I/O.
 
 The IPC integrity primitive is now recovered exactly from AppleKeyStore's
 `_payload_hash`. The external relocation at x86_64 call site `0x81cad`
