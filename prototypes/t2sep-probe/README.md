@@ -57,7 +57,8 @@ Its default-off kernel gate sends only the non-mutating empty operation `0x4d`
 after the proven AKS registrations and strictly validates its protected
 100-byte reply. The code is built and tested but intentionally unexecuted;
 the kernproc execution-context identity remains source-grounded inference
-until a supervised run confirms or rejects it.
+until a supervised run confirms or rejects it. Its wrapper also requires a
+fresh journal cursor and has no stale recent-log fallback.
 
 The kernel module now contains a separate, default-off capture gate for the
 two fixed credential endpoints. It registers two 16 KiB zeroed mappings and

@@ -22,6 +22,8 @@ class AksCapabilitiesRunnerSafetyTests(unittest.TestCase):
     def test_runner_is_single_operation_and_verifies_cleanup(self):
         self.assertIn("apple_probe_aks_capabilities=1", SOURCE)
         self.assertIn("verify-aks-capabilities-log.py", SOURCE)
+        self.assertIn("could not obtain a fresh kernel-journal cursor", SOURCE)
+        self.assertNotIn("journalctl -k -n 100", SOURCE)
         self.assertNotIn("verify_secret", SOURCE.lower())
         self.assertNotIn("contextcreate", SOURCE.lower())
         self.assertIn("trap cleanup EXIT", SOURCE)

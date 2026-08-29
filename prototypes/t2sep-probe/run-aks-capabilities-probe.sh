@@ -26,17 +26,14 @@ cleanup() {
 trap cleanup EXIT
 
 before=$(journalctl -k --show-cursor -n 0 --no-pager | sed -n 's/^-- cursor: //p')
+[[ -n $before ]] || die "could not obtain a fresh kernel-journal cursor"
 insmod "$module" apple_start_cpu_probe=1 apple_start_with_msi=1 \
   apple_send_control_nop=1 apple_probe_aks_capabilities=1 \
   aks_capabilities_confirmation=0x414b534341504142
 rmmod t2sep_probe
 trap - EXIT
 
-if [[ -n $before ]]; then
-  log=$(journalctl -k --after-cursor "$before" --no-pager)
-else
-  log=$(journalctl -k -n 100 --no-pager)
-fi
+log=$(journalctl -k --after-cursor "$before" --no-pager)
 printf '%s\n' "$log"
 python3 "$module_dir/verify-aks-capabilities-log.py" <<<"$log" ||
   die "AKS capabilities transcript failed independent verification"
