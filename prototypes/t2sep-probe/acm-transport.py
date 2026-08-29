@@ -118,6 +118,21 @@ def context_delete_command_into(context_response: bytearray,
     command[8:] = context_response[:CONTEXT_EXTERNAL_FORM_SIZE]
 
 
+def context_external_form_for_authorization(
+        context_response: bytearray) -> bytearray:
+    """Copy only the 16-byte external form for one consuming AKS request.
+
+    The original 17-byte create response remains owned by the ACM lifecycle so
+    it can identify and delete the same context later.  The returned mutable
+    copy is intended for ``consume_verify_secret_inputs``, which scrubs it.
+    """
+    if not isinstance(context_response, bytearray):
+        raise ACMTransportError("context response must be a mutable bytearray")
+    if len(context_response) != CONTEXT_RESPONSE_SIZE:
+        raise ACMTransportError("context response must be exactly 17 bytes")
+    return bytearray(memoryview(context_response)[:CONTEXT_EXTERNAL_FORM_SIZE])
+
+
 def scrub_context_material(context_response: bytearray,
                            command: bytearray) -> None:
     """Zero both caller-owned buffers after delete attempt or transport stop."""

@@ -157,6 +157,19 @@ class ACMTransportTests(unittest.TestCase):
                 with self.assertRaises(acm.ACMTransportError):
                     acm.scrub_context_material(response, command)
 
+    def test_authorization_copy_excludes_tracking_byte_and_retains_owner(self):
+        response = bytearray(range(17))
+        external = acm.context_external_form_for_authorization(response)
+        self.assertIsInstance(external, bytearray)
+        self.assertEqual(external, bytearray(range(16)))
+        self.assertEqual(response, bytearray(range(17)))
+        external[:] = bytes(16)
+        self.assertEqual(response, bytearray(range(17)))
+        for bad in (bytes(17), bytearray(16), bytearray(18)):
+            with self.subTest(kind=type(bad), length=len(bad)):
+                with self.assertRaises(acm.ACMTransportError):
+                    acm.context_external_form_for_authorization(bad)
+
 
 if __name__ == "__main__":
     unittest.main()

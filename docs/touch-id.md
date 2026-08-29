@@ -1345,6 +1345,27 @@ variant `1`. `AuthorizationPlan` additionally correlates selector, tag, and
 OOL length and accepts the success reply only once. This models only the
 strict response path; no live authorization call exists.
 
+The returned device-state qword is not the password decision. A zero return
+from the operation callback is already the success condition; only then does
+`verify_password` pass the qword to `handle_device_state_return`, whose own
+return value is ignored. That helper treats bits as asynchronous state work:
+bit 0 schedules the lock timer, bit 1 tickles the system-keybag update port,
+bits 2 and 6 emit state notifications, and bit 7 emits a client event. Bits
+3, 4, and 5 select internal status values from the helper, but those values do
+not replace the successful verify result. A Linux client must therefore retain
+the raw qword for any future state synchronization without treating either
+zero or nonzero as the biometric/password verdict.
+
+No replacement ACM handle appears in the successful response. The caller
+passes one copied 16-byte external form into operation `0x21`, wipes and
+releases that copy after the call, and retains the original ACM context object
+for subsequent policy or biometric work. Combined with the 96-byte response
+layout, this shows that successful verification authorizes the existing
+SEP-side context in place rather than returning a new context. The Linux flow
+must retain the original 17-byte context-create result until eventual delete,
+use only a mutable copy of its first 16 bytes for AKS serialization, and never
+confuse the 17th tracking byte with the external form.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
