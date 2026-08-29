@@ -1,4 +1,6 @@
 import importlib.util
+import hashlib
+import struct
 from pathlib import Path
 import sys
 import unittest
@@ -13,6 +15,37 @@ SPEC.loader.exec_module(aks)
 
 
 class AKSTransportTests(unittest.TestCase):
+    def test_payload_digest_version_1(self):
+        header = bytearray(range(aks.IPC_HEADER_SIZE))
+        struct.pack_into("<I", header, 0x10, 1)
+        payload = b"payload"
+        expected = hashlib.sha256(bytes(header[0x10:0x48]) + payload).digest()[:16]
+        self.assertEqual(aks.payload_digest(bytes(header), payload), expected)
+
+    def test_payload_digest_version_2_covers_extended_identity(self):
+        header = bytearray(range(aks.IPC_HEADER_SIZE))
+        struct.pack_into("<I", header, 0x10, 2)
+        digest = aks.payload_digest(bytes(header), b"")
+        header[0x4f] ^= 1
+        self.assertNotEqual(aks.payload_digest(bytes(header), b""), digest)
+
+    def test_protected_header_validation(self):
+        header = bytearray(aks.IPC_HEADER_SIZE)
+        struct.pack_into("<I", header, 0x10, 1)
+        protected = aks.protect_header(bytes(header), b"body")
+        aks.validate_protected_header(protected, b"body")
+        with self.assertRaises(aks.AKSTransportError):
+            aks.validate_protected_header(protected, b"changed")
+
+    def test_payload_digest_rejects_malformed_inputs(self):
+        for header, payload in ((b"", b""), (bytes(0x50), "not bytes")):
+            with self.assertRaises(aks.AKSTransportError):
+                aks.payload_digest(header, payload)
+        header = bytearray(aks.IPC_HEADER_SIZE)
+        struct.pack_into("<I", header, 0x10, 3)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.payload_digest(bytes(header), b"")
+
     def test_exact_request_layout_and_decode(self):
         wire = aks.encode_request(0x21, 0x5a, 0x98)
         self.assertEqual(wire.hex(), "07215a000000980000000000")

@@ -1036,8 +1036,19 @@ blob. `AuthorizationPlan` now enforces correlated operation-`0x4d`
 capabilities transport and successful version selection before it will even
 plan an operation-`0x21` verify-secret envelope. It accepts only the password
 length, not password bytes, and uses the bounded size calculation above. This
-closes the ordering layer while deliberately leaving header generation,
-payload hashing, and secret-buffer serialization unwired.
+closes the ordering layer while deliberately leaving process-identity header
+generation and secret-buffer serialization unwired.
+
+The IPC integrity primitive is now recovered exactly from AppleKeyStore's
+`_payload_hash`. The external relocation at x86_64 call site `0x81cad`
+resolves to `_ccsha256_di`: version 1 hashes header bytes `0x10..0x47`
+followed by the payload, while version 2 extends the header range through byte
+`0x4f`. Both store only the first 16 SHA-256 bytes at header offset zero. The
+pure transport model implements generation and constant-time validation for
+this digest and rejects every header version except 1 and 2. It intentionally
+cannot construct the header itself: the still-unresolved process identity,
+code-directory hash, timestamps, and version-specific fields must not be
+guessed for a live SEP request.
 
 AKS does not use the SBIO generic-transfer notification. Its Intel mailbox
 envelope is exactly 12 bytes: endpoint `0x07`; a 7-bit selector in byte 1 with

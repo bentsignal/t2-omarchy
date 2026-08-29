@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import hmac
 import struct
 
 
@@ -15,12 +17,47 @@ GET_CAPABILITIES = 0x4D
 VERIFY_SECRET_V1 = 0x21
 MAX_HEADER_VERSION = 2
 SERIALIZED_HEADER_SIZE = 0x54
+IPC_HEADER_SIZE = 0x50
+IPC_DIGEST_SIZE = 16
 ACM_CONTEXT_SIZE = 16
 CAPABILITIES_SERIALIZED_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
 
 
 class AKSTransportError(ValueError):
     pass
+
+
+def payload_digest(header: bytes, payload: bytes) -> bytes:
+    """Reproduce AppleKeyStore's SHA-256 IPC digest, truncated to 16 bytes.
+
+    This intentionally does not construct the process-identity-bearing header.
+    It only models the integrity primitive recovered from ``_payload_hash``.
+    """
+    if not isinstance(header, bytes) or len(header) != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS IPC header must be exactly 0x50 bytes")
+    if not isinstance(payload, bytes):
+        raise AKSTransportError("AKS IPC payload must be bytes")
+    version = struct.unpack_from("<I", header, 0x10)[0]
+    if version == 1:
+        protected_end = 0x48
+    elif version == 2:
+        protected_end = 0x50
+    else:
+        raise AKSTransportError("AKS IPC header version must be 1 or 2")
+    return hashlib.sha256(header[0x10:protected_end] + payload).digest()[:IPC_DIGEST_SIZE]
+
+
+def protect_header(header: bytes, payload: bytes) -> bytes:
+    """Return a copy with the recovered truncated digest in bytes 0..15."""
+    digest = payload_digest(header, payload)
+    return digest + header[IPC_DIGEST_SIZE:]
+
+
+def validate_protected_header(header: bytes, payload: bytes) -> None:
+    """Fail closed if a protected header's digest does not match its payload."""
+    expected = payload_digest(header, payload)
+    if not hmac.compare_digest(header[:IPC_DIGEST_SIZE], expected):
+        raise AKSTransportError("AKS IPC payload digest mismatch")
 
 
 @dataclass(frozen=True)
