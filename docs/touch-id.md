@@ -1366,6 +1366,28 @@ must retain the original 17-byte context-create result until eventual delete,
 use only a mutable copy of its first 16 bytes for AKS serialization, and never
 confuse the 17th tracking byte with the external form.
 
+`credential-authorization.py` now composes these boundaries into one offline
+lifecycle without importing any device, socket, PAM, or prompt implementation.
+ACM initialization/context creation and AKS capabilities/environment setup may
+occur independently, matching their driver-lifetime separation, but neither a
+verification plan nor secret transfer is permitted until both the context and
+AKS environment exist. The coordinator copies only the context's first 16
+bytes into the consuming AKS serializer, retains the original 17-byte owner,
+closes the complete verify request before accepting its reply, and marks the
+existing context authorized only after the exact correlated success response.
+
+Any malformed or reordered input permanently closes the authorization branch,
+while preserving the original context solely so deletion can still be
+attempted. Deletion remains available after failure; only its exact zero-status
+reply scrubs and closes the normal lifecycle. If transport itself is lost, a
+separate `scrub_after_transport_stop` path records failure and zeros the verify
+request, context response, and pending delete command. Rejected mutable context
+payloads are wiped before error return, representations expose state booleans
+only, and destructor scrubbing is explicitly just a local fallback—not a
+substitute for SEP deletion or CPU stop. Tests cover success, bad correlation,
+reordering, abort, delete-after-failure, and stop-driven cleanup. This proves
+offline composition; it does not enable operation `0x21` on hardware.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
