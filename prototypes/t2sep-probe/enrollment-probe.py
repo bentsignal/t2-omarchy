@@ -146,6 +146,13 @@ def probe_socket(sock, *, user_id: int,
             raise EnrollmentProbeError("policy request has the wrong type")
         policy_payload = bytes(policy_request.view())
         expected_policy = struct.unpack_from("<4I", policy_payload, 4)
+        global_status, global_output = _perform(
+            session, biometric.no_catacomb_fields(
+                user_id=biometric.DEFAULT_USER_ID))
+        if global_status != 0 or global_output is not None:
+            policy_request.close()
+            raise EnrollmentProbeError(
+                f"empty global catacomb initialization failed with status {global_status}")
         no_catacomb_status, no_catacomb_output = _perform(
             session, biometric.no_catacomb_fields(user_id=user_id))
         if no_catacomb_status != 0 or no_catacomb_output is not None:
@@ -168,13 +175,6 @@ def probe_socket(sock, *, user_id: int,
         if struct.unpack_from("<4I", read_output) != expected_policy:
             raise EnrollmentProbeError("protected policy readback did not match the requested policy")
         policy_initialized = True
-        if catacomb_sink is not None:
-            # macOS persists and reloads the per-user component before exposing
-            # enrollment.  Checkpoint the pristine policy-bearing database so
-            # command 3 does not run against volatile NoCatacomb-only state.
-            _persist_catacomb(session, user_id=user_id,
-                              catacomb_sink=catacomb_sink,
-                              stage="bootstrap")
     before = _identities(session, user_id)
     statuses: list[int] = []
     events: list[tuple[int, int, int]] = []

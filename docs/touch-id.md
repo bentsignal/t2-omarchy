@@ -2583,12 +2583,18 @@ A password-authorized Linux transaction subsequently proved the entire
 per-user policy prefix live: current `NoCatacomb` returned zero,
 `SetProtectedConfig` returned zero, and the corrected version-1 getter returned
 the requested `(1, 1, 1, 0)` policy in an exact 32-byte reply. Command 3 still
-returned synchronous status `261` before requesting a touch. The next bounded
-transaction therefore checkpoints the pristine policy-bearing catacomb with
-the recovered prepare/complete/atomic-host-write/confirm protocol before
-enrollment. This directly tests macOS's observed requirement that the per-user
-component is persisted and loaded before clients can enroll, without changing
-the proven enrollment serializer.
+returned synchronous status `261` before requesting a touch. A bounded attempt
+to checkpoint that pristine policy-bearing component stopped at
+`PrepareSaveCatacomb` status 22, before serialization or host storage. Empty
+databases therefore cannot be made persistent through that save path.
+
+A subsequent password-free live probe proved that `NoCatacomb` also accepts
+the default/non-user UID `0xffffffff` with status zero. This provides an empty
+initializer corresponding to macOS's observed two-stage startup order: load
+the general component first and UID 501 second. The enrollment bootstrap now
+mirrors that order with global then per-user `NoCatacomb`, followed by the
+authenticated user policy and unchanged command 3. Successful enrollment is
+still the only point at which the durable save protocol runs.
 
 Sanitized logs from the current boot establish the pre-client ordering:
 bridge and sensor initialization, accessory caching, general catacomb load,
