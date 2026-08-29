@@ -992,8 +992,13 @@ type 1, value 0. The token-free context-create command that follows is exactly
 `44 52 43 53 01 00 00 01`: `DRCS`, selector 1, two zero fields, command
 version 1, and no body. Its reply must be exactly 17 bytes (the 16-byte opaque
 handle plus separate tracking metadata). The offline `ContextCreatePlan`
-enforces SCRD-init → request → exact response length, never stores or returns
-the opaque handle, and rejects repeats and out-of-order transitions.
+enforces SCRD-init request → correlated zero-status empty reply → context-create
+request → correlated zero-status exact 17-byte reply. It never stores or
+returns the opaque handle, and rejects failed, repeated, short, oversized, or
+out-of-order transitions. This distinction matters because the Intel receive
+callback places the reply's upper 32-bit mailbox value into the waiting
+request's status field; Apple's caller marks SCRD initialized only after the
+synchronous command returns success, not merely after sending it.
 
 `AppleKeyStore::verify_password`, in contrast, uses the service named
 `aks-endpoint`, instantiated at fixed SEP endpoint `0x07`, with separate

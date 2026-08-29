@@ -24,6 +24,27 @@ class ACMTransportTests(unittest.TestCase):
         self.assertEqual(acm.validate_reply(request, reply, maximum_reply=17),
                          acm.ACMEnvelope(1, 17, 0))
 
+    def test_success_reply_requires_zero_status_and_exact_payload(self):
+        request = acm.decode_envelope(acm.encode_envelope(1, 8, 0))
+        acm.validate_success_reply(
+            request, acm.encode_envelope(1, 17, 0), bytes(17),
+            expected_length=17)
+        bad = (
+            (acm.encode_envelope(1, 17, 1), bytes(17)),
+            (acm.encode_envelope(1, 16, 0), bytes(16)),
+            (acm.encode_envelope(1, 17, 0), bytes(16)),
+            (acm.encode_envelope(2, 17, 0), bytes(17)),
+        )
+        for envelope, payload in bad:
+            with self.subTest(envelope=envelope.hex(), length=len(payload)):
+                with self.assertRaises(acm.ACMTransportError):
+                    acm.validate_success_reply(
+                        request, envelope, payload, expected_length=17)
+        with self.assertRaises(acm.ACMTransportError):
+            acm.validate_success_reply(
+                request, acm.encode_envelope(1, 17, 0), "not bytes",
+                expected_length=17)
+
     def test_rejects_invalid_fields(self):
         for args in ((-1, 0, 0), (256, 0, 0), (1, 0x4001, 0),
                      (1, 0, -1), (1, 0, 0x100000000)):
@@ -55,13 +76,33 @@ class ACMTransportTests(unittest.TestCase):
         init_envelope, init_payload = plan.initialize(3)
         self.assertEqual(init_payload, b"DRCS\n\x03\0\0")
         self.assertEqual(acm.decode_envelope(init_envelope).payload_length, 8)
+        self.assertFalse(plan.initialized)
+        with self.assertRaises(acm.ACMTransportError):
+            plan.context_request()
+        plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
+        self.assertTrue(plan.initialized)
         envelope, payload = plan.context_request()
         self.assertEqual(payload, b"DRCS\x01\0\0\x01")
         self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 8, 0))
         with self.assertRaises(acm.ACMTransportError):
-            plan.accept_context_response_length(16)
-        plan.accept_context_response_length(17)
+            plan.accept_context_response(acm.encode_envelope(1, 16, 0), bytes(16))
+        plan.accept_context_response(acm.encode_envelope(1, 17, 0), bytes(17))
         self.assertTrue(plan.context_created)
+        with self.assertRaises(acm.ACMTransportError):
+            plan.context_request()
+
+    def test_context_plan_rejects_failed_or_reordered_replies(self):
+        plan = acm.ContextCreatePlan()
+        with self.assertRaises(acm.ACMTransportError):
+            plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
+        plan.initialize(1)
+        with self.assertRaises(acm.ACMTransportError):
+            plan.accept_initialization_reply(acm.encode_envelope(1, 0, 7), b"")
+        self.assertFalse(plan.initialized)
+        plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
+        with self.assertRaises(acm.ACMTransportError):
+            plan.accept_context_response(acm.encode_envelope(1, 17, 0), bytes(17))
+        plan.context_request()
         with self.assertRaises(acm.ACMTransportError):
             plan.context_request()
 

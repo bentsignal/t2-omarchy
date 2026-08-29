@@ -69,6 +69,20 @@ def validate_reply(request: ACMEnvelope, reply_data: bytes,
     return reply
 
 
+def validate_success_reply(request: ACMEnvelope, reply_data: bytes,
+                           payload: bytes, *, expected_length: int) -> None:
+    """Accept only a correlated, zero-status reply and its exact OOL bytes."""
+    expected_length = _integer(expected_length, OOL_CAPACITY,
+                               "expected reply length")
+    if not isinstance(payload, bytes):
+        raise ACMTransportError("ACM reply payload must be bytes")
+    reply = validate_reply(request, reply_data, maximum_reply=expected_length)
+    if reply.value != 0:
+        raise ACMTransportError("ACM reply reports a nonzero SEP status")
+    if reply.payload_length != expected_length or len(payload) != expected_length:
+        raise ACMTransportError("ACM reply payload length does not match")
+
+
 def scrd_initialization_payload(version: int) -> bytes:
     version = _integer(version, 0xff, "SCRD version")
     return SCRD_MAGIC + bytes((version, 0, 0))
@@ -93,24 +107,39 @@ class ContextCreatePlan:
     """Order SCRD init and token-free context creation without storing a handle."""
 
     def __init__(self) -> None:
+        self.initialization_request: ACMEnvelope | None = None
         self.initialized = False
+        self.context_create_request: ACMEnvelope | None = None
         self.context_created = False
 
     def initialize(self, version: int) -> tuple[bytes, bytes]:
-        if self.initialized or self.context_created:
+        if self.initialization_request is not None or self.initialized:
             raise ACMTransportError("SCRD initialization is out of order")
-        result = scrd_initialization_envelope(version)
+        envelope, payload = scrd_initialization_envelope(version)
+        self.initialization_request = decode_envelope(envelope)
+        return envelope, payload
+
+    def accept_initialization_reply(self, reply_data: bytes,
+                                    payload: bytes) -> None:
+        if self.initialization_request is None or self.initialized:
+            raise ACMTransportError("SCRD initialization reply is out of order")
+        validate_success_reply(self.initialization_request, reply_data, payload,
+                               expected_length=0)
         self.initialized = True
-        return result
 
     def context_request(self) -> tuple[bytes, bytes]:
-        if not self.initialized or self.context_created:
+        if (not self.initialized or self.context_create_request is not None or
+                self.context_created):
             raise ACMTransportError("context creation is out of order")
         payload = context_create_command()
-        return encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0), payload
+        envelope = encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0)
+        self.context_create_request = decode_envelope(envelope)
+        return envelope, payload
 
-    def accept_context_response_length(self, length: int) -> None:
-        if not self.initialized or self.context_created:
+    def accept_context_response(self, reply_data: bytes, payload: bytes) -> None:
+        if (not self.initialized or self.context_create_request is None or
+                self.context_created):
             raise ACMTransportError("context response is out of order")
-        validate_context_create_response_length(length)
+        validate_success_reply(self.context_create_request, reply_data, payload,
+                               expected_length=CONTEXT_RESPONSE_SIZE)
         self.context_created = True

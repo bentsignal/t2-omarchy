@@ -31,8 +31,10 @@ performs no MMIO, DMA, password handling, Linux identity substitution, or
 secret serialization.
 
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
-envelope, OOL length bound, and reply message-type correlation. It likewise
-has no device-I/O path.
+envelope, OOL length bound, reply message-type correlation, zero-status SCRD
+initialization, and zero-status exact-length context creation. Its state does
+not advance when a request is merely constructed or sent, and it never stores
+or returns the opaque context bytes. It likewise has no device-I/O path.
 
 `credential-services-bootstrap.py` composes fixed ACM/AKS OOL registration,
 independently observed acknowledgement profiles, and stop-scrub-release
