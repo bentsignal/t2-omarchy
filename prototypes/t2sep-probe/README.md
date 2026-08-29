@@ -23,8 +23,10 @@ or reproduce Apple's startup writes.
 `aks-transport.py` separately models AppleKeyStore's recovered endpoint-7
 mailbox envelope, reply correlation, capability ordering, bounded request
 sizes, byte-exact empty operation-`0x4d` capability bodies, and the
-truncated-SHA-256 IPC integrity primitive. It performs no MMIO, DMA, password
-handling, Linux identity substitution, or secret serialization.
+truncated-SHA-256 IPC integrity primitive. Its operation-`0x21` support is
+limited to size planning and strict validation of the 96-byte successful
+variant-1 response. It performs no MMIO, DMA, password handling, Linux
+identity substitution, or secret serialization.
 
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
 envelope, OOL length bound, and reply message-type correlation. It likewise

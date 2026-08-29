@@ -1106,6 +1106,15 @@ four-byte boundaries, and the final device-state qword. It requires the ACM
 external form to be exactly 16 bytes and refuses any plan exceeding the
 `0x4000` AKS OOL buffer.
 
+The successful operation-`0x21` variant-1 response is only 96 bytes: the same
+`0x54`-byte serialized protected header, variant word `1`, and the returned
+64-bit device-state value. The strict decoder requires exact size, header
+length, the already-negotiated header version, zero flags, valid digest, and
+variant `1`. `AuthorizationPlan` additionally correlates selector, tag, and
+OOL length and accepts the success reply only once. This models only the
+non-secret response path; no password serializer or live authorization call
+exists.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

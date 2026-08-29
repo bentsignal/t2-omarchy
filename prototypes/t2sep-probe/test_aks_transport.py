@@ -53,6 +53,36 @@ class AKSTransportTests(unittest.TestCase):
         with self.assertRaises(aks.AKSTransportError):
             aks.decode_capabilities_reply(struct.pack("<I", 0x50) + header + payload)
 
+    def test_verify_secret_success_reply(self):
+        body = struct.pack("<IQ", 1, 0x1122334455667788)
+        header = aks.protect_header(self._identity(2), body)
+        wire = struct.pack("<I", 0x50) + header + body
+        self.assertEqual(aks.decode_verify_secret_reply(wire, 2),
+                         aks.VerifySecretReply(0x1122334455667788))
+        for expected in (0, 1, 3):
+            with self.assertRaises(aks.AKSTransportError):
+                aks.decode_verify_secret_reply(wire, expected)
+        for offset in (0, 4, 0x54):
+            changed = bytearray(wire)
+            changed[offset] ^= 1
+            with self.assertRaises(aks.AKSTransportError):
+                aks.decode_verify_secret_reply(bytes(changed), 2)
+
+    def test_authorization_plan_validates_verify_reply_transport(self):
+        plan = aks.AuthorizationPlan()
+        plan.capabilities_request = aks.AKSEnvelope(0x4d, 1, 100, False)
+        plan.header_version = 1
+        plan.plan_verify_secret(2, 12)
+        body = struct.pack("<IQ", 1, 7)
+        header = aks.protect_header(self._identity(), body)
+        payload = struct.pack("<I", 0x50) + header + body
+        reply = bytes.fromhex("07a102000000600000000000")
+        self.assertEqual(plan.accept_verify_secret_success(reply, payload),
+                         aks.VerifySecretReply(7))
+        with self.assertRaises(aks.AKSTransportError):
+            plan.accept_verify_secret_success(
+                bytes.fromhex("07a103000000600000000000"), payload)
+
     def test_build_identity_header_layout(self):
         cdhash = bytes(range(20))
         header = aks.build_identity_header(

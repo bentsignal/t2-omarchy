@@ -22,6 +22,7 @@ IPC_DIGEST_SIZE = 16
 CDHASH_SIZE = 20
 ACM_CONTEXT_SIZE = 16
 CAPABILITIES_SERIALIZED_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
+VERIFY_SECRET_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8
 
 
 class AKSTransportError(ValueError):
@@ -119,6 +120,11 @@ class CapabilitiesReply:
     remote_version: int
 
 
+@dataclass(frozen=True)
+class VerifySecretReply:
+    device_state: int
+
+
 def decode_capabilities_reply(wire: bytes) -> CapabilitiesReply:
     """Validate and decode the fixed empty-blob operation-0x4d response."""
     if not isinstance(wire, bytes) or len(wire) != CAPABILITIES_SERIALIZED_SIZE:
@@ -134,6 +140,28 @@ def decode_capabilities_reply(wire: bytes) -> CapabilitiesReply:
     if blob_length != 0:
         raise AKSTransportError("AKS capabilities reply blob must be empty")
     return CapabilitiesReply(status, remote_version)
+
+
+def decode_verify_secret_reply(wire: bytes, expected_header_version: int) -> VerifySecretReply:
+    """Validate operation 0x21 variant-1's successful response body."""
+    if expected_header_version not in (1, 2):
+        raise AKSTransportError("expected AKS IPC header version must be 1 or 2")
+    if not isinstance(wire, bytes) or len(wire) != VERIFY_SECRET_REPLY_SIZE:
+        raise AKSTransportError("AKS verify-secret reply must be exactly 96 bytes")
+    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS verify-secret reply has the wrong header length")
+    header = wire[4:SERIALIZED_HEADER_SIZE]
+    payload = wire[SERIALIZED_HEADER_SIZE:]
+    version = struct.unpack_from("<I", header, 0x10)[0]
+    if version != expected_header_version:
+        raise AKSTransportError("AKS verify-secret reply changed header version")
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("AKS verify-secret reply has unsupported header flags")
+    validate_protected_header(header, payload)
+    variant, device_state = struct.unpack("<IQ", payload)
+    if variant != 1:
+        raise AKSTransportError("AKS verify-secret reply is not variant 1")
+    return VerifySecretReply(device_state)
 
 
 def _require_plain_identity_header(header: bytes) -> None:
@@ -247,6 +275,7 @@ class AuthorizationPlan:
         self.capabilities_request: AKSEnvelope | None = None
         self.header_version: int | None = None
         self.verify_request: AKSEnvelope | None = None
+        self.verify_reply: VerifySecretReply | None = None
 
     def request_capabilities(self, tag: int) -> bytes:
         if self.capabilities_request is not None or self.header_version is not None:
@@ -274,3 +303,14 @@ class AuthorizationPlan:
         wire = encode_request(VERIFY_SECRET_V1, tag, size)
         self.verify_request = decode_envelope(wire)
         return wire
+
+    def accept_verify_secret_success(self, reply_data: bytes,
+                                     payload: bytes) -> VerifySecretReply:
+        if (self.verify_request is None or self.header_version not in (1, 2)
+                or self.verify_reply is not None):
+            raise AKSTransportError("verify-secret reply is out of order")
+        envelope = validate_reply(self.verify_request, reply_data)
+        if envelope.payload_length != len(payload):
+            raise AKSTransportError("verify-secret envelope length does not match payload")
+        self.verify_reply = decode_verify_secret_reply(payload, self.header_version)
+        return self.verify_reply
