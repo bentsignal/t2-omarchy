@@ -23,6 +23,8 @@ IPC_DIGEST_SIZE = 16
 CDHASH_SIZE = 20
 ACM_CONTEXT_SIZE = 16
 CAPABILITIES_SERIALIZED_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
+COMPACT_V1_HEADER_SIZE = 0x48
+COMPACT_CAPABILITIES_REPLY_SIZE = 4 + COMPACT_V1_HEADER_SIZE + 4 + 8 + 4
 STARTUP_ENVIRONMENT_BLOB_SIZE = 0x40C
 STARTUP_ENVIRONMENT_REQUEST_SIZE = (
     SERIALIZED_HEADER_SIZE + 4 + 8 + 4 + STARTUP_ENVIRONMENT_BLOB_SIZE)
@@ -81,14 +83,17 @@ def payload_digest(header: bytes, payload: bytes) -> bytes:
     This intentionally does not construct the process-identity-bearing header.
     It only models the integrity primitive recovered from ``_payload_hash``.
     """
-    if not isinstance(header, bytes) or len(header) != IPC_HEADER_SIZE:
-        raise AKSTransportError("AKS IPC header must be exactly 0x50 bytes")
+    if not isinstance(header, bytes) or len(header) not in (
+            COMPACT_V1_HEADER_SIZE, IPC_HEADER_SIZE):
+        raise AKSTransportError("AKS IPC header must be exactly 0x48 or 0x50 bytes")
     if not isinstance(payload, bytes):
         raise AKSTransportError("AKS IPC payload must be bytes")
     version = struct.unpack_from("<I", header, 0x10)[0]
     if version == 1:
         protected_end = 0x48
     elif version == 2:
+        if len(header) != IPC_HEADER_SIZE:
+            raise AKSTransportError("version 2 AKS IPC header must be 0x50 bytes")
         protected_end = 0x50
     else:
         raise AKSTransportError("AKS IPC header version must be 1 or 2")
@@ -230,12 +235,17 @@ class VerifySecretRequest:
 
 def decode_capabilities_reply(wire: bytes) -> CapabilitiesReply:
     """Validate and decode the fixed empty-blob operation-0x4d response."""
-    if not isinstance(wire, bytes) or len(wire) != CAPABILITIES_SERIALIZED_SIZE:
-        raise AKSTransportError("AKS capabilities reply must be exactly 100 bytes")
-    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+    if not isinstance(wire, bytes) or len(wire) not in (
+            COMPACT_CAPABILITIES_REPLY_SIZE, CAPABILITIES_SERIALIZED_SIZE):
+        raise AKSTransportError("AKS capabilities reply must be exactly 92 or 100 bytes")
+    header_size = struct.unpack_from("<I", wire, 0)[0]
+    if header_size not in (COMPACT_V1_HEADER_SIZE, IPC_HEADER_SIZE):
         raise AKSTransportError("AKS capabilities reply has the wrong header length")
-    header = wire[4:SERIALIZED_HEADER_SIZE]
-    payload = wire[SERIALIZED_HEADER_SIZE:]
+    payload_offset = 4 + header_size
+    if len(wire) - payload_offset != 16:
+        raise AKSTransportError("AKS capabilities header/length pairing is invalid")
+    header = wire[4:payload_offset]
+    payload = wire[payload_offset:]
     if struct.unpack_from("<I", header, 0x1c)[0] != 0:
         raise AKSTransportError("AKS capabilities reply has unsupported header flags")
     validate_protected_header(header, payload)

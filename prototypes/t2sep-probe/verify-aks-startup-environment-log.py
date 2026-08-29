@@ -75,7 +75,8 @@ def verify(text: str) -> int:
         match = CAPS_ENVELOPE.search(line)
         if match:
             words = tuple(int(value, 16) for value in match.groups())
-            if state != 1 or words[:3] != (0x0001cd07, 0x00640000, 0):
+            if (state != 1 or words[0] != 0x0001cd07 or
+                    words[1] not in (0x005c0000, 0x00640000) or words[2] != 0):
                 raise VerificationError("capabilities envelope failed correlation")
             if words[3] & 0xc0000:
                 raise VerificationError("capabilities envelope reports transport error")

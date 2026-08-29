@@ -139,6 +139,16 @@ module_param(aks_capabilities_confirmation, ulong, 0400);
 MODULE_PARM_DESC(aks_capabilities_confirmation,
 	"Required explicit confirmation value 0x414b534341504142 for the AKS capabilities probe");
 
+static bool apple_probe_aks_time_sweep;
+module_param(apple_probe_aks_time_sweep, bool, 0400);
+MODULE_PARM_DESC(apple_probe_aks_time_sweep,
+	"Try five non-secret continuous-time classes against AKS capabilities and stop on first valid reply");
+
+static ulong aks_time_sweep_confirmation;
+module_param(aks_time_sweep_confirmation, ulong, 0400);
+MODULE_PARM_DESC(aks_time_sweep_confirmation,
+	"Required explicit confirmation value 0x414b5354494d4553 for the AKS time sweep");
+
 static bool apple_probe_aks_startup_environment;
 module_param(apple_probe_aks_startup_environment, bool, 0400);
 MODULE_PARM_DESC(apple_probe_aks_startup_environment,
@@ -173,12 +183,14 @@ struct t2sep_irq_probe {
 #define T2SEP_CREDENTIAL_OOL_CONFIRMATION 0x435245444f4f4c41UL
 #define T2SEP_DUAL_CREDENTIAL_OOL_CONFIRMATION 0x4455414c4f4f4c41UL
 #define T2SEP_AKS_CAPABILITIES_CONFIRMATION 0x414b534341504142UL
+#define T2SEP_AKS_TIME_SWEEP_CONFIRMATION 0x414b5354494d4553UL
 #define T2SEP_AKS_STARTUP_ENV_CONFIRMATION 0x414b53454e565052UL
 #define T2SEP_ACM_CONTEXT_CONFIRMATION 0x41434d4354584c46UL
 #define T2SEP_AKS_ENDPOINT 0x07
 #define T2SEP_ACM_ENDPOINT 0x0a
 #define T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)
 #define T2SEP_AKS_CAPABILITIES_SIZE 100
+#define T2SEP_AKS_COMPACT_CAPABILITIES_SIZE 92
 #define T2SEP_AKS_STARTUP_ENV_REQUEST_SIZE 0x470
 #define T2SEP_AKS_STARTUP_ENV_REPLY_SIZE 0x58
 #define T2SEP_AKS_STARTUP_ENV_BLOB_SIZE 0x40c
@@ -533,38 +545,58 @@ static int t2sep_aks_protect(u8 *wire, size_t wire_size, u32 version,
 static int t2sep_aks_validate_reply(u8 *wire, size_t wire_size, u32 version,
 				    u8 digest[SHA256_DIGEST_SIZE])
 {
+	struct sha256_ctx context;
 	u8 received_digest[16];
-	int ret;
+	size_t header_size;
+	size_t serialized_header_size;
+	size_t header_tail = version == 1 ? 0x38 : 0x40;
+	int ret = 0;
 
-	if (get_unaligned_le32(wire) != T2SEP_AKS_HEADER_SIZE ||
+	header_size = get_unaligned_le32(wire);
+	serialized_header_size = 4 + header_size;
+	if ((header_size != 0x48 && header_size != T2SEP_AKS_HEADER_SIZE) ||
+	    wire_size < serialized_header_size ||
 	    get_unaligned_le32(wire + 4 + 0x10) != version ||
 	    get_unaligned_le32(wire + 4 + 0x1c) != 0)
 		return -EPROTO;
 	memcpy(received_digest, wire + 4, sizeof(received_digest));
 	memset(wire + 4, 0, sizeof(received_digest));
-	ret = t2sep_aks_protect(wire, wire_size, version, digest);
-	if (!ret && crypto_memneq(received_digest, digest,
-				  sizeof(received_digest)))
+	sha256_init(&context);
+	sha256_update(&context, wire + 4 + 0x10, header_tail);
+	sha256_update(&context, wire + serialized_header_size,
+		      wire_size - serialized_header_size);
+	sha256_final(&context, digest);
+	if (crypto_memneq(received_digest, digest, sizeof(received_digest)))
 		ret = -EBADMSG;
 	memzero_explicit(received_digest, sizeof(received_digest));
 	return ret;
 }
 
-static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
-					void __iomem *bar4,
-					void *send_buffer, void *receive_buffer,
-					u32 *negotiated_version)
+static int t2sep_probe_aks_capabilities_at(struct pci_dev *pdev,
+					   void __iomem *bar4,
+					   void *send_buffer,
+					   void *receive_buffer,
+					   u64 continuous_usec, u8 tag,
+					   const char *candidate_class,
+					   u32 *negotiated_version)
 {
 	u8 digest[SHA256_DIGEST_SIZE];
 	u8 *send = send_buffer;
 	u8 *receive = receive_buffer;
-	u32 request[3] = { 0x00014d07, 0x00640000, 0 };
+	u32 request[3] = {
+		T2SEP_AKS_ENDPOINT | 0x4d << 8 | (u32)tag << 16,
+		0x00640000,
+		0,
+	};
 	u32 response[4];
-	/* mach_continuous_time includes suspend; Linux boottime is its analogue. */
-	u64 continuous_usec = ktime_get_boottime_ns() / NSEC_PER_USEC;
+	size_t response_size;
 	u32 status;
 	u64 remote_version;
+	size_t payload_offset;
 	int ret;
+
+	if (!tag)
+		return -EINVAL;
 
 	/*
 	 * Exact version-1 empty operation-0x4d body. The identity fields mirror
@@ -585,15 +617,31 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	ret = t2sep_send_intel_message(bar4, request);
 	if (ret)
 		goto out_scrub;
-	dev_info(&pdev->dev,
-		 "AKS capabilities request: endpoint=7 selector=0x4d tag=1 length=100 header_version=1\n");
+	if (candidate_class)
+		dev_info(&pdev->dev,
+			 "AKS time candidate request: class=%s endpoint=7 selector=0x4d tag=%u length=100 header_version=1\n",
+			 candidate_class, tag);
+	else
+		dev_info(&pdev->dev,
+			 "AKS capabilities request: endpoint=7 selector=0x4d tag=%u length=100 header_version=1\n",
+			 tag);
 	ret = t2sep_wait_intel_message(bar4, response);
 	if (ret)
 		goto out_scrub;
-	dev_info(&pdev->dev,
-		 "AKS capabilities envelope: raw=%08x %08x %08x %08x\n",
-		 response[0], response[1], response[2], response[3]);
-	if (response[0] != 0x0001cd07 || response[1] != 0x00640000 ||
+	if (candidate_class)
+		dev_info(&pdev->dev,
+			 "AKS time candidate envelope: class=%s raw=%08x %08x %08x %08x\n",
+			 candidate_class, response[0], response[1], response[2],
+			 response[3]);
+	else
+		dev_info(&pdev->dev,
+			 "AKS capabilities envelope: raw=%08x %08x %08x %08x\n",
+			 response[0], response[1], response[2], response[3]);
+	response_size = response[1] >> 16;
+	if (response[0] != (T2SEP_AKS_ENDPOINT | 0xcd << 8 | (u32)tag << 16) ||
+	    (response_size != T2SEP_AKS_CAPABILITIES_SIZE &&
+	     response_size != T2SEP_AKS_COMPACT_CAPABILITIES_SIZE) ||
+	    (response[1] & 0xffff) != 0 ||
 	    response[2] != 0 ||
 	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))) {
 		ret = -EPROTO;
@@ -601,32 +649,115 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	}
 
 	dma_rmb();
-	if (get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE ||
+	if ((get_unaligned_le32(receive) != 0x48 &&
+	     get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE) ||
 	    get_unaligned_le32(receive + 4 + 0x10) != 1 ||
-	    get_unaligned_le32(receive + 4 + 0x1c) != 0 ||
-	    get_unaligned_le32(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 12) != 0) {
+	    get_unaligned_le32(receive + 4 + 0x1c) != 0) {
+		if (candidate_class)
+			dev_info(&pdev->dev,
+				 "AKS time candidate rejected by structural check: class=%s stage=header header_length=%u header_version=%u flags=%u\n",
+				 candidate_class, get_unaligned_le32(receive),
+				 get_unaligned_le32(receive + 4 + 0x10),
+				 get_unaligned_le32(receive + 4 + 0x1c));
 		ret = -EPROTO;
 		goto out_scrub;
 	}
-	ret = t2sep_aks_validate_reply(receive,
-				       T2SEP_AKS_CAPABILITIES_SIZE, 1, digest);
-	if (ret)
+	payload_offset = 4 + get_unaligned_le32(receive);
+	if (response_size - payload_offset != 16 ||
+	    get_unaligned_le32(receive + payload_offset + 12) != 0) {
+		ret = -EPROTO;
 		goto out_scrub;
-	status = get_unaligned_le32(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE);
-	remote_version = get_unaligned_le64(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
+	}
+	ret = t2sep_aks_validate_reply(receive, response_size, 1, digest);
+	if (ret) {
+		if (candidate_class)
+			dev_info(&pdev->dev,
+				 "AKS time candidate rejected by structural check: class=%s stage=protected-digest result=%d\n",
+				 candidate_class, ret);
+		goto out_scrub;
+	}
+	status = get_unaligned_le32(receive + payload_offset);
+	remote_version = get_unaligned_le64(receive + payload_offset + 4);
 	if (status || remote_version < 1) {
+		if (candidate_class)
+			dev_info(&pdev->dev,
+				 "AKS time candidate returned service rejection: class=%s status=%d remote_header_version=%llu\n",
+				 candidate_class, (s32)status, remote_version);
 		ret = status ? -EREMOTEIO : -EPROTONOSUPPORT;
 		goto out_scrub;
 	}
-	dev_info(&pdev->dev,
-		 "AKS capabilities reply passed strict validation: status=%d remote_header_version=%llu\n",
-		 (s32)status, remote_version);
+	if (candidate_class)
+		dev_info(&pdev->dev,
+			 "AKS time candidate reply passed strict validation: class=%s status=%d remote_header_version=%llu reply_size=%zu\n",
+			 candidate_class, (s32)status, remote_version, response_size);
+	else
+		dev_info(&pdev->dev,
+			 "AKS capabilities reply passed strict validation: status=%d remote_header_version=%llu reply_size=%zu\n",
+			 (s32)status, remote_version, response_size);
 	if (negotiated_version)
 		*negotiated_version = min_t(u64, remote_version, 2);
 	ret = 0;
 
 out_scrub:
 	memzero_explicit(digest, sizeof(digest));
+	return ret;
+}
+
+static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
+					void __iomem *bar4,
+					void *send_buffer, void *receive_buffer,
+					u32 *negotiated_version)
+{
+	/* mach_continuous_time includes suspend; Linux boottime is its analogue. */
+	return t2sep_probe_aks_capabilities_at(
+		pdev, bar4, send_buffer, receive_buffer,
+		ktime_get_boottime_ns() / NSEC_PER_USEC, 1, NULL,
+		negotiated_version);
+}
+
+static int t2sep_probe_aks_time_sweep(struct pci_dev *pdev,
+				      void __iomem *bar4,
+				      void *send_buffer,
+				      void *receive_buffer)
+{
+	static const char * const classes[] = {
+		"zero", "sep-start-relative", "monotonic", "raw", "boottime",
+	};
+	u64 candidates[] = {
+		0,
+		NSEC_PER_SEC / NSEC_PER_USEC,
+		ktime_get_ns() / NSEC_PER_USEC,
+		ktime_get_raw_ns() / NSEC_PER_USEC,
+		ktime_get_boottime_ns() / NSEC_PER_USEC,
+	};
+	u32 negotiated_version;
+	int ret = -ETIMEDOUT;
+	size_t attempts = 0;
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(candidates); i++) {
+		attempts = i + 1;
+		memset(send_buffer, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+		memset(receive_buffer, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+		ret = t2sep_probe_aks_capabilities_at(
+			pdev, bar4, send_buffer, receive_buffer, candidates[i],
+			i + 1, classes[i], &negotiated_version);
+		if (!ret) {
+			dev_info(&pdev->dev,
+				 "AKS time sweep accepted class=%s negotiated_header_version=%u attempts=%zu\n",
+				 classes[i], negotiated_version, i + 1);
+			break;
+		}
+		if (ret != -ETIMEDOUT)
+			break;
+		dev_info(&pdev->dev,
+			 "AKS time candidate produced no reply: class=%s\n",
+			 classes[i]);
+	}
+	if (ret)
+		dev_info(&pdev->dev,
+			 "AKS time sweep completed without accepted candidate: attempts=%zu result=%d\n",
+			 attempts, ret);
 	return ret;
 }
 
@@ -900,6 +1031,7 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	bool credential_ool = apple_capture_credential_ool_acks ||
 			      apple_capture_dual_credential_ool_acks ||
 			      apple_probe_aks_capabilities ||
+			      apple_probe_aks_time_sweep ||
 			      apple_probe_aks_startup_environment ||
 			      apple_probe_acm_context_lifecycle;
 	int ret = 0;
@@ -1002,6 +1134,7 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		in_size = T2SEP_CREDENTIAL_OOL_SIZE;
 		out_size = T2SEP_CREDENTIAL_OOL_SIZE;
 		ool_target = (apple_probe_aks_capabilities ||
+			      apple_probe_aks_time_sweep ||
 			      apple_probe_aks_startup_environment ||
 			      apple_capture_dual_credential_ool_acks) ? T2SEP_AKS_ENDPOINT :
 			     apple_probe_acm_context_lifecycle ? T2SEP_ACM_ENDPOINT :
@@ -1069,12 +1202,14 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			ret = t2sep_capture_one_ool_ack(
 				pdev, bar4, ool_target, 2, 2, in_dma, in_size,
 				apple_probe_aks_capabilities ||
+				apple_probe_aks_time_sweep ||
 				apple_probe_aks_startup_environment ||
 				apple_probe_acm_context_lifecycle ? 1 : -1, ool_target);
 			if (!ret)
 				ret = t2sep_capture_one_ool_ack(
 					pdev, bar4, ool_target, 3, 3, out_dma, out_size,
 					apple_probe_aks_capabilities ||
+					apple_probe_aks_time_sweep ||
 					apple_probe_aks_startup_environment ||
 					apple_probe_acm_context_lifecycle ? 1 : -1,
 					ool_target);
@@ -1082,6 +1217,9 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		if (!ret && apple_probe_aks_capabilities)
 			ret = t2sep_probe_aks_capabilities(pdev, bar4,
 						   in_buffer, out_buffer, NULL);
+		if (!ret && apple_probe_aks_time_sweep)
+			ret = t2sep_probe_aks_time_sweep(
+				pdev, bar4, in_buffer, out_buffer);
 		if (!ret && apple_probe_aks_startup_environment)
 			ret = t2sep_probe_aks_startup_environment(
 				pdev, bar4, in_buffer, out_buffer);
@@ -1219,6 +1357,15 @@ static int t2sep_probe(struct pci_dev *pdev,
 			T2SEP_AKS_CAPABILITIES_CONFIRMATION);
 		return -EINVAL;
 	}
+	if (apple_probe_aks_time_sweep &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop ||
+	     aks_time_sweep_confirmation != T2SEP_AKS_TIME_SWEEP_CONFIRMATION)) {
+		dev_err(&pdev->dev,
+			"AKS time sweep requires start/MSI/NOP and confirmation 0x%lx\n",
+			T2SEP_AKS_TIME_SWEEP_CONFIRMATION);
+		return -EINVAL;
+	}
 	if (apple_probe_aks_startup_environment &&
 	    (!apple_start_cpu_probe || !apple_start_with_msi ||
 	     !apple_send_control_nop ||
@@ -1240,10 +1387,11 @@ static int t2sep_probe(struct pci_dev *pdev,
 	}
 	if (apple_capture_ool_acks + apple_capture_credential_ool_acks +
 	    apple_capture_dual_credential_ool_acks +
-	    apple_probe_aks_capabilities + apple_probe_aks_startup_environment +
+	    apple_probe_aks_capabilities + apple_probe_aks_time_sweep +
+	    apple_probe_aks_startup_environment +
 	    apple_probe_acm_context_lifecycle > 1) {
 		dev_err(&pdev->dev,
-			"SBIO, single/dual credential OOL, AKS capabilities/startup, and ACM context modes are mutually exclusive\n");
+			"SBIO, single/dual credential OOL, AKS capabilities/time/startup, and ACM context modes are mutually exclusive\n");
 		return -EINVAL;
 	}
 

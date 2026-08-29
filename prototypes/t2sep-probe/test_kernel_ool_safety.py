@@ -37,7 +37,7 @@ class KernelOolSafetyTests(unittest.TestCase):
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
         self.assertIn(
-            "SBIO, single/dual credential OOL, AKS capabilities/startup, and ACM context modes are mutually exclusive",
+            "SBIO, single/dual credential OOL, AKS capabilities/time/startup, and ACM context modes are mutually exclusive",
             SOURCE)
 
     def test_dual_credential_capture_is_separately_gated_and_nonsecret(self):
@@ -60,7 +60,7 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn(
             "aks_capabilities_confirmation != T2SEP_AKS_CAPABILITIES_CONFIRMATION",
             SOURCE)
-        self.assertIn("response[0] != 0x0001cd07", SOURCE)
+        self.assertIn("response[0] != (T2SEP_AKS_ENDPOINT | 0xcd << 8 | (u32)tag << 16)", SOURCE)
         self.assertIn("applying Apple header-version-1 fallback", SOURCE)
         self.assertIn("response[0] != 0x0002aa07", SOURCE)
         self.assertIn("crypto_memneq(received_digest, digest", SOURCE)
@@ -76,6 +76,17 @@ class KernelOolSafetyTests(unittest.TestCase):
             SOURCE)
         self.assertNotIn("ktime_get_mono_fast_ns", SOURCE)
         self.assertNotIn("password", SOURCE.lower())
+
+    def test_aks_time_sweep_is_bounded_separately_gated_and_nonsecret(self):
+        self.assertIn("static bool apple_probe_aks_time_sweep;", SOURCE)
+        self.assertIn(
+            "aks_time_sweep_confirmation != T2SEP_AKS_TIME_SWEEP_CONFIRMATION",
+            SOURCE)
+        for name in ("zero", "sep-start-relative", "monotonic", "raw", "boottime"):
+            self.assertIn(f'"{name}"', SOURCE)
+        self.assertIn("i < ARRAY_SIZE(candidates)", SOURCE)
+        self.assertIn("if (ret != -ETIMEDOUT)", SOURCE)
+        self.assertNotIn("continuous_usec=%", SOURCE)
 
     def test_aks_startup_environment_is_separately_gated_and_nonsecret(self):
         self.assertIn("static bool apple_probe_aks_startup_environment;", SOURCE)

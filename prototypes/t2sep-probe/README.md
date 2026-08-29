@@ -80,10 +80,20 @@ It contains no live-send method and does not expose password contents.
 `run-aks-capabilities-probe.sh` is the separately confirmed next-stage wrapper.
 Its default-off kernel gate sends only the non-mutating empty operation `0x4d`
 after the proven AKS registrations and strictly validates its protected
-100-byte reply. The code is built and tested but intentionally unexecuted;
-the kernproc execution-context identity remains source-grounded inference
-until a supervised run confirms or rejects it. Its wrapper also requires a
-fresh journal cursor and has no stale recent-log fallback.
+reply. A live run proved that this T2 returns the version-1 header in its
+compact 72-byte form: 4-byte header length + 72-byte header + 16-byte body =
+92 bytes. The digest, zero status, and remote version 2 all validated. Both
+that observed form and the 100-byte 80-byte-header form are modeled strictly.
+The wrapper requires a fresh journal cursor and has no stale recent-log
+fallback.
+
+`run-aks-time-sweep-probe.sh` tries at most five non-secret continuous-time
+classes and stops on the first strict reply. The first live candidate, zero,
+succeeded; continuous time was not the cause of the earlier apparent timeout.
+The old parser discarded the immediate 92-byte response because it expected
+only 100 bytes. A subsequent live startup-prefix run negotiated version 2 and
+completed operation `0x2a` environment setup with a validated zero-status
+response.
 
 `run-acm-context-lifecycle-probe.sh` is a different, mutually exclusive
 wrapper. It uses the observed ACM `(1/10, 1/10)` OOL profile, sends exact SCRD

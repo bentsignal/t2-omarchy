@@ -99,17 +99,15 @@ additional session handle.
 
 ### Consequence for Linux
 
-The stalled request is not explained by header layout, protected hash ranges,
-operation `0x4d`, endpoint `7`, reply-bit placement, correlation tag placement,
-or a missing pre-capabilities handshake. The strongest remaining hypothesis is
-the continuous-time value. macOS signs `mach_continuous_time` converted to
-microseconds, while Linux currently signs `ktime_get_boottime_ns()`. Those are
-host boot clocks, but the Linux probe resets/boots the T2 during its own
-startup, so the value accepted by the service may need to be related to the
-T2 boot epoch or otherwise translated. The next bounded experiment should
-sweep plausible continuous-usec values while holding the now-verified header,
-hash, body, and mailbox word fixed, and should log only candidate classes and
-reply/no-reply status.
+The subsequent Linux experiment showed that continuous time was not the
+blocker. Candidate zero received an immediate correlated response. The actual
+mismatch was response framing: this T2 returns a version-1 protected header
+with declared length `0x48`, producing a 92-byte capability reply
+(`4 + 0x48 + 16`) instead of retaining the request's `0x50` header container
+and producing 100 bytes. After parsing at that declared boundary, the digest,
+zero status, and remote header version 2 all validated. The following live
+operation-`0x2a` environment request also returned a strictly validated
+zero-status version-2 response.
 
 Process identity remains a lower-priority check. AppleKeyStore runs in kernel
 process context, for which process unique ID zero, default audit session zero,

@@ -58,7 +58,8 @@ def verify(text: str) -> int:
             if state != 1:
                 raise VerificationError("AKS capabilities envelope is reordered")
             words = tuple(int(value, 16) for value in match.groups())
-            if words[:3] != (0x0001cd07, 0x00640000, 0) or words[3] & 0xc0000:
+            if (words[0] != 0x0001cd07 or words[1] not in (0x005c0000, 0x00640000)
+                    or words[2] != 0 or words[3] & 0xc0000):
                 raise VerificationError("AKS capabilities envelope failed correlation")
             state = 2
             continue

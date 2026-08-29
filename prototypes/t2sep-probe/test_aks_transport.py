@@ -49,6 +49,15 @@ class AKSTransportTests(unittest.TestCase):
             with self.assertRaises(aks.AKSTransportError):
                 aks.decode_capabilities_reply(bytes(changed))
 
+    def test_compact_version_one_capabilities_reply_validation(self):
+        payload = struct.pack("<iQI", 0, 2, 0)
+        identity = self._identity(1)[:0x48]
+        header = aks.protect_header(identity, payload)
+        wire = struct.pack("<I", 0x48) + header + payload
+        self.assertEqual(len(wire), 92)
+        self.assertEqual(aks.decode_capabilities_reply(wire),
+                         aks.CapabilitiesReply(0, 2))
+
     def test_capabilities_codec_rejects_noncanonical_inputs(self):
         protected = aks.protect_header(self._identity(), bytes(16))
         with self.assertRaises(aks.AKSTransportError):

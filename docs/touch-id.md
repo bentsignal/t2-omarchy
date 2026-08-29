@@ -2232,6 +2232,36 @@ direct-SEP work must recover a demonstrated lifecycle trigger before another
 write; it must not guess a discovery command or bypass the successful-
 discovery gate on OOL DMA registration.
 
+### Live AKS negotiation and environment milestone (2026-08-29)
+
+The first bounded timing-class experiment overturned the prior timeout
+interpretation. T2 immediately answered the zero-time operation-`0x4d`
+request with this correlated envelope:
+
+```text
+AKS time candidate envelope: class=zero raw=0001cd07 005c0000 00000000 ...
+AKS time candidate reply passed strict validation: class=zero status=0 remote_header_version=2 reply_size=92
+```
+
+The response declares `0x48`: the version-1 reply uses a compact 72-byte
+header, followed by the same 16-byte capability body. Our fixed-100-byte
+parser rejected that immediate response before checking its digest. The
+kernel and offline codecs now honor the declared `0x48` or `0x50` header
+boundary, require an exact 16-byte body, and validate the protected digest
+before exposing status or version.
+
+A fresh startup-prefix run then succeeded end to end. Operation `0x4d`
+negotiated remote version 2, and normal-boot operation `0x2a` returned its
+correlated 88-byte reply with a valid digest, zero status, and header version
+2. CPU stop, DMA scrub/release, MSI observations, PCI restoration/release,
+module unload, and device unbind all passed independent verification. No
+password, fingerprint template, or biometric operation was used.
+
+This proves Linux can initialize the live AKS endpoint through Apple's
+non-secret prefix. Next, join this validated AKS prefix to the already
+validated ACM context lifecycle before introducing any password-bearing
+request.
+
 ## Useful baseline commands
 
 ```bash
