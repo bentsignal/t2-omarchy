@@ -25,8 +25,10 @@ mailbox envelope, reply correlation, capability ordering, bounded request
 sizes, byte-exact empty operation-`0x4d` capability bodies, and the
 truncated-SHA-256 IPC integrity primitive. Its operation-`0x21` support is
 limited to size planning and strict validation of the 96-byte successful
-variant-1 response. It performs no MMIO, DMA, password handling, Linux
-identity substitution, or secret serialization.
+variant-1 response. The size planner returns exact field and padding offsets
+for a future locked/scrubbed buffer without accepting either secret blob. It
+performs no MMIO, DMA, password handling, Linux identity substitution, or
+secret serialization.
 
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
 envelope, OOL length bound, and reply message-type correlation. It likewise

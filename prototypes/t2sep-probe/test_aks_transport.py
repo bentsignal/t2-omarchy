@@ -205,6 +205,29 @@ class AKSTransportTests(unittest.TestCase):
         with self.assertRaises(aks.AKSTransportError):
             aks.verify_secret_serialized_size(b"password")
 
+    def test_verify_secret_layout_has_exact_nonoverlapping_boundaries(self):
+        layout = aks.verify_secret_layout(12)
+        self.assertEqual(layout, aks.VerifySecretLayout(
+            total_size=144,
+            variant_offset=84,
+            keybag_offset=88,
+            selector_offset=96,
+            password_length_offset=100,
+            password_data_offset=104,
+            password_padded_end=116,
+            context_length_offset=116,
+            context_data_offset=120,
+            context_padded_end=136,
+            device_state_offset=136))
+        for length, expected_total in ((0, 132), (1, 136), (4, 136), (5, 140)):
+            with self.subTest(length=length):
+                item = aks.verify_secret_layout(length)
+                self.assertEqual(item.total_size, expected_total)
+                self.assertEqual(item.password_padded_end,
+                                 item.context_length_offset)
+                self.assertEqual(item.context_padded_end,
+                                 item.device_state_offset)
+
     def test_authorization_plan_requires_capabilities_before_verify(self):
         plan = aks.AuthorizationPlan()
         with self.assertRaises(aks.AKSTransportError):

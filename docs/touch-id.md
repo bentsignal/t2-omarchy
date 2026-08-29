@@ -1106,6 +1106,15 @@ four-byte boundaries, and the final device-state qword. It requires the ACM
 external form to be exactly 16 bytes and refuses any plan exceeding the
 `0x4000` AKS OOL buffer.
 
+It also exposes a non-secret layout descriptor for later locked-buffer code.
+For a 12-byte password, the variant, keybag, and selector begin at offsets
+`84`, `88`, and `96`; the password length/data occupy `100`/`104`, the exact
+four-byte-aligned password region ends at `116`, the 16-byte ACM context
+length/data occupy `116`/`120`, and device state begins at `136`, producing
+the proven 144-byte total. Other password lengths are derived with the same
+checked arithmetic. No function in this layer accepts password or context
+bytes.
+
 The successful operation-`0x21` variant-1 response is only 96 bytes: the same
 `0x54`-byte serialized protected header, variant word `1`, and the returned
 64-bit device-state value. The strict decoder requires exact size, header

@@ -125,6 +125,21 @@ class VerifySecretReply:
     device_state: int
 
 
+@dataclass(frozen=True)
+class VerifySecretLayout:
+    total_size: int
+    variant_offset: int
+    keybag_offset: int
+    selector_offset: int
+    password_length_offset: int
+    password_data_offset: int
+    password_padded_end: int
+    context_length_offset: int
+    context_data_offset: int
+    context_padded_end: int
+    device_state_offset: int
+
+
 def decode_capabilities_reply(wire: bytes) -> CapabilitiesReply:
     """Validate and decode the fixed empty-blob operation-0x4d response."""
     if not isinstance(wire, bytes) or len(wire) != CAPABILITIES_SERIALIZED_SIZE:
@@ -243,6 +258,12 @@ def negotiated_header_version(capabilities_status: int,
 def verify_secret_serialized_size(password_length: int,
                                   context_length: int = ACM_CONTEXT_SIZE) -> int:
     """Plan the protected IPC size without accepting either secret blob."""
+    return verify_secret_layout(password_length, context_length).total_size
+
+
+def verify_secret_layout(password_length: int,
+                         context_length: int = ACM_CONTEXT_SIZE) -> VerifySecretLayout:
+    """Return exact field boundaries without accepting secret material."""
     password_length = _length(password_length, "password")
     context_length = _length(context_length, "ACM context")
     if context_length != ACM_CONTEXT_SIZE:
@@ -250,12 +271,24 @@ def verify_secret_serialized_size(password_length: int,
     # Header, variant word, keybag qword, selector word, two length-prefixed
     # four-byte-aligned blobs, and the variant-1 device-state qword. The
     # in-memory option at offset 0x88 is not serialized by this variant.
-    total = (SERIALIZED_HEADER_SIZE + 4 + 8 + 4
-             + 4 + _align4(password_length)
-             + 4 + _align4(context_length) + 8)
+    variant_offset = SERIALIZED_HEADER_SIZE
+    keybag_offset = variant_offset + 4
+    selector_offset = keybag_offset + 8
+    password_length_offset = selector_offset + 4
+    password_data_offset = password_length_offset + 4
+    password_padded_end = password_data_offset + _align4(password_length)
+    context_length_offset = password_padded_end
+    context_data_offset = context_length_offset + 4
+    context_padded_end = context_data_offset + _align4(context_length)
+    device_state_offset = context_padded_end
+    total = device_state_offset + 8
     if total > OOL_CAPACITY:
         raise AKSTransportError("serialized verify-secret request exceeds OOL")
-    return total
+    return VerifySecretLayout(
+        total, variant_offset, keybag_offset, selector_offset,
+        password_length_offset, password_data_offset, password_padded_end,
+        context_length_offset, context_data_offset, context_padded_end,
+        device_state_offset)
 
 
 def _length(value: int, label: str) -> int:
