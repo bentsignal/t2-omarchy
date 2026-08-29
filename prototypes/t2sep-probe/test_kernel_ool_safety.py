@@ -37,7 +37,7 @@ class KernelOolSafetyTests(unittest.TestCase):
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
         self.assertIn(
-            "SBIO, credential OOL, AKS capabilities, and ACM context modes are mutually exclusive",
+            "SBIO, credential OOL, AKS capabilities/startup, and ACM context modes are mutually exclusive",
             SOURCE)
 
     def test_aks_capabilities_is_separately_gated_and_nonsecret(self) -> None:
@@ -46,18 +46,32 @@ class KernelOolSafetyTests(unittest.TestCase):
             "aks_capabilities_confirmation != T2SEP_AKS_CAPABILITIES_CONFIRMATION",
             SOURCE)
         self.assertIn("response[0] != 0x0004cd07", SOURCE)
-        self.assertIn("crypto_memneq(receive + 4, reply_digest, 16)", SOURCE)
+        self.assertIn("crypto_memneq(received_digest, digest", SOURCE)
         self.assertIn("ktime_get_boottime_ns() / NSEC_PER_USEC", SOURCE)
         self.assertIn(
             "put_unaligned_le64(1, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4)",
             SOURCE)
-        self.assertIn("memcpy(hash_input, send + 4 + 0x10, 0x38)", SOURCE)
         self.assertIn(
-            "memcpy(hash_input + 0x38, send + "
-            "T2SEP_AKS_SERIALIZED_HEADER_SIZE, 0x10)",
+            "sha256_update(&context, wire + 4 + 0x10, header_tail)",
+            SOURCE)
+        self.assertIn(
+            "sha256_update(&context, wire + T2SEP_AKS_SERIALIZED_HEADER_SIZE",
             SOURCE)
         self.assertNotIn("ktime_get_mono_fast_ns", SOURCE)
         self.assertNotIn("password", SOURCE.lower())
+
+    def test_aks_startup_environment_is_separately_gated_and_nonsecret(self):
+        self.assertIn("static bool apple_probe_aks_startup_environment;", SOURCE)
+        self.assertIn(
+            "aks_startup_environment_confirmation !=\n"
+            "\t\tT2SEP_AKS_STARTUP_ENV_CONFIRMATION", SOURCE)
+        self.assertIn("u32 request[3] = { 0x00052a07, 0x04700000, 0 };", SOURCE)
+        self.assertIn("response[0] != 0x0005aa07", SOURCE)
+        self.assertIn("response[1] != 0x00580000", SOURCE)
+        self.assertIn("min_t(u64, remote_version, 2)", SOURCE)
+        self.assertIn("put_unaligned_le64(ktime_get_real_seconds()", SOURCE)
+        self.assertIn("T2SEP_AKS_STARTUP_ENV_BLOB_SIZE", SOURCE)
+        self.assertNotIn("VERIFY_SECRET", SOURCE)
 
     def test_credential_capture_sends_no_service_envelope(self) -> None:
         self.assertNotIn("VERIFY_SECRET", SOURCE)

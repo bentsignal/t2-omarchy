@@ -1088,6 +1088,22 @@ byte as zero, validates the negotiated header version and digest, and rejects
 nonzero status, extra bytes, and reordered replies. It is not yet connected to
 device I/O.
 
+A second, separately confirmed kernel path is prepared but unexecuted for this
+two-transaction startup prefix. It first performs the existing strictly
+validated operation-`0x4d` exchange and caps the returned version at 2, exactly
+as Apple does. Only then does it construct operation `0x2a` with a fresh
+suspend-inclusive boot timestamp, a calendar timestamp for version 2, the
+kernproc identity candidate, the missing-property default
+`no-effaceable-storage=0`, normal mode 4, and zero reserved storage. It sends
+selector `0x2a` at tag 5 and accepts only the correlated selector-`0xaa`, tag-5,
+length-`0x58` response with the negotiated version, valid digest, zero flags,
+and zero status. The path never sends password bytes, an ACM context, or a
+reference-key request. The wrapper requires the exact confirmation phrase
+`I_UNDERSTAND_NONSECRET_AKS_STARTUP_ENVIRONMENT_PROBE`; an independent
+transcript verifier checks the OOL registration profile, both AKS exchanges,
+version negotiation, CPU stop, DMA scrub/release, PCI restoration, unload, and
+unbind. It will not be run without the user present.
+
 The following class-F PRNG contribution is best-effort rather than an
 authorization gate. `init_sep_endpoint` calls both `set_env(false)` and
 `add_class_f_entropy_to_kernel_prng()` as void functions and does not inspect

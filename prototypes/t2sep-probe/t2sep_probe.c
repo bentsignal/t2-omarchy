@@ -129,6 +129,16 @@ module_param(aks_capabilities_confirmation, ulong, 0400);
 MODULE_PARM_DESC(aks_capabilities_confirmation,
 	"Required explicit confirmation value 0x414b534341504142 for the AKS capabilities probe");
 
+static bool apple_probe_aks_startup_environment;
+module_param(apple_probe_aks_startup_environment, bool, 0400);
+MODULE_PARM_DESC(apple_probe_aks_startup_environment,
+	"Negotiate AKS capabilities and send normal-boot operation-0x2a environment setup");
+
+static ulong aks_startup_environment_confirmation;
+module_param(aks_startup_environment_confirmation, ulong, 0400);
+MODULE_PARM_DESC(aks_startup_environment_confirmation,
+	"Required explicit confirmation value 0x414b53454e565052 for the AKS startup-environment probe");
+
 static bool apple_probe_acm_context_lifecycle;
 module_param(apple_probe_acm_context_lifecycle, bool, 0400);
 MODULE_PARM_DESC(apple_probe_acm_context_lifecycle,
@@ -152,11 +162,15 @@ struct t2sep_irq_probe {
 #define T2SEP_OOL_CONFIRMATION 0x5345504f4f4c4143UL
 #define T2SEP_CREDENTIAL_OOL_CONFIRMATION 0x435245444f4f4c41UL
 #define T2SEP_AKS_CAPABILITIES_CONFIRMATION 0x414b534341504142UL
+#define T2SEP_AKS_STARTUP_ENV_CONFIRMATION 0x414b53454e565052UL
 #define T2SEP_ACM_CONTEXT_CONFIRMATION 0x41434d4354584c46UL
 #define T2SEP_AKS_ENDPOINT 0x07
 #define T2SEP_ACM_ENDPOINT 0x0a
 #define T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)
 #define T2SEP_AKS_CAPABILITIES_SIZE 100
+#define T2SEP_AKS_STARTUP_ENV_REQUEST_SIZE 0x470
+#define T2SEP_AKS_STARTUP_ENV_REPLY_SIZE 0x58
+#define T2SEP_AKS_STARTUP_ENV_BLOB_SIZE 0x40c
 #define T2SEP_AKS_HEADER_SIZE 0x50
 #define T2SEP_AKS_SERIALIZED_HEADER_SIZE 0x54
 #define T2SEP_ACM_CONTEXT_RESPONSE_SIZE 17
@@ -486,13 +500,50 @@ static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
 	return 0;
 }
 
+static int t2sep_aks_protect(u8 *wire, size_t wire_size, u32 version,
+			     u8 digest[SHA256_DIGEST_SIZE])
+{
+	struct sha256_ctx context;
+	size_t header_tail = version == 1 ? 0x38 : 0x40;
+
+	if ((version != 1 && version != 2) ||
+	    wire_size < T2SEP_AKS_SERIALIZED_HEADER_SIZE)
+		return -EINVAL;
+	sha256_init(&context);
+	sha256_update(&context, wire + 4 + 0x10, header_tail);
+	sha256_update(&context, wire + T2SEP_AKS_SERIALIZED_HEADER_SIZE,
+		      wire_size - T2SEP_AKS_SERIALIZED_HEADER_SIZE);
+	sha256_final(&context, digest);
+	memcpy(wire + 4, digest, 16);
+	return 0;
+}
+
+static int t2sep_aks_validate_reply(u8 *wire, size_t wire_size, u32 version,
+				    u8 digest[SHA256_DIGEST_SIZE])
+{
+	u8 received_digest[16];
+	int ret;
+
+	if (get_unaligned_le32(wire) != T2SEP_AKS_HEADER_SIZE ||
+	    get_unaligned_le32(wire + 4 + 0x10) != version ||
+	    get_unaligned_le32(wire + 4 + 0x1c) != 0)
+		return -EPROTO;
+	memcpy(received_digest, wire + 4, sizeof(received_digest));
+	memset(wire + 4, 0, sizeof(received_digest));
+	ret = t2sep_aks_protect(wire, wire_size, version, digest);
+	if (!ret && crypto_memneq(received_digest, digest,
+				  sizeof(received_digest)))
+		ret = -EBADMSG;
+	memzero_explicit(received_digest, sizeof(received_digest));
+	return ret;
+}
+
 static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 					void __iomem *bar4,
-					void *send_buffer, void *receive_buffer)
+					void *send_buffer, void *receive_buffer,
+					u32 *negotiated_version)
 {
-	u8 hash_input[0x48];
 	u8 digest[SHA256_DIGEST_SIZE];
-	u8 reply_digest[SHA256_DIGEST_SIZE];
 	u8 *send = send_buffer;
 	u8 *receive = receive_buffer;
 	u32 request[3] = { 0x00044d07, 0x00640000, 0 };
@@ -514,10 +565,9 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	put_unaligned_le32(1, send + 4 + 0x10);
 	put_unaligned_le64(continuous_usec, send + 4 + 0x14);
 	put_unaligned_le64(1, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
-	memcpy(hash_input, send + 4 + 0x10, 0x38);
-	memcpy(hash_input + 0x38, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE, 0x10);
-	sha256(hash_input, sizeof(hash_input), digest);
-	memcpy(send + 4, digest, 16);
+	ret = t2sep_aks_protect(send, T2SEP_AKS_CAPABILITIES_SIZE, 1, digest);
+	if (ret)
+		goto out_scrub;
 	dma_wmb();
 
 	ret = t2sep_send_intel_message(bar4, request);
@@ -546,14 +596,10 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 		ret = -EPROTO;
 		goto out_scrub;
 	}
-	memcpy(hash_input, receive + 4 + 0x10, 0x38);
-	memcpy(hash_input + 0x38,
-	       receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE, 0x10);
-	sha256(hash_input, sizeof(hash_input), reply_digest);
-	if (crypto_memneq(receive + 4, reply_digest, 16)) {
-		ret = -EBADMSG;
+	ret = t2sep_aks_validate_reply(receive,
+				       T2SEP_AKS_CAPABILITIES_SIZE, 1, digest);
+	if (ret)
 		goto out_scrub;
-	}
 	status = get_unaligned_le32(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE);
 	remote_version = get_unaligned_le64(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
 	if (status || remote_version < 1) {
@@ -563,12 +609,90 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	dev_info(&pdev->dev,
 		 "AKS capabilities reply passed strict validation: status=%d remote_header_version=%llu\n",
 		 (s32)status, remote_version);
+	if (negotiated_version)
+		*negotiated_version = min_t(u64, remote_version, 2);
 	ret = 0;
 
 out_scrub:
-	memzero_explicit(hash_input, sizeof(hash_input));
 	memzero_explicit(digest, sizeof(digest));
-	memzero_explicit(reply_digest, sizeof(reply_digest));
+	return ret;
+}
+
+static int t2sep_probe_aks_startup_environment(struct pci_dev *pdev,
+					       void __iomem *bar4,
+					       void *send_buffer,
+					       void *receive_buffer)
+{
+	u8 digest[SHA256_DIGEST_SIZE];
+	u8 *send = send_buffer;
+	u8 *receive = receive_buffer;
+	u32 request[3] = { 0x00052a07, 0x04700000, 0 };
+	u32 response[4];
+	u32 version;
+	u32 status;
+	int ret;
+
+	ret = t2sep_probe_aks_capabilities(pdev, bar4, send, receive, &version);
+	if (ret)
+		goto out_scrub;
+
+	memset(send, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+	memset(receive, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+	put_unaligned_le32(T2SEP_AKS_HEADER_SIZE, send);
+	put_unaligned_le32(version, send + 4 + 0x10);
+	put_unaligned_le64(ktime_get_boottime_ns() / NSEC_PER_USEC,
+			   send + 4 + 0x14);
+	if (version == 2)
+		put_unaligned_le64(ktime_get_real_seconds(), send + 4 + 0x48);
+	put_unaligned_le64(1, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
+	put_unaligned_le32(T2SEP_AKS_STARTUP_ENV_BLOB_SIZE,
+			   send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 12);
+	put_unaligned_le32(1, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 16);
+	/* no-effaceable-storage is absent on the supported machine: explicit 0. */
+	put_unaligned_le32(0, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 20);
+	put_unaligned_le32(4, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 24);
+	ret = t2sep_aks_protect(send, T2SEP_AKS_STARTUP_ENV_REQUEST_SIZE,
+				version, digest);
+	if (ret)
+		goto out_scrub;
+	dma_wmb();
+
+	ret = t2sep_send_intel_message(bar4, request);
+	if (ret)
+		goto out_scrub;
+	dev_info(&pdev->dev,
+		 "AKS startup environment request: endpoint=7 selector=0x2a tag=5 length=1136 header_version=%u no_effaceable_storage=0 mode=4\n",
+		 version);
+	ret = t2sep_wait_intel_message(bar4, response);
+	if (ret)
+		goto out_scrub;
+	dev_info(&pdev->dev,
+		 "AKS startup environment envelope: raw=%08x %08x %08x %08x\n",
+		 response[0], response[1], response[2], response[3]);
+	if (response[0] != 0x0005aa07 || response[1] != 0x00580000 ||
+	    response[2] != 0 ||
+	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
+	dma_rmb();
+	ret = t2sep_aks_validate_reply(receive,
+				       T2SEP_AKS_STARTUP_ENV_REPLY_SIZE,
+				       version, digest);
+	if (ret)
+		goto out_scrub;
+	status = get_unaligned_le32(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE);
+	if (status) {
+		ret = -EREMOTEIO;
+		goto out_scrub;
+	}
+	dev_info(&pdev->dev,
+		 "AKS startup environment reply passed strict validation: status=%d header_version=%u\n",
+		 (s32)status, version);
+	ret = 0;
+
+out_scrub:
+	memzero_explicit(digest, sizeof(digest));
 	return ret;
 }
 
@@ -678,6 +802,7 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	u8 ool_target = T2SEP_SBIO_ENDPOINT;
 	bool credential_ool = apple_capture_credential_ool_acks ||
 			      apple_probe_aks_capabilities ||
+			      apple_probe_aks_startup_environment ||
 			      apple_probe_acm_context_lifecycle;
 	int ret = 0;
 	int i;
@@ -778,7 +903,8 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	if (credential_ool) {
 		in_size = T2SEP_CREDENTIAL_OOL_SIZE;
 		out_size = T2SEP_CREDENTIAL_OOL_SIZE;
-		ool_target = apple_probe_aks_capabilities ? T2SEP_AKS_ENDPOINT :
+		ool_target = (apple_probe_aks_capabilities ||
+			      apple_probe_aks_startup_environment) ? T2SEP_AKS_ENDPOINT :
 			     apple_probe_acm_context_lifecycle ? T2SEP_ACM_ENDPOINT :
 			     credential_endpoint;
 	}
@@ -808,16 +934,21 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		ret = t2sep_capture_one_ool_ack(
 			pdev, bar4, ool_target, 2, 2, in_dma, in_size,
 			apple_probe_aks_capabilities ||
+			apple_probe_aks_startup_environment ||
 			apple_probe_acm_context_lifecycle ? 1 : -1, ool_target);
 		if (!ret)
 			ret = t2sep_capture_one_ool_ack(
 				pdev, bar4, ool_target, 3, 3, out_dma, out_size,
 				apple_probe_aks_capabilities ||
+				apple_probe_aks_startup_environment ||
 				apple_probe_acm_context_lifecycle ? 1 : -1,
 				ool_target);
 		if (!ret && apple_probe_aks_capabilities)
 			ret = t2sep_probe_aks_capabilities(pdev, bar4,
-						   in_buffer, out_buffer);
+						   in_buffer, out_buffer, NULL);
+		if (!ret && apple_probe_aks_startup_environment)
+			ret = t2sep_probe_aks_startup_environment(
+				pdev, bar4, in_buffer, out_buffer);
 		if (!ret && apple_probe_acm_context_lifecycle)
 			ret = t2sep_probe_acm_context_lifecycle(
 				pdev, bar4, in_buffer, out_buffer);
@@ -932,6 +1063,16 @@ static int t2sep_probe(struct pci_dev *pdev,
 			T2SEP_AKS_CAPABILITIES_CONFIRMATION);
 		return -EINVAL;
 	}
+	if (apple_probe_aks_startup_environment &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop ||
+	     aks_startup_environment_confirmation !=
+		T2SEP_AKS_STARTUP_ENV_CONFIRMATION)) {
+		dev_err(&pdev->dev,
+			"AKS startup-environment probe requires start/MSI/NOP and confirmation 0x%lx\n",
+			T2SEP_AKS_STARTUP_ENV_CONFIRMATION);
+		return -EINVAL;
+	}
 	if (apple_probe_acm_context_lifecycle &&
 	    (!apple_start_cpu_probe || !apple_start_with_msi ||
 	     !apple_send_control_nop ||
@@ -942,9 +1083,10 @@ static int t2sep_probe(struct pci_dev *pdev,
 		return -EINVAL;
 	}
 	if (apple_capture_ool_acks + apple_capture_credential_ool_acks +
-	    apple_probe_aks_capabilities + apple_probe_acm_context_lifecycle > 1) {
+	    apple_probe_aks_capabilities + apple_probe_aks_startup_environment +
+	    apple_probe_acm_context_lifecycle > 1) {
 		dev_err(&pdev->dev,
-			"SBIO, credential OOL, AKS capabilities, and ACM context modes are mutually exclusive\n");
+			"SBIO, credential OOL, AKS capabilities/startup, and ACM context modes are mutually exclusive\n");
 		return -EINVAL;
 	}
 
