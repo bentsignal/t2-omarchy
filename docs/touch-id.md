@@ -1414,24 +1414,18 @@ human confirmation, a fresh journal cursor, unload/unbind checks, and an
 independent verifier. The verifier composes the proven endpoint-10 OOL
 lifecycle, byte-exact non-secret envelope sequence, create-before-delete order,
 no-context-logging markers, and the complete MSI/PCI/CPU-stop teardown. Its
-source and 295-test checkpoint are prepared for a supervised run; no ACM
-service command has yet been executed on this T2.
+live run has now validated SCRD initialization, ping, current context creation
+with domain zero, and deletion on this T2. No context bytes were logged.
 
-A next-stage kernel path is prepared but unexecuted. It requires a new
-capabilities-specific 64-bit confirmation and is mutually exclusive with all
-other OOL modes. Only after the proven `(1/7, 1/7)` registrations does it
-construct the exact 100-byte version-1 empty operation-`0x4d` request using
-the source-grounded kernproc candidate above and a fresh boot-continuous
-microsecond timestamp (`ktime_get_boottime_ns`, matching the suspend-inclusive
-semantics of `mach_continuous_time`). It uses the kernel's exported SHA-256 implementation, sends exactly
-one endpoint-7 selector-`0x4d` envelope, and accepts only a correlated
-selector-`0xcd`, tag-4, length-100 reply. The receive path requires header
-length 80, version 1, zero flags, empty blob, constant-time digest equality,
-zero status, and a nonzero remote version before teardown; later code follows
-Apple by negotiating `min(remote, 2)`. A separate
-wrapper and transcript verifier enforce model/PCI/driver checks, human
-confirmation, cursor-bounded evidence, stop-before-scrub, unload, and unbind.
-It will not be run without the user present.
+The AKS capabilities path has also run successfully. It constructs the exact
+100-byte version-1 empty operation-`0x4d` request after the proven `(1/7,
+1/7)` registrations. T2 returned a correlated selector-`0xcd` reply with a
+declared `0x48` version-1 header and 92-byte total size. Parsing at that
+declared boundary produced a valid constant-time digest comparison, zero
+status, and remote version 2. A following version-2 operation-`0x2a`
+environment request also validated. The codecs retain strict support for both
+the observed compact reply and the 100-byte `0x50`-header form recovered from
+Apple code; request and reply lengths are not assumed to match.
 
 The same offline model computes the exact verify-secret serialized size
 without accepting secret bytes: an `0x54`-byte serialized header, the variant

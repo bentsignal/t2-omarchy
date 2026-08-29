@@ -40,6 +40,14 @@ class VerifyCredentialStartupLogTests(unittest.TestCase):
     def test_accepts_complete_combined_lifetime(self):
         self.assertEqual(verify.verify(GOOD), 2)
 
+    def test_accepts_observed_compact_capabilities_reply(self):
+        compact = GOOD.replace(
+            "AKS capabilities envelope: raw=0001cd07 00640000",
+            "AKS capabilities envelope: raw=0001cd07 005c0000").replace(
+                "AKS capabilities reply passed strict validation: status=0 remote_header_version=2",
+                "AKS capabilities reply passed strict validation: status=0 remote_header_version=2 reply_size=92")
+        self.assertEqual(verify.verify(compact), 2)
+
     def test_rejects_order_missing_endpoint_secret_and_teardown(self):
         aks_lines = service_lines(aks_fixture.GOOD, "AKS ")
         acm_lines = service_lines(acm_fixture.GOOD, "ACM ")
