@@ -149,3 +149,25 @@ For the next macOS pass, generate a new transfer from the active archives:
    ciphertext lengths.
 4. Leave all source archives and the enrolled fingerprint untouched. Commit
    and push only a sanitized report; never commit either CMS file.
+
+## macOS return result: two-component transfer complete
+
+The two active components were identified through Foundation keyed-archive
+decoding without exposing filenames or opaque values. The general component
+has decoded UID `-1`, a 599-byte archive, and 148 bytes of secure data. The
+user component has decoded UID 501, a 708-byte archive, and 104 bytes of secure
+data. Each archive is root/wheel-owned and each secure-data object is unique,
+nonempty, and within the 300 KiB bound.
+
+Both secure-data objects were streamed directly into separate AES-256 CMS DER
+envelopes using the new throwaway EFI certificate. No plaintext temporary file
+was created. The final artifacts are:
+
+- `t2-touchid-transfer-global.cms`: 718 bytes, wrapping 148 bytes;
+- `t2-touchid-transfer-user.cms`: 669 bytes, wrapping 104 bytes.
+
+OpenSSL accepted both final CMS structures without decryption. The sources and
+enrolled fingerprint were untouched, and no opaque data or ciphertext was
+printed, hashed, committed, or uploaded. Linux should decrypt and load the
+general component first and UID 501 second on the same Bridge connection, then
+remove all temporary transfer material as specified by commit `400af66`.

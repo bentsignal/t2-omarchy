@@ -2663,6 +2663,17 @@ parsing without decryption. No source or encrypted content was printed, hashed,
 committed, or uploaded. Linux can now perform the one-shot command-`0x40`
 comparison and immediately remove both local transfer artifacts.
 
+The single user-component load reached the biometric service but returned
+status 257. A second authorized macOS pass therefore reproduced the daemon's
+two-component ordering. Foundation identified general UID `-1` with a
+599-byte archive and 148-byte secure-data object, followed by UID 501 with a
+708-byte archive and 104-byte secure-data object. Each decoded object was
+streamed directly into its own AES-256 CMS envelope on EFI without a plaintext
+temporary file. The final general and user envelopes are 718 and 669 bytes,
+respectively, and both passed CMS structural parsing. Linux can now load the
+general object first and the user object second on one Bridge connection and
+remove all transfer artifacts afterward.
+
 That static comparison is now complete. In the checksum-pinned current
 Settings extension, `ACMContextGetExternalForm` invokes a callback that calls
 the local `_aks_verify_password` wrapper with caller-facing keybag handle `-3`,
