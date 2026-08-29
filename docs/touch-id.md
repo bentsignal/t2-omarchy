@@ -1152,6 +1152,16 @@ four-byte boundaries, and the final device-state qword. It requires the ACM
 external form to be exactly 16 bytes and refuses any plan exceeding the
 `0x4000` AKS OOL buffer.
 
+Those two leading request fields are not safe constants. The symbolized
+user-client path passes its 64-bit session keybag handle into
+`AppleKeyStore::verify_password` and obtains the 32-bit selector through
+`effective_bag_handle_actual`; `ipc_verify_secret_v1` then writes those values
+at offsets `0x58` and `0x60` without deriving replacements. The offline
+`AuthorizationPlan` now requires both as explicit, range-checked inputs before
+it will plan operation `0x21`. It supplies no zero, root, current-UID, or other
+Linux guess. It still accepts only secret lengths, not password or ACM-context
+bytes.
+
 It also exposes a non-secret layout descriptor for later locked-buffer code.
 For a 12-byte password, the variant, keybag, and selector begin at offsets
 `84`, `88`, and `96`; the password length/data occupy `100`/`104`, the exact

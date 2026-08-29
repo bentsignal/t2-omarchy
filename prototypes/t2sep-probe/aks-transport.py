@@ -126,6 +126,12 @@ class VerifySecretReply:
 
 
 @dataclass(frozen=True)
+class VerifySecretMetadata:
+    keybag_handle: int
+    selector: int
+
+
+@dataclass(frozen=True)
 class VerifySecretLayout:
     total_size: int
     variant_offset: int
@@ -297,6 +303,16 @@ def _length(value: int, label: str) -> int:
     return value
 
 
+def verify_secret_metadata(keybag_handle: int,
+                           selector: int) -> VerifySecretMetadata:
+    """Validate non-secret, session-derived fields without inventing defaults."""
+    keybag_handle = _uint(keybag_handle, 64, "keybag handle")
+    if (isinstance(selector, bool) or not isinstance(selector, int)
+            or not -(1 << 31) <= selector < (1 << 31)):
+        raise AKSTransportError("verify-secret selector must be a signed 32-bit integer")
+    return VerifySecretMetadata(keybag_handle, selector)
+
+
 def _align4(value: int) -> int:
     return (value + 3) & ~3
 
@@ -307,6 +323,7 @@ class AuthorizationPlan:
     def __init__(self) -> None:
         self.capabilities_request: AKSEnvelope | None = None
         self.header_version: int | None = None
+        self.verify_metadata: VerifySecretMetadata | None = None
         self.verify_request: AKSEnvelope | None = None
         self.verify_reply: VerifySecretReply | None = None
 
@@ -329,11 +346,15 @@ class AuthorizationPlan:
         self.header_version = negotiated_header_version(reply.status, remote)
         return self.header_version
 
-    def plan_verify_secret(self, tag: int, password_length: int) -> bytes:
+    def plan_verify_secret(self, tag: int, password_length: int, *,
+                           keybag_handle: int,
+                           selector: int) -> bytes:
         if self.header_version is None or self.verify_request is not None:
             raise AKSTransportError("verify-secret request is out of order")
+        metadata = verify_secret_metadata(keybag_handle, selector)
         size = verify_secret_serialized_size(password_length)
         wire = encode_request(VERIFY_SECRET_V1, tag, size)
+        self.verify_metadata = metadata
         self.verify_request = decode_envelope(wire)
         return wire
 

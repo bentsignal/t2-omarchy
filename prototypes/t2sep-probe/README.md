@@ -26,7 +26,9 @@ sizes, byte-exact empty operation-`0x4d` capability bodies, and the
 truncated-SHA-256 IPC integrity primitive. Its operation-`0x21` support is
 limited to size planning and strict validation of the 96-byte successful
 variant-1 response. The size planner returns exact field and padding offsets
-for a future locked/scrubbed buffer without accepting either secret blob. It
+for a future locked/scrubbed buffer without accepting either secret blob. Its
+authorization plan requires explicit range-checked keybag-handle and selector
+metadata from the active session and supplies no guessed Linux defaults. It
 performs no MMIO, DMA, password handling, Linux identity substitution, or
 secret serialization.
 
