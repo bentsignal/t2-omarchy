@@ -1088,6 +1088,19 @@ byte as zero, validates the negotiated header version and digest, and rejects
 nonzero status, extra bytes, and reordered replies. It is not yet connected to
 device I/O.
 
+The following class-F PRNG contribution is best-effort rather than an
+authorization gate. `init_sep_endpoint` calls both `set_env(false)` and
+`add_class_f_entropy_to_kernel_prng()` as void functions and does not inspect
+either result. The latter builds an AKS parameter dictionary with numeric key
+`9` set to `0x80`, invokes `_aks_ref_key_create(-1, 13, 7, ...)`, obtains the
+new reference key's public key, and passes only those returned public bytes to
+the host `add_entropy_to_kernel_prng`. Every setup, create, and public-key
+failure is logged and cleaned up before returning. Consequently this path
+neither supplies host randomness to SEP nor carries a login secret, and it
+must not be confused with the required transaction ordering enforced by the
+authorization model. Reproducing it is not a prerequisite for the first
+bounded capabilities or environment probes.
+
 The IPC integrity primitive is now recovered exactly from AppleKeyStore's
 `_payload_hash`. The external relocation at x86_64 call site `0x81cad`
 resolves to `_ccsha256_di`: version 1 hashes header bytes `0x10..0x47`
