@@ -2557,6 +2557,37 @@ whether the biometric enrollment service accepts that freshly authenticated
 context. No enrollment command is chained into this gate, so authorization and
 enrollment remain separate supervised steps.
 
+### Current macOS per-user state and enrollment serializer (2026-08-29)
+
+Static analysis of the installed macOS 26.6.2 `biometrickitd` closes another
+wire-format ambiguity. Current `GetProtectedConfig` is command `0x2e`, version
+0, with a four-byte UID input and exact 32-byte reply. `GetCatacombState` is
+command `0x3c`, version 0, with no input and a variable reply whose length must
+be divisible by 8. `GetCatacombUUID` is command `0x38`, version 0, with a
+four-byte UID input and exact 16-byte reply. On protocol generation 2 or newer,
+`GetCatacombGroupState` is command `0x50`, version 0, with no input and a
+variable reply whose length must be divisible by 56. Sensitive returned values
+were neither queried nor retained.
+
+The current enrollment serializer also confirms command 3, version 2, and an
+exact 68-byte input on this bridge-generation-3 machine. Its partition is four
+bytes of flags, four bytes of UID, a 40-byte authorization/credential record,
+and a 20-byte device-group record. This exactly matches Linux's current layout,
+including the 16-byte ACM form in its 32-byte credential slot and the group
+type plus UUID record. Further changes to command-3 size or version are not
+supported by current macOS evidence.
+
+Sanitized logs from the current boot establish the pre-client ordering:
+bridge and sensor initialization, accessory caching, general catacomb load,
+successful UID 501 catacomb load with user protected configuration present,
+overall load completion, and only then XPC publication and initial lockout-state
+queries. The existing user's per-user database is therefore loaded before
+enrollment can be requested, not lazily by command 3. This observation does
+not distinguish first-unlock from login availability on a pristine account,
+but it makes missing preloaded per-user database state the leading remaining
+difference on Linux. Exact sanitized details and constraints are in
+`docs/macos-user-config-handoff.md`.
+
 ## Useful baseline commands
 
 ```bash
