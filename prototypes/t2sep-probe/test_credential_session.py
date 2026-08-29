@@ -73,8 +73,8 @@ class CredentialSessionTests(unittest.TestCase):
         state.initialize_acm()
         state.accept_acm_initialization(acm.encode_envelope(1, 0, 0), b"")
         state.create_context()
-        context = bytearray(range(17))
-        state.accept_context(acm.encode_envelope(1, 17, 0), context)
+        context = bytearray(range(21))
+        state.accept_context(acm.encode_envelope(1, 21, 0), context)
 
         state.request_aks_capabilities(4)
         capabilities = protected(struct.pack("<iQI", 0, 2, 0), 1)
@@ -109,22 +109,22 @@ class CredentialSessionTests(unittest.TestCase):
         self.assertEqual(
             tokens, ("acm-receive", "acm-send", "aks-receive", "aks-send"))
         self.assertTrue(state.closed)
-        self.assertEqual(context, bytearray(17))
+        self.assertEqual(context, bytearray(21))
 
     def test_live_context_requires_delete_or_explicit_abort_shutdown(self):
         state = ready_session()
         state.initialize_acm()
         state.accept_acm_initialization(acm.encode_envelope(1, 0, 0), b"")
         state.create_context()
-        context = bytearray(range(17))
-        state.accept_context(acm.encode_envelope(1, 17, 0), context)
+        context = bytearray(range(21))
+        state.accept_context(acm.encode_envelope(1, 21, 0), context)
         with self.assertRaises(session_module.CredentialSessionError):
             state.shutdown()
         self.assertFalse(state.bootstrap.aks.ownership.transport_stopped)
         state.abort_and_shutdown()
         self.assertTrue(state.closed)
         self.assertTrue(state.failed)
-        self.assertEqual(context, bytearray(17))
+        self.assertEqual(context, bytearray(21))
 
     def test_malformed_reply_drains_operation_before_fail_closed_cleanup(self):
         state = ready_session()

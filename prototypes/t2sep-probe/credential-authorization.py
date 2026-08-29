@@ -35,7 +35,7 @@ class CredentialAuthorizationPlan:
     """Own one ephemeral context from creation through mandatory teardown."""
 
     def __init__(self) -> None:
-        self.acm = acm.ContextCreatePlan()
+        self.acm = acm.CurrentContextCreatePlan()
         self.aks = aks.AuthorizationPlan()
         self._context_response: bytearray | None = None
         self._verify_request: aks.VerifySecretRequest | None = None
@@ -99,7 +99,9 @@ class CredentialAuthorizationPlan:
                 payload[:] = bytes(len(payload))
             self._fail(CredentialAuthorizationError("context ownership duplicated"))
         try:
-            self.acm.accept_context_response(envelope, payload)
+            if not self.acm.accept_context_response(envelope, payload):
+                raise acm.ACMTransportError(
+                    "live authorization requires the verified current context ABI")
         except acm.ACMTransportError as error:
             if isinstance(payload, bytearray):
                 payload[:] = bytes(len(payload))

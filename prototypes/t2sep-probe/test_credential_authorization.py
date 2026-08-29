@@ -31,8 +31,8 @@ def initialize_context(plan):
     plan.initialize_acm()
     plan.accept_acm_initialization(acm.encode_envelope(1, 0, 0), b"")
     plan.create_context()
-    response = bytearray(range(17))
-    plan.accept_context(acm.encode_envelope(1, 17, 0), response)
+    response = bytearray(range(21))
+    plan.accept_context(acm.encode_envelope(1, 21, 0), response)
     return response
 
 
@@ -61,7 +61,7 @@ class CredentialAuthorizationTests(unittest.TestCase):
             identity(), password, device_state_active=False)
         request_view = request.view()
         self.assertEqual(password, bytearray(8))
-        self.assertEqual(response, bytearray(range(17)))
+        self.assertEqual(response, bytearray(range(21)))
         self.assertNotIn("example", repr(plan))
 
         reply = protected(struct.pack("<IQ", 1, 0x82))
@@ -70,13 +70,13 @@ class CredentialAuthorizationTests(unittest.TestCase):
         self.assertEqual(result, aks.VerifySecretReply(0x82))
         self.assertTrue(plan.authorized)
         self.assertEqual(bytes(request_view), bytes(len(request_view)))
-        self.assertEqual(response, bytearray(range(17)))
+        self.assertEqual(response, bytearray(range(21)))
 
         enroll = plan.build_builtin_enrollment_request(501)
         enroll_view = enroll.view()
         self.assertEqual(enroll_view[16:32], bytes(range(16)))
         self.assertEqual(enroll_view[32:48], bytes(16))
-        self.assertEqual(response, bytearray(range(17)))
+        self.assertEqual(response, bytearray(range(21)))
         plan.finish_builtin_enrollment_request(enroll)
         self.assertEqual(bytes(enroll_view), bytes(68))
 
@@ -91,7 +91,7 @@ class CredentialAuthorizationTests(unittest.TestCase):
         self.assertEqual(delete_view[8:], bytearray(range(16)))
         plan.accept_context_delete(acm.encode_envelope(1, 0, 0), b"")
         self.assertTrue(plan.closed)
-        self.assertEqual(response, bytearray(17))
+        self.assertEqual(response, bytearray(21))
         self.assertEqual(bytes(delete_view), bytes(24))
 
     def test_bad_reply_fails_closed_but_still_permits_delete(self):
@@ -108,7 +108,7 @@ class CredentialAuthorizationTests(unittest.TestCase):
         envelope, command = plan.prepare_context_delete()
         self.assertEqual(command[8:], bytearray(range(16)))
         plan.accept_context_delete(acm.encode_envelope(1, 0, 0), b"")
-        self.assertEqual(response, bytearray(17))
+        self.assertEqual(response, bytearray(21))
         self.assertEqual(bytes(command), bytes(24))
         self.assertEqual(acm.decode_envelope(envelope).payload_length, 24)
 
@@ -124,11 +124,11 @@ class CredentialAuthorizationTests(unittest.TestCase):
         request_view = request.view()
         plan.abort()
         self.assertEqual(bytes(request_view), bytes(len(request_view)))
-        self.assertEqual(response, bytearray(range(17)))
+        self.assertEqual(response, bytearray(range(21)))
         plan.scrub_after_transport_stop()
         self.assertTrue(plan.closed)
         self.assertTrue(plan.failed)
-        self.assertEqual(response, bytearray(17))
+        self.assertEqual(response, bytearray(21))
 
     def test_reordering_never_creates_an_authorized_context(self):
         plan = authorization.CredentialAuthorizationPlan()
