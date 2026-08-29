@@ -1193,6 +1193,15 @@ from its authenticated PAM/logind session rather than letting an untrusted
 client choose it. This proves the arithmetic and policy boundary, not that a
 Linux UID can reuse any macOS keybag.
 
+There is an important operation-specific distinction: the two user-client
+cases that feed `verify_password` (`0x6d` and `0x74`) pass their caller's first
+32-bit scalar to `effective_bag_handle_actual`, but they are not members of
+`ImplicitHandleTranslate`'s three-operation zero-to-`-3` allowlist (operations
+7, 17, and 35). Their session-keybag caller therefore has to request special
+handle `-3` explicitly; treating scalar zero as the login keybag would be
+wrong for this path. The pure model exposes only the already-evaluated
+session selector sent to SEP and does not model zero as an alias.
+
 It also exposes a non-secret layout descriptor for later locked-buffer code.
 For a 12-byte password, the variant, keybag, and selector begin at offsets
 `84`, `88`, and `96`; the password length/data occupy `100`/`104`, the exact
