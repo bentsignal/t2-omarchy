@@ -2258,9 +2258,14 @@ module unload, and device unbind all passed independent verification. No
 password, fingerprint template, or biometric operation was used.
 
 This proves Linux can initialize the live AKS endpoint through Apple's
-non-secret prefix. Next, join this validated AKS prefix to the already
-validated ACM context lifecycle before introducing any password-bearing
-request.
+non-secret prefix. A new default-off combined probe now joins that prefix to
+the already validated ACM context lifecycle within one SEP CPU lifetime. It
+registers four distinct AKS/ACM DMA buffers, requires AKS environment success
+before ACM initialization, deletes the ephemeral context, stops the CPU, and
+scrubs all four buffers. A composite verifier proves the dual transport and
+both service state machines independently. This combined path passes offline
+build and regression tests but remains intentionally unexecuted pending a
+user-available hardware run.
 
 ## Useful baseline commands
 

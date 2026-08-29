@@ -95,15 +95,9 @@ FALLBACK_EVENTS = INIT_PREFIX + (
 ) + DELETE_SUFFIX
 
 
-def verify(text: str) -> None:
+def verify_service(text: str) -> None:
     if not isinstance(text, str):
         raise VerificationError("ACM context transcript must be text")
-    try:
-        if ool.verify(text, 10) != ((1, 10), (1, 10)):
-            raise VerificationError("ACM OOL profile changed")
-    except ool.VerificationError as error:
-        raise VerificationError(str(error)) from error
-
     events = []
     stopped = False
     for line in text.splitlines():
@@ -144,6 +138,17 @@ def verify(text: str) -> None:
             stopped = True
     if tuple(events) not in (MODERN_EVENTS, FALLBACK_EVENTS) or not stopped:
         raise VerificationError("ACM context lifecycle transcript is incomplete")
+
+
+def verify(text: str) -> None:
+    if not isinstance(text, str):
+        raise VerificationError("ACM context transcript must be text")
+    try:
+        if ool.verify(text, 10) != ((1, 10), (1, 10)):
+            raise VerificationError("ACM OOL profile changed")
+    except ool.VerificationError as error:
+        raise VerificationError(str(error)) from error
+    verify_service(text)
 
 
 def main() -> None:

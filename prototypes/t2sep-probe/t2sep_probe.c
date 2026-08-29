@@ -169,6 +169,16 @@ module_param(acm_context_confirmation, ulong, 0400);
 MODULE_PARM_DESC(acm_context_confirmation,
 	"Required explicit confirmation value 0x41434d4354584c46 for the ACM context lifecycle probe");
 
+static bool apple_probe_credential_startup;
+module_param(apple_probe_credential_startup, bool, 0400);
+MODULE_PARM_DESC(apple_probe_credential_startup,
+	"Register AKS and ACM together, initialize AKS, then create/delete one ephemeral ACM context");
+
+static ulong credential_startup_confirmation;
+module_param(credential_startup_confirmation, ulong, 0400);
+MODULE_PARM_DESC(credential_startup_confirmation,
+	"Required explicit confirmation value 0x414b5341434d5354 for the combined credential startup probe");
+
 struct t2sep_irq_probe {
 	atomic_t count[2];
 };
@@ -186,6 +196,7 @@ struct t2sep_irq_probe {
 #define T2SEP_AKS_TIME_SWEEP_CONFIRMATION 0x414b5354494d4553UL
 #define T2SEP_AKS_STARTUP_ENV_CONFIRMATION 0x414b53454e565052UL
 #define T2SEP_ACM_CONTEXT_CONFIRMATION 0x41434d4354584c46UL
+#define T2SEP_CREDENTIAL_STARTUP_CONFIRMATION 0x414b5341434d5354UL
 #define T2SEP_AKS_ENDPOINT 0x07
 #define T2SEP_ACM_ENDPOINT 0x0a
 #define T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)
@@ -1017,6 +1028,8 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	u32 inbox = inbox_before;
 	u32 outbox = outbox_before;
 	bool nop_valid = false;
+	bool dual_credential_ool = apple_capture_dual_credential_ool_acks ||
+				   apple_probe_credential_startup;
 	void *in_buffer = NULL;
 	void *out_buffer = NULL;
 	void *second_in_buffer = NULL;
@@ -1033,7 +1046,8 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			      apple_probe_aks_capabilities ||
 			      apple_probe_aks_time_sweep ||
 			      apple_probe_aks_startup_environment ||
-			      apple_probe_acm_context_lifecycle;
+			      apple_probe_acm_context_lifecycle ||
+			      apple_probe_credential_startup;
 	int ret = 0;
 	int i;
 
@@ -1136,7 +1150,7 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		ool_target = (apple_probe_aks_capabilities ||
 			      apple_probe_aks_time_sweep ||
 			      apple_probe_aks_startup_environment ||
-			      apple_capture_dual_credential_ool_acks) ? T2SEP_AKS_ENDPOINT :
+			      dual_credential_ool) ? T2SEP_AKS_ENDPOINT :
 			     apple_probe_acm_context_lifecycle ? T2SEP_ACM_ENDPOINT :
 			     credential_endpoint;
 	}
@@ -1149,14 +1163,14 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 					       &in_dma, GFP_KERNEL);
 		out_buffer = dma_alloc_coherent(&pdev->dev, out_size,
 					       &out_dma, GFP_KERNEL);
-		if (apple_capture_dual_credential_ool_acks) {
+		if (dual_credential_ool) {
 			second_in_buffer = dma_alloc_coherent(
 				&pdev->dev, in_size, &second_in_dma, GFP_KERNEL);
 			second_out_buffer = dma_alloc_coherent(
 				&pdev->dev, out_size, &second_out_dma, GFP_KERNEL);
 		}
 		if (!in_buffer || !out_buffer ||
-		    (apple_capture_dual_credential_ool_acks &&
+		    (dual_credential_ool &&
 		     (!second_in_buffer || !second_out_buffer))) {
 			ret = -ENOMEM;
 			goto out_stop;
@@ -1168,7 +1182,7 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		if (second_out_buffer)
 			memset(second_out_buffer, 0, out_size);
 		if (!IS_ALIGNED(in_dma, PAGE_SIZE) || !IS_ALIGNED(out_dma, PAGE_SIZE) ||
-		    (apple_capture_dual_credential_ool_acks &&
+		    (dual_credential_ool &&
 		     (!IS_ALIGNED(second_in_dma, PAGE_SIZE) ||
 		      !IS_ALIGNED(second_out_dma, PAGE_SIZE)))) {
 			dev_err(&pdev->dev, "OOL DMA addresses are not page aligned\n");
@@ -1178,7 +1192,7 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		dev_info(&pdev->dev,
 			 "pinned OOL buffers: target=%u in_dma=%pad in_size=%zu out_dma=%pad out_size=%zu\n",
 			 ool_target, &in_dma, in_size, &out_dma, out_size);
-		if (apple_capture_dual_credential_ool_acks) {
+		if (dual_credential_ool) {
 			dev_info(&pdev->dev,
 				 "pinned OOL buffers: target=%u in_dma=%pad in_size=%zu out_dma=%pad out_size=%zu\n",
 				 T2SEP_ACM_ENDPOINT, &second_in_dma, in_size,
@@ -1226,6 +1240,12 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		if (!ret && apple_probe_acm_context_lifecycle)
 			ret = t2sep_probe_acm_context_lifecycle(
 				pdev, bar4, in_buffer, out_buffer);
+		if (!ret && apple_probe_credential_startup)
+			ret = t2sep_probe_aks_startup_environment(
+				pdev, bar4, in_buffer, out_buffer);
+		if (!ret && apple_probe_credential_startup)
+			ret = t2sep_probe_acm_context_lifecycle(
+				pdev, bar4, second_in_buffer, second_out_buffer);
 	}
 
 out_stop:
@@ -1385,13 +1405,23 @@ static int t2sep_probe(struct pci_dev *pdev,
 			T2SEP_ACM_CONTEXT_CONFIRMATION);
 		return -EINVAL;
 	}
+	if (apple_probe_credential_startup &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop ||
+	     credential_startup_confirmation !=
+		T2SEP_CREDENTIAL_STARTUP_CONFIRMATION)) {
+		dev_err(&pdev->dev,
+			"combined credential startup requires start/MSI/NOP and confirmation 0x%lx\n",
+			T2SEP_CREDENTIAL_STARTUP_CONFIRMATION);
+		return -EINVAL;
+	}
 	if (apple_capture_ool_acks + apple_capture_credential_ool_acks +
 	    apple_capture_dual_credential_ool_acks +
 	    apple_probe_aks_capabilities + apple_probe_aks_time_sweep +
 	    apple_probe_aks_startup_environment +
-	    apple_probe_acm_context_lifecycle > 1) {
+	    apple_probe_acm_context_lifecycle + apple_probe_credential_startup > 1) {
 		dev_err(&pdev->dev,
-			"SBIO, single/dual credential OOL, AKS capabilities/time/startup, and ACM context modes are mutually exclusive\n");
+			"SBIO, single/dual credential OOL, AKS capabilities/time/startup, ACM context, and combined startup modes are mutually exclusive\n");
 		return -EINVAL;
 	}
 

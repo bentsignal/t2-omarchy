@@ -44,22 +44,9 @@ ENV_SUCCESS = re.compile(
     r"header_version=(\d+)")
 
 
-def verify(text: str) -> int:
+def verify_service(text: str) -> int:
     if not isinstance(text, str):
         raise VerificationError("AKS startup transcript must be text")
-    # The generic OOL verifier correctly rejects negative results.  The one
-    # exception here is Apple's explicitly modelled capabilities fallback,
-    # which this verifier validates in the ordered AKS state machine below.
-    ool_text = "\n".join(
-        line for line in text.splitlines()
-        if not CAPS_FALLBACK.search(line)
-    )
-    try:
-        if ool.verify(ool_text, 7) != ((1, 7), (1, 7)):
-            raise VerificationError("AKS OOL profile changed")
-    except ool.VerificationError as error:
-        raise VerificationError(str(error)) from error
-
     state = 0
     negotiated = None
     for line in text.splitlines():
@@ -126,6 +113,23 @@ def verify(text: str) -> int:
     if state != 7 or negotiated is None:
         raise VerificationError("AKS startup transcript is incomplete")
     return negotiated
+
+
+def verify(text: str) -> int:
+    if not isinstance(text, str):
+        raise VerificationError("AKS startup transcript must be text")
+    # The generic OOL verifier correctly rejects negative results. The one
+    # exception is Apple's explicitly modeled capabilities fallback.
+    ool_text = "\n".join(
+        line for line in text.splitlines()
+        if not CAPS_FALLBACK.search(line)
+    )
+    try:
+        if ool.verify(ool_text, 7) != ((1, 7), (1, 7)):
+            raise VerificationError("AKS OOL profile changed")
+    except ool.VerificationError as error:
+        raise VerificationError(str(error)) from error
+    return verify_service(text)
 
 
 def main() -> None:

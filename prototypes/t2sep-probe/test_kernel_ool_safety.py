@@ -37,7 +37,7 @@ class KernelOolSafetyTests(unittest.TestCase):
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
         self.assertIn(
-            "SBIO, single/dual credential OOL, AKS capabilities/time/startup, and ACM context modes are mutually exclusive",
+            "SBIO, single/dual credential OOL, AKS capabilities/time/startup, ACM context, and combined startup modes are mutually exclusive",
             SOURCE)
 
     def test_dual_credential_capture_is_separately_gated_and_nonsecret(self):
@@ -122,6 +122,17 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn("context_bytes=not-logged", SOURCE)
         self.assertNotIn("context=%", SOURCE)
         self.assertNotIn("password", SOURCE.lower())
+
+    def test_combined_credential_startup_is_dual_bounded_and_gated(self):
+        self.assertIn("static bool apple_probe_credential_startup;", SOURCE)
+        self.assertIn(
+            "credential_startup_confirmation !=\n"
+            "\t\tT2SEP_CREDENTIAL_STARTUP_CONFIRMATION", SOURCE)
+        self.assertIn(
+            "bool dual_credential_ool = apple_capture_dual_credential_ool_acks ||\n"
+            "\t\t\t\t   apple_probe_credential_startup;", SOURCE)
+        self.assertIn(
+            "pdev, bar4, second_in_buffer, second_out_buffer", SOURCE)
 
     def test_stop_precedes_scrub_and_free(self) -> None:
         function = SOURCE.index("static int t2sep_apple_start_cpu_probe")

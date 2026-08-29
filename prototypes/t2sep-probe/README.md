@@ -95,6 +95,16 @@ only 100 bytes. A subsequent live startup-prefix run negotiated version 2 and
 completed operation `0x2a` environment setup with a validated zero-status
 response.
 
+`run-credential-startup-probe.sh` is the next default-off, separately
+confirmed integration gate. It keeps AKS and ACM registered simultaneously,
+completes the validated AKS capability/environment prefix, and only then runs
+the validated secret-free ACM ephemeral context create/delete lifecycle. Its
+independent verifier requires all four non-overlapping DMA registrations,
+strict service ordering, both service state machines, CPU stop before four
+buffer scrubs/releases, MSI activity, PCI restoration/release, unload, and
+unbind. The implementation is built and tested offline but has not yet been
+run against hardware.
+
 `run-acm-context-lifecycle-probe.sh` is a different, mutually exclusive
 wrapper. It uses the observed ACM `(1/10, 1/10)` OOL profile, sends exact SCRD
 initialization, then Apple's bodyless selector-`0x1d` readiness ping before
