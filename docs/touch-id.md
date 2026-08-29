@@ -2596,6 +2596,18 @@ mirrors that order with global then per-user `NoCatacomb`, followed by the
 authenticated user policy and unchanged command 3. Successful enrollment is
 still the only point at which the durable save protocol runs.
 
+The supervised global-then-user transaction completed both initializers,
+authenticated policy creation/readback, and credential handoff, but command 3
+again returned synchronous status `261` without requesting a touch. Global
+component absence is therefore not the cause. The remaining authorization
+difference is below the BiometricKit serializer: Linux verifies the password
+against a freshly created/promoted type-0 keybag, whereas macOS verifies the
+ACM context in its established login-session lifecycle. The next static
+comparison must determine the exact `_aks_verify_password` device-state input
+used by the current Settings enrollment path and any keybag/session operation
+between verification and command 3; repeating command 3 with the current
+credential cannot add evidence.
+
 Sanitized logs from the current boot establish the pre-client ordering:
 bridge and sensor initialization, accessory caching, general catacomb load,
 successful UID 501 catacomb load with user protected configuration present,

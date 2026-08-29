@@ -104,3 +104,25 @@ presentEnrollmentSheetInWindow:withData:completionHandler:]` at
 its image base are `0x19dc6` for `parseAuthDict:toAuthData:` and
 `BiometricKit` uses `0x25f71` for
 `-[BKEnrollOperation optionsDictionaryWithError:]`.
+
+## Follow-up required after Linux status 261 (2026-08-29)
+
+Linux now reproduces ACM context creation, type-0 AKS keybag creation,
+promotion to selector `-501`, password verification, current global and UID
+501 `NoCatacomb`, authenticated `(1,1,1,0)` protected-policy creation and exact
+readback, and the current command-3 serializer. The service still returns
+status `261` synchronously before a touch. Initializing the global component
+did not change it, and `PrepareSaveCatacomb` rejects the pristine zero-identity
+component with status 22.
+
+On macOS, inspect the already pinned Settings extension call to
+`_aks_verify_password` and record the exact non-secret value of its final
+boolean/device-state argument. In the KDK implementation that boolean becomes
+input device-state bit `0x80`; Linux currently sends zero. Also trace whether
+the normal enrollment path performs any AKS/keybag/session call after password
+verification and before `ACMContextGetExternalForm` or BiometricKit command 3.
+Distinguish an established login keybag from the newly created/promoted bag
+Linux uses. Do not capture or print the password, ACM external form, keybag
+blob, biometric identity/template, or raw sensor events. Add checksum-pinned
+instruction evidence, update this handoff and `docs/touch-id.md`, run tests,
+commit, and push `main`.
