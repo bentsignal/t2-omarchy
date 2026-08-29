@@ -21,8 +21,29 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn("for (i = 0; i < 500; i++)", SOURCE)
         self.assertIn("((response[0] >> 8) & 0xff) != tag", SOURCE)
         self.assertIn("response[1] != 0", SOURCE)
-        self.assertIn("t2sep_capture_one_ool_ack(pdev, bar4, 2, 2", SOURCE)
-        self.assertIn("t2sep_capture_one_ool_ack(pdev, bar4, 3, 3", SOURCE)
+        self.assertIn(
+            "t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 2, 2", SOURCE)
+        self.assertIn(
+            "t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 3, 3", SOURCE)
+
+    def test_credential_capture_is_default_off_and_triply_gated(self) -> None:
+        self.assertIn("static bool apple_capture_credential_ool_acks;", SOURCE)
+        self.assertIn(
+            "credential_ool_confirmation != T2SEP_CREDENTIAL_OOL_CONFIRMATION",
+            SOURCE,
+        )
+        self.assertIn(
+            "(credential_endpoint != T2SEP_AKS_ENDPOINT &&\n"
+            "\t      credential_endpoint != T2SEP_ACM_ENDPOINT)",
+            SOURCE,
+        )
+        self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
+        self.assertIn("sbio and credential OOL captures are mutually exclusive", SOURCE)
+
+    def test_credential_capture_sends_no_service_envelope(self) -> None:
+        self.assertNotIn("VERIFY_SECRET", SOURCE)
+        self.assertNotIn("ACMContextCreate", SOURCE)
+        self.assertIn("T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)", SOURCE)
 
     def test_stop_precedes_scrub_and_free(self) -> None:
         function = SOURCE.index("static int t2sep_apple_start_cpu_probe")

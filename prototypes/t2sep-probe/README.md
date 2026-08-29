@@ -32,6 +32,14 @@ has no device-I/O path.
 independently observed acknowledgement profiles, and stop-scrub-release
 ownership. It deliberately has no kernel or DMA-allocation path.
 
+The kernel module now contains a separate, default-off capture gate for the
+two fixed credential endpoints. It registers two 16 KiB zeroed mappings and
+captures only their control acknowledgements; it sends no ACM or AKS service
+message. `run-credential-ool-capture.sh` adds model/PCI/driver checks, an exact
+interactive confirmation, cursor-bounded logs, independent verification, and
+unload checks. Do not run it unattended. Its only accepted endpoints are `7`
+(AKS) and `10` (ACM), and the two services must be captured in separate runs.
+
 Build against the running kernel:
 
 ```bash

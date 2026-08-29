@@ -1042,6 +1042,17 @@ mapping. Successful mappings remain retained until transport stop, explicit
 scrub, and release. This is still a pure plan: it allocates no memory and has
 no route into the kernel probe.
 
+The corresponding kernel capture path is now implemented but remains
+default-off and unexecuted. It requires CPU start, both MSI vectors, a strictly
+validated control NOP, endpoint exactly `7` or `10`, a credential-specific
+64-bit confirmation value, and mutual exclusion from the older SBIO capture.
+It allocates two zeroed 16 KiB coherent mappings under a 32-bit DMA mask,
+captures only tagged OOL-registration acknowledgements, issues Apple's stop
+before scrubbing/freeing either mapping, and never constructs an ACM or AKS
+service envelope. The wrapper adds an independent cursor-bounded transcript
+verifier and a separate human-readable confirmation. Privileged execution is
+deferred until the user is present.
+
 The same offline model computes the exact verify-secret serialized size
 without accepting secret bytes: an `0x54`-byte serialized header, the variant
 word, keybag qword, selector word, two 32-bit-length-prefixed blobs padded to

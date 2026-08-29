@@ -100,6 +100,21 @@ module_param(ool_ack_confirmation, ulong, 0400);
 MODULE_PARM_DESC(ool_ack_confirmation,
 	"Required explicit confirmation value 0x5345504f4f4c4143 for OOL acknowledgement capture");
 
+static bool apple_capture_credential_ool_acks;
+module_param(apple_capture_credential_ool_acks, bool, 0400);
+MODULE_PARM_DESC(apple_capture_credential_ool_acks,
+	"Capture only fixed ACM/AKS 16 KiB OOL acknowledgements; sends no service request");
+
+static uint credential_endpoint;
+module_param(credential_endpoint, uint, 0400);
+MODULE_PARM_DESC(credential_endpoint,
+	"Fixed credential service endpoint: 7 for AKS or 10 for ACM");
+
+static ulong credential_ool_confirmation;
+module_param(credential_ool_confirmation, ulong, 0400);
+MODULE_PARM_DESC(credential_ool_confirmation,
+	"Required explicit confirmation value 0x435245444f4f4c41 for credential OOL capture");
+
 struct t2sep_irq_probe {
 	atomic_t count[2];
 };
@@ -111,6 +126,10 @@ struct t2sep_irq_probe {
 #define T2SEP_SBIO_IN_PAGES 4
 #define T2SEP_SBIO_OUT_PAGES 75
 #define T2SEP_OOL_CONFIRMATION 0x5345504f4f4c4143UL
+#define T2SEP_CREDENTIAL_OOL_CONFIRMATION 0x435245444f4f4c41UL
+#define T2SEP_AKS_ENDPOINT 0x07
+#define T2SEP_ACM_ENDPOINT 0x0a
+#define T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)
 #define T2SEP_SBIO_IN_SIZE (T2SEP_SBIO_IN_PAGES * PAGE_SIZE)
 #define T2SEP_SBIO_OUT_SIZE (T2SEP_SBIO_OUT_PAGES * PAGE_SIZE)
 
@@ -399,11 +418,11 @@ static int t2sep_wait_intel_message(void __iomem *bar4, u32 words[4])
 }
 
 static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
-				      void __iomem *bar4, u8 opcode,
+				      void __iomem *bar4, u8 target, u8 opcode,
 				      u8 tag, dma_addr_t dma, size_t size)
 {
 	u32 request[3] = {
-		T2SEP_SBIO_ENDPOINT << 24 | opcode << 16 | tag << 8,
+		target << 24 | opcode << 16 | tag << 8,
 		lower_32_bits(dma >> PAGE_SHIFT),
 		size,
 	};
@@ -441,6 +460,9 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	void *out_buffer = NULL;
 	dma_addr_t in_dma = 0;
 	dma_addr_t out_dma = 0;
+	size_t in_size = T2SEP_SBIO_IN_SIZE;
+	size_t out_size = T2SEP_SBIO_OUT_SIZE;
+	u8 ool_target = T2SEP_SBIO_ENDPOINT;
 	int ret = 0;
 	int i;
 
@@ -531,35 +553,45 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			ret = -EPROTO;
 		}
 	}
+	if (apple_capture_credential_ool_acks && !nop_valid) {
+		dev_err(&pdev->dev,
+			"credential OOL capture skipped because NOP did not validate\n");
+		ret = -EPROTO;
+	}
 
-	if (apple_capture_ool_acks && !ret) {
+	if (apple_capture_credential_ool_acks) {
+		in_size = T2SEP_CREDENTIAL_OOL_SIZE;
+		out_size = T2SEP_CREDENTIAL_OOL_SIZE;
+		ool_target = credential_endpoint;
+	}
+
+	if ((apple_capture_ool_acks || apple_capture_credential_ool_acks) && !ret) {
 		ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 		if (ret)
 			goto out_stop;
-		in_buffer = dma_alloc_coherent(&pdev->dev, T2SEP_SBIO_IN_SIZE,
+		in_buffer = dma_alloc_coherent(&pdev->dev, in_size,
 					       &in_dma, GFP_KERNEL);
-		out_buffer = dma_alloc_coherent(&pdev->dev, T2SEP_SBIO_OUT_SIZE,
+		out_buffer = dma_alloc_coherent(&pdev->dev, out_size,
 						&out_dma, GFP_KERNEL);
 		if (!in_buffer || !out_buffer) {
 			ret = -ENOMEM;
 			goto out_stop;
 		}
-		memset(in_buffer, 0, T2SEP_SBIO_IN_SIZE);
-		memset(out_buffer, 0, T2SEP_SBIO_OUT_SIZE);
+		memset(in_buffer, 0, in_size);
+		memset(out_buffer, 0, out_size);
 		if (!IS_ALIGNED(in_dma, PAGE_SIZE) || !IS_ALIGNED(out_dma, PAGE_SIZE)) {
 			dev_err(&pdev->dev, "OOL DMA addresses are not page aligned\n");
 			ret = -ERANGE;
 			goto out_stop;
 		}
 		dev_info(&pdev->dev,
-			 "pinned OOL buffers: in_dma=%pad in_size=%zu out_dma=%pad out_size=%zu\n",
-			 &in_dma, (size_t)T2SEP_SBIO_IN_SIZE,
-			 &out_dma, (size_t)T2SEP_SBIO_OUT_SIZE);
-		ret = t2sep_capture_one_ool_ack(pdev, bar4, 2, 2, in_dma,
-						 T2SEP_SBIO_IN_SIZE);
+			 "pinned OOL buffers: target=%u in_dma=%pad in_size=%zu out_dma=%pad out_size=%zu\n",
+			 ool_target, &in_dma, in_size, &out_dma, out_size);
+		ret = t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 2, 2,
+						 in_dma, in_size);
 		if (!ret)
-			ret = t2sep_capture_one_ool_ack(pdev, bar4, 3, 3, out_dma,
-							 T2SEP_SBIO_OUT_SIZE);
+			ret = t2sep_capture_one_ool_ack(pdev, bar4, ool_target, 3, 3,
+							 out_dma, out_size);
 	}
 
 out_stop:
@@ -571,16 +603,16 @@ out_stop:
 		 apple_send_control_nop ? "accessed only by explicit bounded gates" :
 					  "untouched");
 	if (in_buffer) {
-		memzero_explicit(in_buffer, T2SEP_SBIO_IN_SIZE);
-		dma_free_coherent(&pdev->dev, T2SEP_SBIO_IN_SIZE,
+		memzero_explicit(in_buffer, in_size);
+		dma_free_coherent(&pdev->dev, in_size,
 				  in_buffer, in_dma);
 	}
 	if (out_buffer) {
-		memzero_explicit(out_buffer, T2SEP_SBIO_OUT_SIZE);
-		dma_free_coherent(&pdev->dev, T2SEP_SBIO_OUT_SIZE,
+		memzero_explicit(out_buffer, out_size);
+		dma_free_coherent(&pdev->dev, out_size,
 				  out_buffer, out_dma);
 	}
-	if (apple_capture_ool_acks)
+	if (apple_capture_ool_acks || apple_capture_credential_ool_acks)
 		dev_info(&pdev->dev,
 			 "OOL buffers scrubbed and released after CPU stop; result=%d\n",
 			 ret);
@@ -649,6 +681,22 @@ static int t2sep_probe(struct pci_dev *pdev,
 		dev_err(&pdev->dev,
 			"OOL capture requires validated discovery and explicit confirmation 0x%lx\n",
 			T2SEP_OOL_CONFIRMATION);
+		return -EINVAL;
+	}
+	if (apple_capture_credential_ool_acks &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop ||
+	     credential_ool_confirmation != T2SEP_CREDENTIAL_OOL_CONFIRMATION ||
+	     (credential_endpoint != T2SEP_AKS_ENDPOINT &&
+	      credential_endpoint != T2SEP_ACM_ENDPOINT))) {
+		dev_err(&pdev->dev,
+			"credential OOL capture requires start/MSI/NOP, endpoint 7 or 10, and confirmation 0x%lx\n",
+			T2SEP_CREDENTIAL_OOL_CONFIRMATION);
+		return -EINVAL;
+	}
+	if (apple_capture_ool_acks && apple_capture_credential_ool_acks) {
+		dev_err(&pdev->dev,
+			"sbio and credential OOL captures are mutually exclusive\n");
 		return -EINVAL;
 	}
 
