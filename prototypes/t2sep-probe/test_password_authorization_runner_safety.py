@@ -21,6 +21,7 @@ class PasswordAuthorizationRunnerSafetyTests(unittest.TestCase):
 
     def test_visible_prompt_has_a_bounded_wait(self):
         for fragment in ('exec 9<>"$prompt_fifo"',
+                         'prompt_pid=$!',
                          'read -r -t 130 serial <&9',
                          'password prompt timed out or was closed'):
             self.assertIn(fragment, SOURCE)

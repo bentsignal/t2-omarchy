@@ -10,6 +10,7 @@ serial=
 prompt_dir=
 prompt_fifo=
 prompt_fd_open=0
+prompt_pid=
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] || die "run as the desktop user; this wrapper uses passwordless sudo internally"
@@ -29,6 +30,10 @@ sudo -n true || die "passwordless sudo is unavailable"
 [[ ! -d /sys/module/t2sep_probe ]] || die "t2sep_probe is already loaded"
 
 cleanup() {
+  if [[ -n $prompt_pid ]] && kill -0 "$prompt_pid" 2>/dev/null; then
+    kill "$prompt_pid" 2>/dev/null || true
+    wait "$prompt_pid" 2>/dev/null || true
+  fi
   if (( prompt_fd_open )); then
     exec 9>&- 9<&-
     prompt_fd_open=0
@@ -57,10 +62,13 @@ mkfifo -m 600 "$prompt_fifo"
 # sole wait for the desktop terminal to return a key serial.
 exec 9<>"$prompt_fifo"
 prompt_fd_open=1
-xdg-terminal-exec "$module_dir/prompt-password-key.sh" "$prompt_fifo"
+xdg-terminal-exec "$module_dir/prompt-password-key.sh" "$prompt_fifo" &
+prompt_pid=$!
 IFS= read -r -t 130 serial <&9 || die "password prompt timed out or was closed"
 exec 9>&- 9<&-
 prompt_fd_open=0
+wait "$prompt_pid" || die "password prompt terminal failed"
+prompt_pid=
 [[ $serial =~ ^[0-9]+$ ]] || die "temporary password key creation failed"
 
 before=$(sudo -n journalctl -k --show-cursor -n 0 --no-pager | sed -n 's/^-- cursor: //p')
