@@ -19,12 +19,54 @@ MAX_HEADER_VERSION = 2
 SERIALIZED_HEADER_SIZE = 0x54
 IPC_HEADER_SIZE = 0x50
 IPC_DIGEST_SIZE = 16
+CDHASH_SIZE = 20
 ACM_CONTEXT_SIZE = 16
 CAPABILITIES_SERIALIZED_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
 
 
 class AKSTransportError(ValueError):
     pass
+
+
+def build_identity_header(version: int, *, continuous_usec: int,
+                          process_unique_id: int, credential_id: int,
+                          cdhash: bytes,
+                          calendar_seconds: int | None = None) -> bytes:
+    """Build the recovered header from explicit, source-authentic identity data.
+
+    Callers must not substitute guessed Linux identity values for Apple's
+    kernel-process fields. The explicit API makes that boundary auditable.
+    """
+    if version not in (1, 2):
+        raise AKSTransportError("AKS IPC header version must be 1 or 2")
+    continuous_usec = _uint(continuous_usec, 64, "continuous usec")
+    process_unique_id = _uint(process_unique_id, 64, "process unique ID")
+    credential_id = _uint(credential_id, 32, "credential ID")
+    if not isinstance(cdhash, bytes) or len(cdhash) != CDHASH_SIZE:
+        raise AKSTransportError("code-directory hash must be exactly 20 bytes")
+    if version == 1 and calendar_seconds is not None:
+        raise AKSTransportError("version 1 header has no calendar timestamp")
+    if version == 2:
+        if calendar_seconds is None:
+            raise AKSTransportError("version 2 header requires calendar seconds")
+        calendar_seconds = _uint(calendar_seconds, 64, "calendar seconds")
+
+    header = bytearray(IPC_HEADER_SIZE)
+    struct.pack_into("<I", header, 0x10, version)
+    struct.pack_into("<Q", header, 0x14, continuous_usec)
+    struct.pack_into("<Q", header, 0x28, process_unique_id)
+    struct.pack_into("<I", header, 0x30, credential_id)
+    header[0x34:0x48] = cdhash
+    if version == 2:
+        struct.pack_into("<Q", header, 0x48, calendar_seconds)
+    return bytes(header)
+
+
+def _uint(value: int, bits: int, label: str) -> int:
+    if (isinstance(value, bool) or not isinstance(value, int)
+            or not 0 <= value < (1 << bits)):
+        raise AKSTransportError(f"{label} must be an unsigned {bits}-bit integer")
+    return value
 
 
 def payload_digest(header: bytes, payload: bytes) -> bytes:

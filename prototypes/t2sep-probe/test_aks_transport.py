@@ -15,6 +15,40 @@ SPEC.loader.exec_module(aks)
 
 
 class AKSTransportTests(unittest.TestCase):
+    def test_build_identity_header_layout(self):
+        cdhash = bytes(range(20))
+        header = aks.build_identity_header(
+            2, continuous_usec=0x1122334455667788,
+            process_unique_id=0x8877665544332211,
+            credential_id=0xaabbccdd, cdhash=cdhash,
+            calendar_seconds=0x0102030405060708)
+        self.assertEqual(len(header), 0x50)
+        self.assertEqual(struct.unpack_from("<I", header, 0x10)[0], 2)
+        self.assertEqual(struct.unpack_from("<Q", header, 0x14)[0],
+                         0x1122334455667788)
+        self.assertEqual(header[0x1c:0x20], bytes(4))
+        self.assertEqual(struct.unpack_from("<Q", header, 0x20)[0], 0)
+        self.assertEqual(struct.unpack_from("<Q", header, 0x28)[0],
+                         0x8877665544332211)
+        self.assertEqual(struct.unpack_from("<I", header, 0x30)[0], 0xaabbccdd)
+        self.assertEqual(header[0x34:0x48], cdhash)
+        self.assertEqual(struct.unpack_from("<Q", header, 0x48)[0],
+                         0x0102030405060708)
+
+    def test_build_identity_header_version_rules(self):
+        kwargs = dict(continuous_usec=1, process_unique_id=2,
+                      credential_id=3, cdhash=bytes(20))
+        self.assertEqual(aks.build_identity_header(1, **kwargs)[0x48:], bytes(8))
+        with self.assertRaises(aks.AKSTransportError):
+            aks.build_identity_header(1, **kwargs, calendar_seconds=4)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.build_identity_header(2, **kwargs)
+        for bad_hash in (b"", bytes(19), bytes(21)):
+            with self.assertRaises(aks.AKSTransportError):
+                aks.build_identity_header(1, **{**kwargs, "cdhash": bad_hash})
+        with self.assertRaises(aks.AKSTransportError):
+            aks.build_identity_header(1, **{**kwargs, "credential_id": -1})
+
     def test_payload_digest_version_1(self):
         header = bytearray(range(aks.IPC_HEADER_SIZE))
         struct.pack_into("<I", header, 0x10, 1)

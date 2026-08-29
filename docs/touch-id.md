@@ -1046,9 +1046,15 @@ followed by the payload, while version 2 extends the header range through byte
 `0x4f`. Both store only the first 16 SHA-256 bytes at header offset zero. The
 pure transport model implements generation and constant-time validation for
 this digest and rejects every header version except 1 and 2. It intentionally
-cannot construct the header itself: the still-unresolved process identity,
-code-directory hash, timestamps, and version-specific fields must not be
-guessed for a live SEP request.
+constructs the recovered layout only from explicit caller-supplied identity
+data: version at `0x10`, `mach_continuous_time` converted to microseconds at
+`0x14`, zero flags and reserved qword at `0x1c` and `0x20`, process unique ID
+at `0x28`, the process credential's 32-bit field at `0x30`, and the 20-byte
+code-directory hash at `0x34`. Version 2 adds calendar seconds at `0x48`.
+`get_platform_cdhash` uses `cs_get_cdhash`; if that fails, Apple stores
+SHA-1 of the process unique ID instead. The model deliberately has no Linux
+identity defaults: these Apple kernel-process values must not be guessed for
+a live SEP request.
 
 AKS does not use the SBIO generic-transfer notification. Its Intel mailbox
 envelope is exactly 12 bytes: endpoint `0x07`; a 7-bit selector in byte 1 with
