@@ -48,3 +48,70 @@ The existing comparison anchors are:
 
 Do as much as possible autonomously. If current macOS prevents safe read-only
 extraction, document the exact blocker and the least-invasive next option.
+
+## Results from the installed 25G83 kernel collection
+
+Read-only inspection completed on 2026-08-29. The installed boot kernel
+collection was
+`/System/Library/KernelCollections/BootKernelExtensions.kc`, SHA-256
+`c80161fa3065883753fc285339281361a8469cbb6fb27653c88e2a22eb4807a4`.
+The AppleKeyStore fileset has UUID
+`12144241-3811-396D-8297-C5432D2FB286`, source version 55, VM base
+`0xffffff8001a73000`, and fileset file offset `0x1973000`.
+
+The important result is that the Linux protected-header codec is already the
+installed ABI:
+
+- `_gen_ipc_header` zeros an `0x50`-byte header, writes the version at `+0x10`,
+  continuous microseconds at `+0x14`, the process unique ID at `+0x28`, the
+  audit session ID at `+0x30`, and the 20-byte cdhash at `+0x34`. Version 2
+  additionally writes calendar time at `+0x48`; version 1 does not.
+- `_payload_hash` is unkeyed SHA-256. It hashes header ranges `+0x10/4`,
+  `+0x14/8`, `+0x1c/4`, `+0x20/8`, then `+0x28/0x20` for v1 or
+  `+0x28/0x28` for v2, followed by the operation payload. The first 16 digest
+  bytes are copied to header `+0`. Equivalently this is the contiguous range
+  `header[0x10:0x48] + payload` for v1 and
+  `header[0x10:0x50] + payload` for v2.
+- There is no keyed MAC, encryption, nonce, or hidden boot value in this
+  header/hash path.
+
+`AppleKeyStore::init_sep_endpoint()` constructs its transport callback and
+immediately calls `_ipc_get_capabilities` with version 1. On success it selects
+`min(remote_version, 2)`; on failure it explicitly selects version 1. It then
+calls `AppleKeyStore::set_env(bool)`. No protected AKS prerequisite occurs
+before capabilities: there is no IPC session establishment, nonce exchange,
+encryption setup, keybag operation, or ACM operation in between endpoint
+creation and the capabilities call.
+
+The installed endpoint parser also confirms the mailbox envelope used by the
+Linux probe. `AppleKeyStore::sep_action()` reads the operation from byte 1,
+uses its high bit as the reply bit, reads the correlation tag from byte 2, and
+copies the complete 64-bit reply word to the waiter. It dispatches operation
+`7` to the AKS out-of-line delivery path. Thus the current Linux capability
+request word `0x00014d07` and correlated reply word `0x0001cd07` have the
+right endpoint, operation, reply bit, and tag placement. The tag is carried
+through the word; there is no evidence of a special first-call tag.
+
+The installed `_ipc_get_capabilities` uses operation selector `0x4d` and the
+same common protected descriptor family already modeled by the Linux probe.
+The endpoint initialization result is the negotiated header version, not an
+additional session handle.
+
+### Consequence for Linux
+
+The stalled request is not explained by header layout, protected hash ranges,
+operation `0x4d`, endpoint `7`, reply-bit placement, correlation tag placement,
+or a missing pre-capabilities handshake. The strongest remaining hypothesis is
+the continuous-time value. macOS signs `mach_continuous_time` converted to
+microseconds, while Linux currently signs `ktime_get_boottime_ns()`. Those are
+host boot clocks, but the Linux probe resets/boots the T2 during its own
+startup, so the value accepted by the service may need to be related to the
+T2 boot epoch or otherwise translated. The next bounded experiment should
+sweep plausible continuous-usec values while holding the now-verified header,
+hash, body, and mailbox word fixed, and should log only candidate classes and
+reply/no-reply status.
+
+Process identity remains a lower-priority check. AppleKeyStore runs in kernel
+process context, for which process unique ID zero, default audit session zero,
+and absent cdhash remain consistent with the installed call sites and macOS
+audit definitions.
