@@ -1711,6 +1711,19 @@ failure is not the live cause. The enrollment client now performs that same
 strict per-connection initialization before identity enumeration and command
 `3`, closing the next bounded protocol-state mismatch without changing policy.
 
+The supervised run with that initialization still returned synchronous status
+`261` before any service event or requested touch. Password-backed creation,
+promotion to `-501`, ACM verification, credential handoff, both absence proofs,
+context deletion, CPU stop, and DMA scrub all passed. Matching KDK disassembly
+shows `commandStartEnroll` forwards command `3` with the exact 68-byte input
+and returns the underlying perform-command status, so this result is not the
+userspace client's response-length validation. Current bridgeOS strings expose
+separate `GetProtectedConfig`/`SetProtectedConfig` and catacomb lifecycle
+commands in addition to the now-proven system config. The next read-only
+comparison must identify the current per-user getter and catacomb-state getter,
+their versions and exact response shapes for UID 501; no setter or catacomb
+mutation is justified yet.
+
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
 runs. Its 16-byte external form is readable once through a root-only sysfs
