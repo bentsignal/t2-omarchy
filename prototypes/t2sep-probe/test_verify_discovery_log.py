@@ -22,6 +22,8 @@ def line(message):
 def valid_log():
     return "\n".join((
         "unrelated service log",
+        line("temporarily enabled PCI memory decoding for this probe"),
+        line("allocated MSI vectors 108 and 109"),
         line("control NOP response passed strict validation"),
         line("discovery candidate 0: 080000fd 6f696273 00000000 00100100"),
         line("discovery identity: id=0x8 name=6f696273"),
@@ -29,6 +31,10 @@ def valid_log():
         line("discovery OOL: id=0x8 in=4..65 pages out=1..75 pages"),
         line("bounded discovery complete: records=2 identities=1 sbio=yes limits=yes result=0"),
         line("issued Apple CPU-stop value 5 at +0x8024; payload FIFOs accessed only by explicit bounded gates"),
+        line("MSI observations: vector0=3 vector1=3"),
+        line("restored PCI command word from 0x0002 to original 0x0006"),
+        line("temporary PCI enable released before probe returned"),
+        line("read-only probe removed"),
     ))
 
 
@@ -58,6 +64,9 @@ class DiscoveryLogVerifierTests(unittest.TestCase):
                              + line("control NOP response passed strict validation")),
             original.replace(line("bounded discovery complete: records=2 identities=1 sbio=yes limits=yes result=0") + "\n", ""),
             original.replace(line("issued Apple CPU-stop value 5 at +0x8024; payload FIFOs accessed only by explicit bounded gates"), ""),
+            original.replace(line("MSI observations: vector0=3 vector1=3"),
+                             line("MSI observations: vector0=0 vector1=3")),
+            original.replace(line("read-only probe removed"), ""),
         )
         for text in cases:
             with self.subTest(text=text):

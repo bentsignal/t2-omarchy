@@ -503,7 +503,7 @@ SEP, two MSI vectors, verified NOP output, module cleanup, and the exact final
 `sbio=yes limits=yes result=0` result:
 
 ```bash
-pkexec ./run-discovery.sh
+pkexec ./run-discovery.sh I_UNDERSTAND_PASSIVE_SEP_DISCOVERY
 ```
 
 The wrapper no longer accepts those conditions through independent grep
@@ -513,6 +513,10 @@ contiguous zero-based candidate indices, one matching identity/OOL detail per
 candidate, a kernel summary whose counts match an independent replay through
 `DiscoveryTable`, usable `sbio`, and one later CPU-stop record. It rejects
 failure words, stale/mixed sessions, truncation, reordered or altered details,
+zero/missing MSI observations, incomplete PCI restoration/release, and missing
+probe removal. Both the NOP and discovery wrappers require a freshly built
+module, an exact human confirmation, and a fresh journal cursor; neither can
+fall back to older recent log lines.
 summary disagreement, and transport-error candidate bits.
 
 The first privileged run was performed after a true cold boot on 2026-08-28.

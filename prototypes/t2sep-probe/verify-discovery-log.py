@@ -42,6 +42,7 @@ SUMMARY = re.compile(
     r"bounded discovery complete: records=(\d+) identities=(\d+) "
     r"sbio=(yes|no) limits=(yes|no) result=(-?\d+)"
 )
+MSI = re.compile(r"MSI observations: vector0=(\d+) vector1=(\d+)")
 FAILURE_WORDS = re.compile(
     r"\b(error|failed|skipped|timed out|invalid|duplicate|inverted|lacks|outside)\b",
     re.IGNORECASE,
@@ -60,8 +61,14 @@ def verify_log(text: str) -> VerificationResult:
         raise VerificationError("discovery log must be text")
     table = discovery.DiscoveryTable()
     nop_count = 0
+    enabled = False
+    msi_allocated = False
     summary_count = 0
     stop_count = 0
+    msi_observed = False
+    pci_restored = False
+    pci_released = False
+    removed = False
     records = 0
     detail_expected: discovery.EndpointInfo | None = None
     detail_count = 0
@@ -69,18 +76,22 @@ def verify_log(text: str) -> VerificationResult:
     summary_seen = False
 
     for line in text.splitlines():
-        if "t2sep_probe" not in line:
-            continue
-        # The kernel emits this module-wide warning before probe() and without
-        # a PCI device prefix when a locally built module is unsigned.  It is
-        # not a transport/probe failure and must not mask the bounded session's
-        # own result.  All device-scoped "failed" records remain fatal below.
-        if "t2sep_probe: module verification failed:" in line:
+        if "t2sep_probe 0000:04:00.2:" not in line:
             continue
         if FAILURE_WORDS.search(line):
             raise VerificationError(f"probe log contains a failure: {line.strip()}")
+        if "temporarily enabled PCI memory decoding for this probe" in line:
+            if enabled or nop_count:
+                raise VerificationError("PCI enable is duplicated or out of order")
+            enabled = True
+            continue
+        if "allocated MSI vectors " in line:
+            if not enabled or msi_allocated or nop_count:
+                raise VerificationError("MSI allocation is duplicated or out of order")
+            msi_allocated = True
+            continue
         if "control NOP response passed strict validation" in line:
-            if records or summary_seen:
+            if not msi_allocated or records or summary_seen:
                 raise VerificationError("validated NOP appears after discovery began")
             nop_count += 1
             if nop_count > 1:
@@ -145,7 +156,32 @@ def verify_log(text: str) -> VerificationResult:
             stop_count += 1
             if stop_count > 1:
                 raise VerificationError("multiple transport-stop records are mixed")
+            continue
 
+        match = MSI.search(line)
+        if match:
+            if (stop_count != 1 or msi_observed or
+                    not int(match.group(1)) or not int(match.group(2))):
+                raise VerificationError("MSI evidence is missing, zero, or out of order")
+            msi_observed = True
+            continue
+        if "restored PCI command word " in line:
+            if not msi_observed or pci_restored:
+                raise VerificationError("PCI restoration is duplicated or out of order")
+            pci_restored = True
+            continue
+        if "temporary PCI enable released before probe returned" in line:
+            if not pci_restored or pci_released:
+                raise VerificationError("PCI release is duplicated or out of order")
+            pci_released = True
+            continue
+        if "read-only probe removed" in line:
+            if not pci_released or removed:
+                raise VerificationError("probe removal is duplicated or out of order")
+            removed = True
+
+    if not enabled or not msi_allocated:
+        raise VerificationError("discovery transcript lacks setup evidence")
     if nop_count != 1:
         raise VerificationError("exactly one validated control NOP is required")
     if records == 0 or detail_expected is not None or detail_count != records:
@@ -154,6 +190,8 @@ def verify_log(text: str) -> VerificationResult:
         raise VerificationError("exactly one discovery summary is required")
     if stop_count != 1:
         raise VerificationError("exactly one post-discovery transport stop is required")
+    if not all((msi_observed, pci_restored, pci_released, removed)):
+        raise VerificationError("discovery transcript lacks complete teardown evidence")
     try:
         sbio = table.finalize_sbio()
     except discovery.DiscoveryError as error:

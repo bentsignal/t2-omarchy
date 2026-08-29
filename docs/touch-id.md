@@ -1773,7 +1773,9 @@ last. The reversible change used `efibootmgr`; no EFI or APFS files changed.
 `prototypes/t2sep-probe/run-control-nop.sh` is the fail-closed post-macOS
 comparison runner. It validates the exact model and PCI identity, refuses an
 already-bound SEP, sends only the previously proven control NOP, and guarantees
-module cleanup. Its first invocation was canceled while waiting for polkit and
+module cleanup. It now also requires the exact
+`I_UNDERSTAND_CONTROL_NOP_PROBE` argument, a freshly built module, and a fresh
+journal cursor, with no recent-log fallback. Its first invocation was canceled while waiting for polkit and
 did not load the module. The successful invocation after fingerprint enrollment
 returned the same valid response as the pre-macOS baseline:
 
