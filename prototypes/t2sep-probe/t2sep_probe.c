@@ -626,6 +626,33 @@ static int t2sep_wait_intel_message(void __iomem *bar4, u32 words[4])
 	return -ETIMEDOUT;
 }
 
+static int t2sep_wait_aks_make_system_reply(
+	struct pci_dev *pdev, void __iomem *bar4, s32 target_selector,
+	u32 words[4])
+{
+	static const u8 notification_opcodes[] = { 0x00, 0x04 };
+	unsigned int index;
+	int ret;
+
+	for (index = 0; index < ARRAY_SIZE(notification_opcodes); index++) {
+		ret = t2sep_wait_intel_message(bar4, words);
+		if (ret)
+			return ret;
+		if ((words[0] & 0x00ffffff) !=
+		    (T2SEP_AKS_ENDPOINT |
+		     (u32)notification_opcodes[index] << 8 | 1 << 16) ||
+		    (s8)(words[0] >> 24) != 0 ||
+		    (s32)words[1] != target_selector || words[2] != 0 ||
+		    (words[3] & (T2SEP_INTEL_MSG_ERROR |
+				 T2SEP_INTEL_MSG_FATAL)))
+			return -EPROTO;
+		dev_info(&pdev->dev,
+			 "AKS make-system-keybag notification passed strict validation: ordinal=%u opcode=%#04x target_selector=%d\n",
+			 index + 1, notification_opcodes[index], target_selector);
+	}
+	return t2sep_wait_intel_message(bar4, words);
+}
+
 static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
 				      void __iomem *bar4, u8 target, u8 opcode,
 				      u8 tag, dma_addr_t dma, size_t size,
@@ -1408,7 +1435,8 @@ out_put:
 	dev_info(&pdev->dev,
 		 "AKS make-system-keybag request: endpoint=7 selector=0x0d tag=4 length=%zu variant=0 source_selector=%d target_selector=%d secret_bytes=not-logged\n",
 		 request_size, source_selector, target_selector);
-	ret = t2sep_wait_intel_message(bar4, response);
+	ret = t2sep_wait_aks_make_system_reply(
+		pdev, bar4, target_selector, response);
 	if (ret)
 		goto out_scrub;
 	reply_received = true;
@@ -1422,8 +1450,8 @@ out_put:
 		goto out_scrub;
 	}
 	service_status = (s8)(response[0] >> 24);
-	if (service_status ||
-	    response[1] != T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE << 16) {
+	if (service_status || response[1] !=
+	    (T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE << 16 | 1)) {
 		dev_info(&pdev->dev,
 			 "AKS make-system-keybag rejected: status=%d reply_size=%u\n",
 			 service_status, response[1] >> 16);
@@ -1676,11 +1704,18 @@ static int t2sep_probe_aks_keybag_control(
 				 "AKS copy-keybag confirms teardown: role=%s selector=%d status=-3 absent=yes\n",
 				 lifecycle_role, selector);
 			ret = 0;
+		} else if (!service_status && !(response[1] & 0xffff) &&
+			   reply_size >= T2SEP_AKS_SERIALIZED_HEADER_SIZE &&
+			   reply_size <= T2SEP_CREDENTIAL_OOL_SIZE) {
+			dev_info(&pdev->dev,
+				 "AKS copy-keybag confirms presence: role=%s selector=%d\n",
+				 lifecycle_role, selector);
+			ret = -EEXIST;
 		} else {
 			dev_err(&pdev->dev,
-				"AKS copy-keybag did not prove absence: status=%d reply_size=%zu\n",
+				"AKS copy-keybag returned unexpected result: status=%d reply_size=%zu\n",
 				service_status, reply_size);
-			ret = -EEXIST;
+			ret = -EREMOTEIO;
 		}
 		goto out_scrub;
 	}
@@ -1708,6 +1743,30 @@ out_scrub:
 	memzero_explicit(receive, T2SEP_CREDENTIAL_OOL_SIZE);
 	memzero_explicit(digest, sizeof(digest));
 	return ret;
+}
+
+static int t2sep_probe_aks_ensure_keybag_absent(
+	struct pci_dev *pdev, void __iomem *bar4,
+	void *send_buffer, void *receive_buffer, u32 version,
+	u8 *tag, u64 keybag_handle, s32 selector, const char *lifecycle_role)
+{
+	int ret;
+
+	ret = t2sep_probe_aks_keybag_control(
+		pdev, bar4, send_buffer, receive_buffer, version, 0x02,
+		(*tag)++, keybag_handle, selector, lifecycle_role);
+	if (!ret)
+		return 0;
+	if (ret != -EEXIST)
+		return ret;
+	ret = t2sep_probe_aks_keybag_control(
+		pdev, bar4, send_buffer, receive_buffer, version, 0x05,
+		(*tag)++, keybag_handle, selector, lifecycle_role);
+	if (ret)
+		return ret;
+	return t2sep_probe_aks_keybag_control(
+		pdev, bar4, send_buffer, receive_buffer, version, 0x02,
+		(*tag)++, keybag_handle, selector, lifecycle_role);
 }
 
 static int t2sep_probe_password_authorization(
@@ -1804,10 +1863,9 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 	bool promoted = false;
 	int promote_ret = -ECANCELED;
 	int verify_ret = -ECANCELED;
-	int system_unload_ret = -ECANCELED;
 	int system_absent_ret = -ECANCELED;
-	int unload_ret = -ECANCELED;
 	int absent_ret = -ECANCELED;
+	u8 teardown_tag = 5;
 	int handoff_ret = 0;
 	int delete_ret;
 	int ret;
@@ -1844,19 +1902,12 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 		keybag_handle, system_selector);
 	if (!verify_ret && enrollment_handoff)
 		handoff_ret = t2sep_probe_authorized_enrollment_wait(pdev, context);
-	system_unload_ret = t2sep_probe_aks_keybag_control(
-		pdev, bar4, aks_send, aks_receive, version, 0x05, 5,
-		keybag_handle, system_selector, "system");
-	system_absent_ret = t2sep_probe_aks_keybag_control(
-		pdev, bar4, aks_send, aks_receive, version, 0x02, 6,
-		keybag_handle, system_selector, "system");
-
 out_unload:
-	unload_ret = t2sep_probe_aks_keybag_control(
-		pdev, bar4, aks_send, aks_receive, version, 0x05, 7,
-		keybag_handle, runtime_selector, "source");
-	absent_ret = t2sep_probe_aks_keybag_control(
-		pdev, bar4, aks_send, aks_receive, version, 0x02, 8,
+	system_absent_ret = t2sep_probe_aks_ensure_keybag_absent(
+		pdev, bar4, aks_send, aks_receive, version, &teardown_tag,
+		keybag_handle, system_selector, "system");
+	absent_ret = t2sep_probe_aks_ensure_keybag_absent(
+		pdev, bar4, aks_send, aks_receive, version, &teardown_tag,
 		keybag_handle, runtime_selector, "source");
 
 out_delete:
@@ -1865,22 +1916,18 @@ out_delete:
 	memzero_explicit(context, sizeof(context));
 	memzero_explicit(&keybag_handle, sizeof(keybag_handle));
 	dev_info(&pdev->dev,
-		 "ephemeral keybag authorization completed: created=%s promoted=%s promote=%d authorized=%s system_unload=%d system_absent_proof=%d source_unload=%d source_absent_proof=%d context_delete=%d secret_bytes=not-logged\n",
+		 "ephemeral keybag authorization completed: created=%s promoted=%s promote=%d authorized=%s system_absent_proof=%d source_absent_proof=%d context_delete=%d secret_bytes=not-logged\n",
 		 created ? "yes" : "no", promoted ? "yes" : "no", promote_ret,
-		 verify_ret ? "no" : "yes", system_unload_ret,
-		 system_absent_ret, unload_ret, absent_ret, delete_ret);
+		 verify_ret ? "no" : "yes", system_absent_ret, absent_ret,
+		 delete_ret);
 	if (delete_ret)
 		return delete_ret;
 	if (ret)
 		return ret;
 	if (promote_ret)
 		return promote_ret;
-	if (system_unload_ret)
-		return system_unload_ret;
 	if (system_absent_ret)
 		return system_absent_ret;
-	if (unload_ret)
-		return unload_ret;
 	if (absent_ret)
 		return absent_ret;
 	if (handoff_ret)

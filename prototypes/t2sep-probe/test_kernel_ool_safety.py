@@ -173,10 +173,9 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "selector=0x0d tag=4",
                 "s32 system_selector = -(s32)macos_session_uid",
                 "t2sep_probe_aks_verify_password(",
-                "version, 0x05, 5",
-                "version, 0x02, 6",
-                "version, 0x05, 7",
-                "version, 0x02, 8",
+                "t2sep_wait_aks_make_system_reply(",
+                "notification_opcodes[] = { 0x00, 0x04 }",
+                "t2sep_probe_aks_ensure_keybag_absent(",
                 'keybag_handle, system_selector, "system"',
                 'keybag_handle, runtime_selector, "source"',
                 "status=-3 absent=yes",
@@ -187,17 +186,15 @@ class KernelOolSafetyTests(unittest.TestCase):
                               SOURCE.index("static int t2sep_probe_ephemeral"))
         promote = SOURCE.index("t2sep_probe_aks_make_system_keybag(", create)
         verify = SOURCE.index("t2sep_probe_aks_verify_password(", promote)
-        unload = SOURCE.index("version, 0x05, 5", verify)
-        absence = SOURCE.index("version, 0x02, 6", unload)
-        source_unload = SOURCE.index("version, 0x05, 7", absence)
-        source_absence = SOURCE.index("version, 0x02, 8", source_unload)
+        system_absence = SOURCE.index(
+            "t2sep_probe_aks_ensure_keybag_absent(", verify)
+        source_absence = SOURCE.index(
+            "t2sep_probe_aks_ensure_keybag_absent(", system_absence + 1)
         delete = SOURCE.index("t2sep_probe_acm_context_delete(", source_absence)
         self.assertLess(create, promote)
         self.assertLess(promote, verify)
-        self.assertLess(verify, unload)
-        self.assertLess(unload, absence)
-        self.assertLess(absence, source_unload)
-        self.assertLess(source_unload, source_absence)
+        self.assertLess(verify, system_absence)
+        self.assertLess(system_absence, source_absence)
         self.assertLess(source_absence, delete)
 
     def test_authorized_enrollment_handoff_is_read_once_and_bounded(self):
@@ -215,7 +212,7 @@ class KernelOolSafetyTests(unittest.TestCase):
             self.assertIn(fragment, SOURCE)
         publish = SOURCE.index("memcpy(t2sep_enrollment_credential, context")
         wait = SOURCE.index("wait_for_completion_timeout", publish)
-        unload = SOURCE.index("version, 0x05, 5", wait)
+        unload = SOURCE.index("t2sep_probe_aks_ensure_keybag_absent(", wait)
         self.assertLess(publish, wait)
         self.assertLess(wait, unload)
 

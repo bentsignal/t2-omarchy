@@ -108,10 +108,24 @@ positive source, a target below `-2` other than `-5`, and an existing source
 bag; it serializes and reloads the bag under the target before applying the
 passcode. The Linux gate therefore promotes runtime selector `1` to the
 explicit `-UID` selector, verifies the ACM context against that promoted bag,
-then unloads and independently proves absence for both target and source.
-Distinct lifecycle labels and tags make either leaked mapping fail the strict
-transcript verifier. This promotion path is source-disabled until a supervised
-run; it is not yet evidence that BiometricKit accepts the context.
+then independently ensures absence for both target and source. Distinct
+lifecycle labels and tags make either leaked mapping fail the strict transcript
+verifier.
+
+The first live promotion request exposed an additional ordering rule rather
+than reaching enrollment. Before the tagged operation-`0x0d` reply, T2 emitted
+two endpoint-7 keybag notifications with opcodes `0` and `4`, tag `1`, and the
+exact target selector `-501`. The original single-reply waiter consumed the
+first notification and failed closed; later reads proved the real correlated
+reply was still queued as `00048d07 00580001 ...`. CPU stop and DMA scrub ran,
+but ordinary message-level teardown could not be verified because the queue
+was displaced. The new waiter requires those two notifications in exact order
+before accepting the tagged reply, including its observed low flag `1`.
+Cleanup is now state-adaptive: a strict copy first proves a mapping absent or
+present, and only a proven-present mapping is unloaded and checked again. This
+also covers the observed fact that promotion moves/remaps the positive source
+rather than necessarily retaining two live bags. A corrected supervised run
+is still required before BiometricKit acceptance is known.
 
 `run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
 experiment. It repeats that proven lifecycle but keeps the authorized ACM

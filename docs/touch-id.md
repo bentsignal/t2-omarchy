@@ -1591,11 +1591,30 @@ handle `1` is not equivalent to installing a `-501` user-session bag.
 
 The bounded Linux experiment now inserts that exact operation between create
 and verify. Verification uses the promoted `-UID` selector. Cleanup unloads
-and performs independent status-`-3` absence checks for both the promoted
-target and original runtime source before context deletion and CPU stop. The
-transcript verifier distinguishes the two mappings by lifecycle role and fails
-if either teardown is missing. A supervised live run remains required before
-this promotion can be called hardware-proven.
+only a mapping whose copy operation first proves it present, and performs an
+independent status-`-3` absence check for both the promoted target and original
+runtime source before context deletion and CPU stop. The transcript verifier
+distinguishes the two mappings by lifecycle role and fails if either teardown
+is missing.
+
+The first supervised promotion request did not reach verification because it
+revealed asynchronous ordering that the initial receiver did not yet model.
+T2 emitted two endpoint-7 notifications before the correlated reply: opcode
+`0`, tag `1`, selector `-501`, then opcode `4` with the same tag and selector.
+The eventual operation reply was observed later in the displaced queue as
+`00048d07 00580001 ...`: status zero, operation `0x8d`, request tag `4`, body
+size `0x58`, and low transport flag `1`. The old waiter consumed the first
+notification as a malformed reply; subsequent cleanup reads were consequently
+mis-correlated, so the run failed closed. CPU stop, OOL scrub, PCI restoration,
+and module removal still completed, but message-level absence was not claimed.
+
+The corrected waiter now requires those two exact notifications in order and
+then the exact tagged reply. Cleanup first issues copy for each lifecycle role:
+status `-3` proves it already absent, while only a valid successful copy proves
+presence and permits unload followed by another absence check. This handles
+both a moved source and a retained source without guessing after a partial
+promotion. Another supervised run is required to prove the corrected promotion
+and determine whether it changes BiometricKit's synchronous `-3`.
 
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
