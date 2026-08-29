@@ -1163,6 +1163,26 @@ independent verifier therefore establishes `ACM_REPLY_PROFILE` as
 `(send=1/10, receive=1/10)`. No ACM service envelope, credential, or biometric
 command was sent.
 
+That profile now gates a separate, still-unexecuted ACM context-lifecycle
+kernel path. It is mutually exclusive with every discovery/capture/AKS mode
+and requires its own 64-bit confirmation. After the two exact `(1/10, 1/10)`
+registrations, it sends only the source-proven SCRD initialization, token-free
+selector-1 context creation, and selector-2 deletion of that same ephemeral
+context. The create reply must be exactly 17 bytes; only its first 16 bytes are
+copied into the delete request, and neither portion is logged. Every request
+and reply envelope is checked for endpoint 10, message type 1, exact phase
+length, zero status/reserved word, and absent transport-error flags. Regardless
+of the phase result, CPU stop precedes explicit scrubbing and freeing of both
+16 KiB DMA mappings.
+
+`run-acm-context-lifecycle-probe.sh` adds the model/PCI/driver checks, exact
+human confirmation, a fresh journal cursor, unload/unbind checks, and an
+independent verifier. The verifier composes the proven endpoint-10 OOL
+lifecycle, byte-exact non-secret envelope sequence, create-before-delete order,
+no-context-logging markers, and the complete MSI/PCI/CPU-stop teardown. Its
+source and 295-test checkpoint are prepared for a supervised run; no ACM
+service command has yet been executed on this T2.
+
 A next-stage kernel path is prepared but unexecuted. It requires a new
 capabilities-specific 64-bit confirmation and is mutually exclusive with all
 other OOL modes. Only after the proven `(1/7, 1/7)` registrations does it

@@ -62,6 +62,17 @@ the kernproc execution-context identity remains source-grounded inference
 until a supervised run confirms or rejects it. Its wrapper also requires a
 fresh journal cursor and has no stale recent-log fallback.
 
+`run-acm-context-lifecycle-probe.sh` is a different, mutually exclusive and
+still-unexecuted wrapper. It uses the now-observed ACM `(1/10, 1/10)` OOL
+profile, sends exact SCRD initialization, creates one token-free ephemeral
+context, and deletes that same context before CPU stop. It never logs the
+17-byte response or the 16-byte external form. The kernel path validates every
+endpoint/type/length/status/reserved/error field, stops before DMA cleanup on
+all exits, and requires its own confirmation. The independent cursor-bounded
+verifier additionally proves exact phase ordering, secret-free log markers,
+MSI activity, PCI restoration/release, unload, and unbind. The code is built
+and tested but must not be run unattended.
+
 The kernel module now contains a separate, default-off capture gate for the
 two fixed credential endpoints. It registers two 16 KiB zeroed mappings and
 captures only their control acknowledgements; it sends no ACM or AKS service

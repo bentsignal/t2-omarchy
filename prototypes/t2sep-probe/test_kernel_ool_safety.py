@@ -37,7 +37,7 @@ class KernelOolSafetyTests(unittest.TestCase):
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
         self.assertIn(
-            "SBIO, credential OOL, and AKS capabilities modes are mutually exclusive",
+            "SBIO, credential OOL, AKS capabilities, and ACM context modes are mutually exclusive",
             SOURCE)
 
     def test_aks_capabilities_is_separately_gated_and_nonsecret(self) -> None:
@@ -63,6 +63,20 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertNotIn("VERIFY_SECRET", SOURCE)
         self.assertNotIn("ACMContextCreate", SOURCE)
         self.assertIn("T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)", SOURCE)
+
+    def test_acm_lifecycle_is_separately_gated_and_secret_free(self) -> None:
+        self.assertIn("static bool apple_probe_acm_context_lifecycle;", SOURCE)
+        self.assertIn(
+            "acm_context_confirmation != T2SEP_ACM_CONTEXT_CONFIRMATION",
+            SOURCE)
+        self.assertIn('memcpy(send, "DRCS\\n", 5)', SOURCE)
+        self.assertIn("send[5] = 0x28", SOURCE)
+        self.assertIn("send[4] = 1", SOURCE)
+        self.assertIn("send[4] = 2", SOURCE)
+        self.assertIn("memcpy(send + 8, receive, T2SEP_ACM_CONTEXT_SIZE)", SOURCE)
+        self.assertIn("context_bytes=not-logged", SOURCE)
+        self.assertNotIn("context=%", SOURCE)
+        self.assertNotIn("password", SOURCE.lower())
 
     def test_stop_precedes_scrub_and_free(self) -> None:
         function = SOURCE.index("static int t2sep_apple_start_cpu_probe")

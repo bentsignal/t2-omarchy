@@ -129,6 +129,16 @@ module_param(aks_capabilities_confirmation, ulong, 0400);
 MODULE_PARM_DESC(aks_capabilities_confirmation,
 	"Required explicit confirmation value 0x414b534341504142 for the AKS capabilities probe");
 
+static bool apple_probe_acm_context_lifecycle;
+module_param(apple_probe_acm_context_lifecycle, bool, 0400);
+MODULE_PARM_DESC(apple_probe_acm_context_lifecycle,
+	"Initialize ACM and create then delete one ephemeral context");
+
+static ulong acm_context_confirmation;
+module_param(acm_context_confirmation, ulong, 0400);
+MODULE_PARM_DESC(acm_context_confirmation,
+	"Required explicit confirmation value 0x41434d4354584c46 for the ACM context lifecycle probe");
+
 struct t2sep_irq_probe {
 	atomic_t count[2];
 };
@@ -142,12 +152,15 @@ struct t2sep_irq_probe {
 #define T2SEP_OOL_CONFIRMATION 0x5345504f4f4c4143UL
 #define T2SEP_CREDENTIAL_OOL_CONFIRMATION 0x435245444f4f4c41UL
 #define T2SEP_AKS_CAPABILITIES_CONFIRMATION 0x414b534341504142UL
+#define T2SEP_ACM_CONTEXT_CONFIRMATION 0x41434d4354584c46UL
 #define T2SEP_AKS_ENDPOINT 0x07
 #define T2SEP_ACM_ENDPOINT 0x0a
 #define T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)
 #define T2SEP_AKS_CAPABILITIES_SIZE 100
 #define T2SEP_AKS_HEADER_SIZE 0x50
 #define T2SEP_AKS_SERIALIZED_HEADER_SIZE 0x54
+#define T2SEP_ACM_CONTEXT_RESPONSE_SIZE 17
+#define T2SEP_ACM_CONTEXT_SIZE 16
 #define T2SEP_SBIO_IN_SIZE (T2SEP_SBIO_IN_PAGES * PAGE_SIZE)
 #define T2SEP_SBIO_OUT_SIZE (T2SEP_SBIO_OUT_PAGES * PAGE_SIZE)
 
@@ -559,6 +572,96 @@ out_scrub:
 	return ret;
 }
 
+static int t2sep_acm_exchange(struct pci_dev *pdev, void __iomem *bar4,
+			      const char *phase, u16 request_length,
+			      u16 expected_reply_length)
+{
+	u32 request[3] = {
+		T2SEP_ACM_ENDPOINT | 1 << 8 | request_length << 16,
+		0,
+		0,
+	};
+	u32 response[4];
+	u16 reply_length;
+	int ret;
+
+	ret = t2sep_send_intel_message(bar4, request);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "ACM %s envelope request: raw=%08x %08x %08x 00000000\n",
+		 phase, request[0], request[1], request[2]);
+	ret = t2sep_wait_intel_message(bar4, response);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "ACM %s envelope reply: raw=%08x %08x %08x %08x\n",
+		 phase, response[0], response[1], response[2], response[3]);
+	reply_length = response[0] >> 16;
+	if ((response[0] & 0xff) != T2SEP_ACM_ENDPOINT ||
+	    ((response[0] >> 8) & 0xff) != 1 ||
+	    reply_length != expected_reply_length || response[1] != 0 ||
+	    response[2] != 0 ||
+	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL)))
+		return -EPROTO;
+	return 0;
+}
+
+static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
+					      void __iomem *bar4,
+					      void *send_buffer,
+					      void *receive_buffer)
+{
+	u8 *send = send_buffer;
+	u8 *receive = receive_buffer;
+	int ret;
+
+	memset(send, 0, 8);
+	memcpy(send, "DRCS\n", 5);
+	send[5] = 0x28;
+	dma_wmb();
+	dev_info(&pdev->dev,
+		 "ACM SCRD initialization request: endpoint=10 message_type=1 length=8 version=0x28\n");
+	ret = t2sep_acm_exchange(pdev, bar4, "SCRD-initialization", 8, 0);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "ACM SCRD initialization reply passed strict validation: status=0 length=0\n");
+
+	memset(receive, 0, T2SEP_ACM_CONTEXT_RESPONSE_SIZE);
+	memcpy(send, "DRCS", 4);
+	send[4] = 1;
+	send[5] = 0;
+	send[6] = 0;
+	send[7] = 1;
+	dma_wmb();
+	dev_info(&pdev->dev,
+		 "ACM context-create request: endpoint=10 message_type=1 selector=1 length=8\n");
+	ret = t2sep_acm_exchange(pdev, bar4, "context-create", 8,
+				 T2SEP_ACM_CONTEXT_RESPONSE_SIZE);
+	if (ret)
+		return ret;
+	dma_rmb();
+	dev_info(&pdev->dev,
+		 "ACM context-create reply passed strict validation: status=0 length=17 context_bytes=not-logged\n");
+
+	memcpy(send, "DRCS", 4);
+	send[4] = 2;
+	send[5] = 0;
+	send[6] = T2SEP_ACM_CONTEXT_SIZE;
+	send[7] = 1;
+	memcpy(send + 8, receive, T2SEP_ACM_CONTEXT_SIZE);
+	dma_wmb();
+	dev_info(&pdev->dev,
+		 "ACM context-delete request: endpoint=10 message_type=1 selector=2 length=24 context_length=16 context_bytes=not-logged\n");
+	ret = t2sep_acm_exchange(pdev, bar4, "context-delete", 24, 0);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "ACM context-delete reply passed strict validation: status=0 length=0\n");
+	return 0;
+}
+
 static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 {
 	u32 inbox_before = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
@@ -574,7 +677,8 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	size_t out_size = T2SEP_SBIO_OUT_SIZE;
 	u8 ool_target = T2SEP_SBIO_ENDPOINT;
 	bool credential_ool = apple_capture_credential_ool_acks ||
-			      apple_probe_aks_capabilities;
+			      apple_probe_aks_capabilities ||
+			      apple_probe_acm_context_lifecycle;
 	int ret = 0;
 	int i;
 
@@ -675,6 +779,7 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 		in_size = T2SEP_CREDENTIAL_OOL_SIZE;
 		out_size = T2SEP_CREDENTIAL_OOL_SIZE;
 		ool_target = apple_probe_aks_capabilities ? T2SEP_AKS_ENDPOINT :
+			     apple_probe_acm_context_lifecycle ? T2SEP_ACM_ENDPOINT :
 			     credential_endpoint;
 	}
 
@@ -702,14 +807,20 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			 ool_target, &in_dma, in_size, &out_dma, out_size);
 		ret = t2sep_capture_one_ool_ack(
 			pdev, bar4, ool_target, 2, 2, in_dma, in_size,
-			ool_target == T2SEP_AKS_ENDPOINT ? 1 : -1, ool_target);
+			apple_probe_aks_capabilities ||
+			apple_probe_acm_context_lifecycle ? 1 : -1, ool_target);
 		if (!ret)
 			ret = t2sep_capture_one_ool_ack(
 				pdev, bar4, ool_target, 3, 3, out_dma, out_size,
-				ool_target == T2SEP_AKS_ENDPOINT ? 1 : -1, ool_target);
+				apple_probe_aks_capabilities ||
+				apple_probe_acm_context_lifecycle ? 1 : -1,
+				ool_target);
 		if (!ret && apple_probe_aks_capabilities)
 			ret = t2sep_probe_aks_capabilities(pdev, bar4,
 						   in_buffer, out_buffer);
+		if (!ret && apple_probe_acm_context_lifecycle)
+			ret = t2sep_probe_acm_context_lifecycle(
+				pdev, bar4, in_buffer, out_buffer);
 	}
 
 out_stop:
@@ -821,11 +932,19 @@ static int t2sep_probe(struct pci_dev *pdev,
 			T2SEP_AKS_CAPABILITIES_CONFIRMATION);
 		return -EINVAL;
 	}
-	if ((apple_capture_ool_acks &&
-	     (apple_capture_credential_ool_acks || apple_probe_aks_capabilities)) ||
-	    (apple_capture_credential_ool_acks && apple_probe_aks_capabilities)) {
+	if (apple_probe_acm_context_lifecycle &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop ||
+	     acm_context_confirmation != T2SEP_ACM_CONTEXT_CONFIRMATION)) {
 		dev_err(&pdev->dev,
-			"SBIO, credential OOL, and AKS capabilities modes are mutually exclusive\n");
+			"ACM context lifecycle probe requires start/MSI/NOP and confirmation 0x%lx\n",
+			T2SEP_ACM_CONTEXT_CONFIRMATION);
+		return -EINVAL;
+	}
+	if (apple_capture_ool_acks + apple_capture_credential_ool_acks +
+	    apple_probe_aks_capabilities + apple_probe_acm_context_lifecycle > 1) {
+		dev_err(&pdev->dev,
+			"SBIO, credential OOL, AKS capabilities, and ACM context modes are mutually exclusive\n");
 		return -EINVAL;
 	}
 
