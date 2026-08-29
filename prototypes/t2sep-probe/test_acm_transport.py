@@ -40,6 +40,31 @@ class ACMTransportTests(unittest.TestCase):
                 with self.assertRaises(acm.ACMTransportError):
                     acm.validate_reply(request, wire, maximum_reply=17)
 
+    def test_exact_scrd_initialization_precedes_commands(self):
+        envelope, payload = acm.scrd_initialization_envelope(3)
+        self.assertEqual(payload, b"DRCS\n\x03\0\0")
+        self.assertEqual(acm.decode_envelope(envelope),
+                         acm.ACMEnvelope(1, 8, 0))
+        with self.assertRaises(acm.ACMTransportError):
+            acm.scrd_initialization_payload(256)
+
+    def test_context_create_plan_is_exact_and_ordered(self):
+        plan = acm.ContextCreatePlan()
+        with self.assertRaises(acm.ACMTransportError):
+            plan.context_request()
+        init_envelope, init_payload = plan.initialize(3)
+        self.assertEqual(init_payload, b"DRCS\n\x03\0\0")
+        self.assertEqual(acm.decode_envelope(init_envelope).payload_length, 8)
+        envelope, payload = plan.context_request()
+        self.assertEqual(payload, b"DRCS\x01\0\0\x01")
+        self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 8, 0))
+        with self.assertRaises(acm.ACMTransportError):
+            plan.accept_context_response_length(16)
+        plan.accept_context_response_length(17)
+        self.assertTrue(plan.context_created)
+        with self.assertRaises(acm.ACMTransportError):
+            plan.context_request()
+
 
 if __name__ == "__main__":
     unittest.main()

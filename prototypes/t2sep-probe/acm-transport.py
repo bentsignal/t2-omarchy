@@ -10,6 +10,12 @@ import struct
 ACM_ENDPOINT = 0x0A
 OOL_CAPACITY = 0x4000
 ENVELOPE_SIZE = 12
+COMMAND_MESSAGE_TYPE = 1
+SCRD_MAGIC = b"DRCS\n"
+COMMAND_MAGIC = b"DRCS"
+CONTEXT_CREATE_SELECTOR = 1
+COMMAND_VERSION = 1
+CONTEXT_RESPONSE_SIZE = 17
 
 
 class ACMTransportError(ValueError):
@@ -61,3 +67,50 @@ def validate_reply(request: ACMEnvelope, reply_data: bytes,
     if reply.payload_length > maximum_reply:
         raise ACMTransportError("ACM reply exceeds the caller's output buffer")
     return reply
+
+
+def scrd_initialization_payload(version: int) -> bytes:
+    version = _integer(version, 0xff, "SCRD version")
+    return SCRD_MAGIC + bytes((version, 0, 0))
+
+
+def scrd_initialization_envelope(version: int) -> tuple[bytes, bytes]:
+    payload = scrd_initialization_payload(version)
+    return encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0), payload
+
+
+def context_create_command() -> bytes:
+    return COMMAND_MAGIC + bytes((CONTEXT_CREATE_SELECTOR, 0, 0, COMMAND_VERSION))
+
+
+def validate_context_create_response_length(length: int) -> None:
+    length = _integer(length, OOL_CAPACITY, "context-create response length")
+    if length != CONTEXT_RESPONSE_SIZE:
+        raise ACMTransportError("context-create response must be exactly 17 bytes")
+
+
+class ContextCreatePlan:
+    """Order SCRD init and token-free context creation without storing a handle."""
+
+    def __init__(self) -> None:
+        self.initialized = False
+        self.context_created = False
+
+    def initialize(self, version: int) -> tuple[bytes, bytes]:
+        if self.initialized or self.context_created:
+            raise ACMTransportError("SCRD initialization is out of order")
+        result = scrd_initialization_envelope(version)
+        self.initialized = True
+        return result
+
+    def context_request(self) -> tuple[bytes, bytes]:
+        if not self.initialized or self.context_created:
+            raise ACMTransportError("context creation is out of order")
+        payload = context_create_command()
+        return encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0), payload
+
+    def accept_context_response_length(self, length: int) -> None:
+        if not self.initialized or self.context_created:
+            raise ACMTransportError("context response is out of order")
+        validate_context_create_response_length(length)
+        self.context_created = True
