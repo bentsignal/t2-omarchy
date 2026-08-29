@@ -30,6 +30,11 @@ sudo -n true || die "passwordless sudo is unavailable"
 [[ ! -L $device/driver && ! -d /sys/module/t2sep_probe ]] ||
   die "SEP is busy or the probe module is already loaded"
 
+python3 "$module_dir/biometric-connectivity-preflight.py" \
+  --interface "$interface" \
+  --confirm=I_UNDERSTAND_THIS_ONLY_QUERIES_THE_T2_BRIDGE_VERSION ||
+  die "read-only BiometricKit preflight failed; password was not requested"
+
 cleanup() {
   if [[ -n $prompt_pid ]] && kill -0 "$prompt_pid" 2>/dev/null; then
     kill "$prompt_pid" 2>/dev/null || true

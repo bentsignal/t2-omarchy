@@ -1569,6 +1569,18 @@ enrollment payload, and both the mutable request owner and kernel handoff buffer
 are explicitly scrubbed. Build and offline lifecycle tests pass; the combined
 hardware path remains unproven until its supervised enrollment run.
 
+The first combined run reached and consumed the authorized handoff, but the
+userspace enrollment client then failed with `ENETUNREACH` before opening the
+RSD directory socket: NetworkManager showed the internal NCM interface as
+disconnected with no IPv6 address or route. The kernel side nevertheless
+received the completion acknowledgement and passed unload, independent
+absence proof, context delete, CPU stop, and scrub. Reapplying the existing
+non-autoconnecting internal-link profile with host address
+`fe80::aede:48ff:fe00:1122/64` restored 2--5 ms scoped peer pings and the exact
+read-only BiometricKit `(status=0, bridgeVersion=3)` exchange. The combined
+runner now makes that query a mandatory pre-password preflight, preventing a
+network-state failure from wasting another password prompt.
+
 `credential-authorization.py` now composes these boundaries into one offline
 lifecycle without importing any device, socket, PAM, or prompt implementation.
 ACM initialization/context creation and AKS capabilities/environment setup may

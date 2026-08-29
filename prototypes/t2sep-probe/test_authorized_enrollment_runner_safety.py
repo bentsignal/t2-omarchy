@@ -28,6 +28,12 @@ class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
         self.assertIn("authorized_enrollment_confirmation=0x41555448454e5231", SOURCE)
         self.assertIn("verify-authorized-enrollment-handoff-log.py", SOURCE)
 
+    def test_read_only_bridge_preflight_precedes_password_prompt(self):
+        preflight = SOURCE.index("biometric-connectivity-preflight.py")
+        prompt = SOURCE.index("prompt_dir=$(mktemp -d)")
+        self.assertLess(preflight, prompt)
+        self.assertIn("password was not requested", SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -98,6 +98,16 @@ An independent verifier requires the handoff markers to occur strictly between
 authorization and unload. This path has passed build and offline tests but must
 not be described as live-proven until its first supervised run succeeds.
 
+The first combined attempt proved the kernel half but failed before any
+BiometricKit command because NetworkManager had left the T2 NCM interface
+disconnected and therefore installed no scoped IPv6 route. The client returned
+`ENETUNREACH`; the handoff acknowledgement, keybag unload/absence proof,
+context delete, CPU stop, and scrub still all passed. Restoring the manual
+`fe80::aede:48ff:fe00:1122/64` profile made the peer answer three scoped pings
+and restored the read-only `(0, 3)` BiometricKit reply. The runner now performs
+that exact method-zero query before opening the password prompt, so a missing
+route or stale service port fails without consuming a credential attempt.
+
 ```bash
 ./run-authorized-enrollment-probe.sh \
   I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY 501
