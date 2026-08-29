@@ -2616,6 +2616,25 @@ with an exact 60-byte input: four-byte UID, four 32-bit policy values, then a
 40-byte authorization record. That setter must not be sent until the initial
 policy values and authorization semantics are evidence-backed.
 
+Catalina's fully symbolized implementation fixes the field names and
+authorization representation. The policy words, in order, are `unlockEnabled`,
+`identificationEnabled`, `loginEnabled`, and `applePayEnabled`. Its common
+authorization parser encodes a credential-set request as `usingAuthToken=0`,
+`length=16`, the 16-byte ACM external form, and 16 bytes of zero padding. It
+rejects data longer than 32 bytes and distinguishes credential sets from auth
+tokens. Current KDK dispatch independently retains the same exact 60-byte
+setter size and forwards it as internal command `0x2c`.
+
+The offline codec now expresses only complete Boolean policies and the proven
+16-byte credential-set form; it rejects Apple's `-1` partial-update sentinel,
+auth-token variants, non-Boolean values, and malformed lengths, and scrubs both
+the caller's credential and its owned request. For a Linux-native account the
+candidate policy `(1, 1, 1, 0)` intentionally enables unlock, identification,
+and login while disabling the Apple-Pay-only capability. This is a Linux
+policy choice, not a claim about macOS defaults. A live send remains gated
+until it is composed with the already proven password-to-ACM lifecycle and an
+immediate readback.
+
 ## Useful baseline commands
 
 ```bash

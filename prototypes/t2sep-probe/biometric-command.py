@@ -24,6 +24,7 @@ COMMAND_REMOVE_IDENTITY = 0x0D
 COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PRESENCE_DETECT = 0x26
 COMMAND_GET_PROTECTED_CONFIG = 0x2E
+COMMAND_SET_PROTECTED_CONFIG = 0x2F
 COMMAND_NO_CATACOMB = 0x31
 COMMAND_GET_CATACOMB_STATE = 0x3C
 COMMAND_FREE_IDENTITY_COUNT = 0x41
@@ -46,6 +47,7 @@ IDENTITY = struct.Struct("<I16s")
 MAX_IDENTITIES = 64
 SYSTEM_PROTECTED_CONFIG = struct.Struct("<9I")
 PROTECTED_CONFIG_SIZE = 32
+SET_PROTECTED_CONFIG_PAYLOAD = struct.Struct("<IIIIIII32s")
 CATACOMB_STATE_RECORD_SIZE = 8
 CATACOMB_GROUP_STATE_RECORD_SIZE = 56
 MAX_CATACOMB_STATE_RECORDS = 256
@@ -133,6 +135,40 @@ class SystemProtectedConfig:
     passcode_input_lifespan: int
 
 
+@dataclass(frozen=True)
+class UserProtectedPolicy:
+    unlock_enabled: int
+    identification_enabled: int
+    login_enabled: int
+    apple_pay_enabled: int
+
+
+class AuthorizedPolicyRequest:
+    """One mutable current-format per-user policy request with scrubbing."""
+
+    def __init__(self, payload: bytearray) -> None:
+        if not isinstance(payload, bytearray) or len(payload) != SET_PROTECTED_CONFIG_PAYLOAD.size:
+            raise BiometricCommandError("authorized policy payload is invalid")
+        self._payload = payload
+        self.closed = False
+
+    def __repr__(self) -> str:
+        return f"AuthorizedPolicyRequest(length={len(self._payload)}, closed={self.closed})"
+
+    def view(self) -> memoryview:
+        if self.closed:
+            raise BiometricCommandError("authorized policy request is closed")
+        return memoryview(self._payload).toreadonly()
+
+    def close(self) -> None:
+        if not getattr(self, "closed", True):
+            self._payload[:] = bytes(len(self._payload))
+            self.closed = True
+
+    def __del__(self) -> None:
+        self.close()
+
+
 def system_protected_config_fields():
     """Encode the current read-only generation-3 protected-config query."""
     return (COMMAND_GET_SYSTEM_PROTECTED_CONFIG, CURRENT_COMMAND_VERSION, 0,
@@ -154,6 +190,46 @@ def no_catacomb_fields(*, user_id: int):
     """Initialize one empty in-memory user catacomb using the current KDK ABI."""
     return (COMMAND_NO_CATACOMB, COMMAND_VERSION, 0,
             struct.pack("<I", _u32(user_id, "user ID")), 0)
+
+
+def consume_user_policy_credential(*, user_id: int, policy: UserProtectedPolicy,
+                                   credential_set: bytearray) -> AuthorizedPolicyRequest:
+    """Consume an ACM form into the exact current 60-byte policy-setter input."""
+    try:
+        user_id = _u32(user_id, "user ID")
+        if not isinstance(policy, UserProtectedPolicy):
+            raise BiometricCommandError("user policy has the wrong type")
+        values = tuple(getattr(policy, field) for field in (
+            "unlock_enabled", "identification_enabled", "login_enabled",
+            "apple_pay_enabled"))
+        if any(isinstance(value, bool) or value not in (0, 1) for value in values):
+            raise BiometricCommandError("each user policy value must be integer zero or one")
+        if not isinstance(credential_set, bytearray):
+            raise BiometricCommandError("credential set must be a mutable bytearray")
+        if len(credential_set) != ACM_EXTERNAL_FORM_SIZE:
+            raise BiometricCommandError("credential set must be exactly 16 bytes")
+        payload = bytearray(SET_PROTECTED_CONFIG_PAYLOAD.size)
+        struct.pack_into("<IIIII", payload, 0, user_id, *values)
+        struct.pack_into("<II", payload, 20, 0, ACM_EXTERNAL_FORM_SIZE)
+        payload[28:44] = credential_set
+        return AuthorizedPolicyRequest(payload)
+    finally:
+        if isinstance(credential_set, bytearray):
+            credential_set[:] = bytes(len(credential_set))
+
+
+def authorized_user_policy_fields(
+        request: AuthorizedPolicyRequest) -> tuple[int, int, int, bytes, int]:
+    if not isinstance(request, AuthorizedPolicyRequest) or request.closed:
+        raise BiometricCommandError("authorized policy request is unavailable")
+    payload = bytes(request.view())
+    words = struct.unpack_from("<7I", payload)
+    if (len(payload) != SET_PROTECTED_CONFIG_PAYLOAD.size or
+            any(value not in (0, 1) for value in words[1:5]) or
+            words[5:7] != (0, ACM_EXTERNAL_FORM_SIZE) or
+            payload[44:] != bytes(16)):
+        raise BiometricCommandError("authorized policy request shape changed")
+    return COMMAND_SET_PROTECTED_CONFIG, COMMAND_VERSION, 0, payload, 0
 
 
 def catacomb_state_fields():

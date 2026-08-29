@@ -21,6 +21,40 @@ BRIDGE_SPEC.loader.exec_module(bridge)
 
 
 class OrdinaryMatchPayloadTests(unittest.TestCase):
+    def test_authorized_user_policy_exact_layout_and_scrubbing(self):
+        credential = bytearray(range(16))
+        policy = command.UserProtectedPolicy(1, 1, 1, 0)
+        request = command.consume_user_policy_credential(
+            user_id=501, policy=policy, credential_set=credential)
+        view = request.view()
+        self.assertEqual(credential, bytearray(16))
+        self.assertEqual(len(view), 60)
+        self.assertEqual(struct.unpack_from("<7I", view), (501, 1, 1, 1, 0, 0, 16))
+        self.assertEqual(view[28:44], bytes(range(16)))
+        self.assertEqual(view[44:], bytes(16))
+        self.assertNotIn("bytearray", repr(request))
+        fields = command.authorized_user_policy_fields(request)
+        self.assertEqual(fields[:3], (0x2f, 1, 0))
+        self.assertEqual(fields[4], 0)
+        request.close()
+        self.assertEqual(bytes(view), bytes(60))
+        with self.assertRaises(command.BiometricCommandError):
+            command.authorized_user_policy_fields(request)
+
+    def test_authorized_user_policy_rejects_partial_or_invalid_inputs(self):
+        good = command.UserProtectedPolicy(1, 1, 1, 0)
+        cases = ((-1, good, bytearray(16)),
+                 (501, command.UserProtectedPolicy(-1, 1, 1, 0), bytearray(16)),
+                 (501, command.UserProtectedPolicy(True, 1, 1, 0), bytearray(16)),
+                 (501, good, bytearray(15)), (501, good, b"immutable"))
+        for user_id, policy, credential in cases:
+            with self.subTest(user_id=user_id, policy=policy, length=len(credential)):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.consume_user_policy_credential(
+                        user_id=user_id, policy=policy, credential_set=credential)
+                if isinstance(credential, bytearray):
+                    self.assertEqual(credential, bytearray(len(credential)))
+
     def test_exact_token_free_enrollment_payload(self):
         payload = command.encode_ordinary_enroll_payload(user_id=7)
         self.assertEqual(len(payload), 48)
