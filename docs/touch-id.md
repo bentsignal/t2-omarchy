@@ -1043,7 +1043,8 @@ The operation-`0x4d` body is now byte-exact as well. Both its empty-input
 request and normal empty-blob reply are 100 bytes: a little-endian header
 length of `0x50`, the 80-byte protected header, a signed 32-bit status, a
 64-bit capability/header version, and a zero 32-bit blob length. The request
-sets all three body values to zero. The offline decoder requires exact length,
+sets status and blob length to zero and sends local supported version `1` in
+the qword; the response returns the remote version there. The offline decoder requires exact length,
 header length, zero flags, a valid truncated-SHA-256 digest, and an empty blob
 before exposing status or remote version. This gives a mechanical validator
 for the first eventual AKS service response; it is not connected to device

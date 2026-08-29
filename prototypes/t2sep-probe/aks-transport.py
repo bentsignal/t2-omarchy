@@ -106,7 +106,7 @@ def validate_protected_header(header: bytes, payload: bytes) -> None:
 def encode_capabilities_request(identity_header: bytes) -> bytes:
     """Encode operation 0x4d's empty-input request body exactly."""
     _require_plain_identity_header(identity_header)
-    payload = struct.pack("<IQI", 0, 0, 0)
+    payload = struct.pack("<IQI", 0, 1, 0)
     protected = protect_header(identity_header, payload)
     wire = struct.pack("<I", IPC_HEADER_SIZE) + protected + payload
     if len(wire) != CAPABILITIES_SERIALIZED_SIZE:

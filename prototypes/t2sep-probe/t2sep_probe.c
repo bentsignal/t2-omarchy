@@ -500,6 +500,7 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	put_unaligned_le32(T2SEP_AKS_HEADER_SIZE, send);
 	put_unaligned_le32(1, send + 4 + 0x10);
 	put_unaligned_le64(continuous_usec, send + 4 + 0x14);
+	put_unaligned_le64(1, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
 	memcpy(hash_input, send + 4 + 0x10, 0x38);
 	memcpy(hash_input + 0x38, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE, 0x10);
 	sha256(hash_input, sizeof(hash_input), digest);

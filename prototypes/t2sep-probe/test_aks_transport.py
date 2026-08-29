@@ -26,7 +26,7 @@ class AKSTransportTests(unittest.TestCase):
         wire = aks.encode_capabilities_request(self._identity())
         self.assertEqual(len(wire), 100)
         self.assertEqual(struct.unpack_from("<I", wire)[0], 0x50)
-        self.assertEqual(wire[0x54:], struct.pack("<IQI", 0, 0, 0))
+        self.assertEqual(wire[0x54:], struct.pack("<IQI", 0, 1, 0))
         aks.validate_protected_header(wire[4:0x54], wire[0x54:])
 
     def test_capabilities_reply_validation(self):

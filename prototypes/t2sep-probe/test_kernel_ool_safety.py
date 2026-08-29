@@ -48,6 +48,9 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn("response[0] != 0x0004cd07", SOURCE)
         self.assertIn("crypto_memneq(receive + 4, reply_digest, 16)", SOURCE)
         self.assertIn("ktime_get_boottime_ns() / NSEC_PER_USEC", SOURCE)
+        self.assertIn(
+            "put_unaligned_le64(1, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4)",
+            SOURCE)
         self.assertNotIn("ktime_get_mono_fast_ns", SOURCE)
         self.assertNotIn("password", SOURCE.lower())
 
