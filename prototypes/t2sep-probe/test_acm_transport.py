@@ -84,10 +84,22 @@ class ACMTransportTests(unittest.TestCase):
         self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 8, 0))
         with self.assertRaises(acm.ACMTransportError):
             plan.accept_context_response(acm.encode_envelope(1, 16, 0), bytes(16))
-        plan.accept_context_response(acm.encode_envelope(1, 17, 0), bytes(17))
+        response = bytearray(range(17))
+        plan.accept_context_response(acm.encode_envelope(1, 17, 0), response)
         self.assertTrue(plan.context_created)
         with self.assertRaises(acm.ACMTransportError):
             plan.context_request()
+        command = bytearray(24)
+        delete_envelope = plan.delete_request(response, command)
+        self.assertEqual(command[:8], b"DRCS\x02\0\x10\x01")
+        self.assertEqual(command[8:], response[:16])
+        self.assertEqual(acm.decode_envelope(delete_envelope),
+                         acm.ACMEnvelope(1, 24, 0))
+        plan.accept_delete_response(acm.encode_envelope(1, 0, 0), b"")
+        self.assertTrue(plan.context_deleted)
+        acm.scrub_context_material(response, command)
+        self.assertEqual(response, bytearray(17))
+        self.assertEqual(command, bytearray(24))
 
     def test_context_plan_rejects_failed_or_reordered_replies(self):
         plan = acm.ContextCreatePlan()
@@ -99,10 +111,51 @@ class ACMTransportTests(unittest.TestCase):
         self.assertFalse(plan.initialized)
         plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
         with self.assertRaises(acm.ACMTransportError):
-            plan.accept_context_response(acm.encode_envelope(1, 17, 0), bytes(17))
+            plan.accept_context_response(acm.encode_envelope(1, 17, 0),
+                                         bytearray(17))
         plan.context_request()
         with self.assertRaises(acm.ACMTransportError):
             plan.context_request()
+
+    def test_delete_requires_mutable_exact_buffers_and_order(self):
+        plan = acm.ContextCreatePlan()
+        command = bytearray(24)
+        with self.assertRaises(acm.ACMTransportError):
+            plan.delete_request(bytearray(17), command)
+        plan.initialize()
+        plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
+        plan.context_request()
+        response = bytearray(range(17))
+        with self.assertRaises(acm.ACMTransportError):
+            plan.accept_context_response(acm.encode_envelope(1, 17, 0), bytes(17))
+        plan.accept_context_response(acm.encode_envelope(1, 17, 0), response)
+        for bad_response, bad_command in (
+                (bytes(17), bytearray(24)),
+                (bytearray(16), bytearray(24)),
+                (bytearray(17), bytes(24)),
+                (bytearray(17), bytearray(23))):
+            with self.subTest(response=type(bad_response),
+                              command=type(bad_command), length=len(bad_command)):
+                with self.assertRaises(acm.ACMTransportError):
+                    plan.delete_request(bad_response, bad_command)
+        plan.delete_request(response, command)
+        with self.assertRaises(acm.ACMTransportError):
+            plan.delete_request(response, bytearray(24))
+        with self.assertRaises(acm.ACMTransportError):
+            plan.accept_delete_response(acm.encode_envelope(1, 1, 0), b"x")
+        self.assertFalse(plan.context_deleted)
+        plan.accept_delete_response(acm.encode_envelope(1, 0, 0), b"")
+        with self.assertRaises(acm.ACMTransportError):
+            plan.accept_delete_response(acm.encode_envelope(1, 0, 0), b"")
+
+    def test_scrub_rejects_immutable_or_wrong_sized_material(self):
+        for response, command in ((bytes(17), bytearray(24)),
+                                  (bytearray(17), bytes(24)),
+                                  (bytearray(16), bytearray(24)),
+                                  (bytearray(17), bytearray(25))):
+            with self.subTest(response=type(response), command=type(command)):
+                with self.assertRaises(acm.ACMTransportError):
+                    acm.scrub_context_material(response, command)
 
 
 if __name__ == "__main__":

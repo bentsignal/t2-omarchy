@@ -41,9 +41,11 @@ secret serialization.
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
 envelope, OOL length bound, reply message-type correlation, zero-status SCRD
 initialization with Apple's fixed KDK-derived version `0x28`, and zero-status
-exact-length context creation. Its state does
-not advance when a request is merely constructed or sent, and it never stores
-or returns the opaque context bytes. It likewise has no device-I/O path.
+exact-length context creation. It also models the source-proven selector-2
+context deletion, including its exact 16-byte external-form body, empty reply,
+mutable caller-owned buffers, and explicit scrub. Its state does not advance
+when a request is merely constructed or sent, and it never stores or returns
+the opaque context bytes. It likewise has no device-I/O path.
 
 `credential-services-bootstrap.py` composes fixed ACM/AKS OOL registration,
 independently observed acknowledgement profiles, and stop-scrub-release

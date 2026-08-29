@@ -1003,6 +1003,20 @@ callback places the reply's upper 32-bit mailbox value into the waiting
 request's status field; Apple's caller marks SCRD initialized only after the
 synchronous command returns success, not merely after sending it.
 
+The matching context teardown is now recovered from
+`LibCall_ACMContextDelete`. When remote deletion is requested it invokes the
+same transport callback with selector `2`, exactly the first 16 bytes of the
+context as input, and no output buffer. `LibCall_BuildCommand` makes the
+resulting 24-byte request `DRCS 02 00 10 01 || context[0:16]`. Irrespective of
+the callback's result, Apple's caller then frees its 20-byte host context; the
+17th create-response byte is tracking metadata and is not sent to SEP for
+deletion. The offline plan now requires a successful create before it can
+build this command, requires caller-owned exact-size `bytearray` buffers so no
+immutable secret copy is returned, correlates an exact zero-status empty
+delete response, and provides an exact-size scrub operation for both buffers.
+A live implementation must attempt delete, stop the SEP transport even if
+delete fails, and scrub the create response and delete command on every exit.
+
 `AppleKeyStore::verify_password`, in contrast, uses the service named
 `aks-endpoint`, instantiated at fixed SEP endpoint `0x07`, with separate
 `0x4000`-byte, page-aligned OOL buffers in each direction.
