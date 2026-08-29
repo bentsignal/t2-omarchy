@@ -100,3 +100,23 @@ Linux will decrypt this ciphertext directly to a mode-0600 root-only temporary
 file, run the separately confirmed one-shot command-`0x40` load, report only
 status/policy length/identity count, and remove both temporary ciphertext and
 plaintext immediately afterward.
+
+## macOS return result: decoded secure-data transfer complete
+
+The authorized follow-up completed successfully. The active archive was
+revalidated as root-owned, 708 bytes, structurally decodable by Foundation,
+and carrying decoded UID 501. Foundation decoded a single nonempty
+`CatacombSecureData` object of 104 bytes and streamed it directly to CMS
+enveloped encryption; no plaintext temporary file was created.
+
+The final EFI artifact is `/Volumes/EFI/t2-touchid-transfer.cms`, is 661 bytes,
+and was produced with AES-256 for the throwaway certificate already placed on
+EFI by Linux. OpenSSL's CMS parser accepted the resulting DER envelope
+structure. macOS did not possess or use the private key and did not attempt
+decryption. The source archive and enrolled fingerprint were untouched, and
+neither source data nor ciphertext was printed, hashed, committed, or uploaded.
+
+Linux may now follow the bounded one-shot procedure in commit `fecaba1`:
+decrypt directly into its mode-0600 root-only temporary input, require exactly
+the expected 104-byte decoded payload, issue command `0x40` once, report only
+status/policy length/identity count, and remove both temporary artifacts.

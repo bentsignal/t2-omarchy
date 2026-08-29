@@ -2643,6 +2643,17 @@ for local transfer and Linux extract its opaque secure-data field without
 printing, hashing, or retaining unrelated archive contents. Exact constraints
 and the return handoff are in `docs/macos-catacomb-transfer-handoff.md`.
 
+Linux subsequently added a distinct bounded loader for decoded current-macOS
+`CatacombSecureData`, without weakening the separate KDK save-blob validator.
+The authorized macOS follow-up revalidated the root-owned 708-byte UID-501
+archive, decoded its single 104-byte secure-data object with Foundation, and
+streamed those bytes directly into an AES-256 CMS envelope on EFI. No plaintext
+temporary file was created. The resulting
+`/Volumes/EFI/t2-touchid-transfer.cms` is 661 bytes and passed CMS structural
+parsing without decryption. No source or encrypted content was printed, hashed,
+committed, or uploaded. Linux can now perform the one-shot command-`0x40`
+comparison and immediately remove both local transfer artifacts.
+
 That static comparison is now complete. In the checksum-pinned current
 Settings extension, `ACMContextGetExternalForm` invokes a callback that calls
 the local `_aks_verify_password` wrapper with caller-facing keybag handle `-3`,
