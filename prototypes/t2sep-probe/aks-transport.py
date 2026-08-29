@@ -185,6 +185,49 @@ class VerifySecretLayout:
     device_state_offset: int
 
 
+class VerifySecretRequest:
+    """Single-owner mutable request whose storage can be explicitly scrubbed.
+
+    The object deliberately offers a memoryview rather than an immutable
+    ``bytes`` conversion.  A transport must finish DMA/copy use before calling
+    ``close``; context-manager exit scrubs the complete serialized request.
+    """
+
+    __slots__ = ("_wire", "_closed")
+
+    def __init__(self, wire: bytearray) -> None:
+        if not isinstance(wire, bytearray):
+            raise AKSTransportError("secret request storage must be mutable")
+        self._wire = wire
+        self._closed = False
+
+    def view(self) -> memoryview:
+        if self._closed:
+            raise AKSTransportError("verify-secret request is already scrubbed")
+        return memoryview(self._wire)
+
+    def close(self) -> None:
+        if not self._closed:
+            self._wire[:] = b"\0" * len(self._wire)
+            self._closed = True
+
+    def __enter__(self) -> "VerifySecretRequest":
+        if self._closed:
+            raise AKSTransportError("verify-secret request is already scrubbed")
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        # Best-effort fallback only; callers must still use close/context exit.
+        self.close()
+
+    def __repr__(self) -> str:
+        return (f"VerifySecretRequest(length={len(self._wire)}, "
+                f"closed={self._closed})")
+
+
 def decode_capabilities_reply(wire: bytes) -> CapabilitiesReply:
     """Validate and decode the fixed empty-blob operation-0x4d response."""
     if not isinstance(wire, bytes) or len(wire) != CAPABILITIES_SERIALIZED_SIZE:
@@ -356,6 +399,63 @@ def verify_secret_layout(password_length: int,
         device_state_offset)
 
 
+def consume_verify_secret_inputs(identity_header: bytes, password: bytearray,
+                                 context: bytearray, *,
+                                 keybag_handle: SessionKeybagHandle,
+                                 selector: SessionKeybagSelector,
+                                 device_state_active: bool) -> VerifySecretRequest:
+    """Serialize variant 1 while transferring and scrubbing secret inputs.
+
+    This mirrors the recovered request fields while imposing a stricter Linux
+    ownership rule than Apple's OSData caller: both mutable input arrays are
+    zeroed once copied, and the returned single-owner buffer must itself be
+    closed after transport completion.  No immutable object contains either
+    secret as a result of this function.
+    """
+    _require_plain_identity_header(identity_header)
+    metadata = verify_secret_metadata(keybag_handle, selector)
+    if not isinstance(password, bytearray):
+        raise AKSTransportError("password must be a caller-owned bytearray")
+    if not isinstance(context, bytearray):
+        raise AKSTransportError("ACM context must be a caller-owned bytearray")
+    if not isinstance(device_state_active, bool):
+        raise AKSTransportError("device-state input must be a boolean")
+    layout = verify_secret_layout(len(password), len(context))
+    wire = bytearray(layout.total_size)
+    try:
+        struct.pack_into("<I", wire, 0, IPC_HEADER_SIZE)
+        wire[4:SERIALIZED_HEADER_SIZE] = identity_header
+        struct.pack_into("<IQiI", wire, layout.variant_offset, 1,
+                         metadata.keybag_handle.value, metadata.selector.value,
+                         len(password))
+        wire[layout.password_data_offset:
+             layout.password_data_offset + len(password)] = password
+        struct.pack_into("<I", wire, layout.context_length_offset, len(context))
+        wire[layout.context_data_offset:
+             layout.context_data_offset + len(context)] = context
+        struct.pack_into("<Q", wire, layout.device_state_offset,
+                         0x80 if device_state_active else 0)
+
+        header = memoryview(wire)[4:SERIALIZED_HEADER_SIZE]
+        payload = memoryview(wire)[SERIALIZED_HEADER_SIZE:]
+        version = struct.unpack_from("<I", header, 0x10)[0]
+        if version not in (1, 2):
+            raise AKSTransportError("AKS IPC header version must be 1 or 2")
+        protected_end = 0x48 if version == 1 else 0x50
+        digest = hashlib.sha256()
+        digest.update(header[0x10:protected_end])
+        digest.update(payload)
+        wire[4:4 + IPC_DIGEST_SIZE] = digest.digest()[:IPC_DIGEST_SIZE]
+    except Exception:
+        wire[:] = b"\0" * len(wire)
+        password[:] = b"\0" * len(password)
+        context[:] = b"\0" * len(context)
+        raise
+    password[:] = b"\0" * len(password)
+    context[:] = b"\0" * len(context)
+    return VerifySecretRequest(wire)
+
+
 def _length(value: int, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise AKSTransportError(f"{label} length must be a nonnegative integer")
@@ -423,6 +523,7 @@ class AuthorizationPlan:
         self.environment_initialized = False
         self.verify_metadata: VerifySecretMetadata | None = None
         self.verify_request: AKSEnvelope | None = None
+        self.verify_payload_built = False
         self.verify_reply: VerifySecretReply | None = None
 
     def request_capabilities(self, tag: int) -> bytes:
@@ -480,10 +581,36 @@ class AuthorizationPlan:
         self.verify_request = decode_envelope(wire)
         return wire
 
+    def consume_verify_secret_payload(self, identity_header: bytes,
+                                      password: bytearray,
+                                      context: bytearray, *,
+                                      device_state_active: bool) -> VerifySecretRequest:
+        if (self.verify_request is None or self.verify_metadata is None or
+                self.header_version not in (1, 2) or self.verify_payload_built):
+            raise AKSTransportError("verify-secret payload is out of order")
+        if (not isinstance(identity_header, bytes) or
+                len(identity_header) != IPC_HEADER_SIZE or
+                struct.unpack_from("<I", identity_header, 0x10)[0] !=
+                self.header_version):
+            raise AKSTransportError(
+                "verify-secret identity header changed negotiated version")
+        request = consume_verify_secret_inputs(
+            identity_header, password, context,
+            keybag_handle=self.verify_metadata.keybag_handle,
+            selector=self.verify_metadata.selector,
+            device_state_active=device_state_active)
+        if len(request.view()) != self.verify_request.payload_length:
+            request.close()
+            raise AKSTransportError(
+                "verify-secret payload changed the planned request length")
+        self.verify_payload_built = True
+        return request
+
     def accept_verify_secret_success(self, reply_data: bytes,
                                      payload: bytes) -> VerifySecretReply:
         if (self.verify_request is None or self.header_version not in (1, 2)
-                or self.verify_reply is not None):
+                or not self.verify_payload_built or
+                self.verify_reply is not None):
             raise AKSTransportError("verify-secret reply is out of order")
         envelope = validate_reply(self.verify_request, reply_data)
         if envelope.payload_length != len(payload):

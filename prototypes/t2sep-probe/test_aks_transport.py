@@ -121,6 +121,98 @@ class AKSTransportTests(unittest.TestCase):
         self.assertEqual(aks.decode_verify_secret_reply(wire, 1),
                          aks.VerifySecretReply(0x1122334455667788))
 
+    def test_consumed_verify_secret_request_is_exact_and_scrubbable(self):
+        password = bytearray(b"not-a-real-password")
+        context = bytearray(range(16))
+        original_password = bytes(password)
+        original_context = bytes(context)
+        request = aks.consume_verify_secret_inputs(
+            self._identity(2), password, context,
+            keybag_handle=aks.SessionKeybagHandle(0x1122334455667788),
+            selector=aks.SessionKeybagSelector(-501),
+            device_state_active=True)
+        self.assertEqual(password, bytearray(len(original_password)))
+        self.assertEqual(context, bytearray(16))
+
+        layout = aks.verify_secret_layout(len(original_password))
+        wire = request.view()
+        self.assertEqual(len(wire), layout.total_size)
+        self.assertEqual(struct.unpack_from("<I", wire)[0], 0x50)
+        self.assertEqual(struct.unpack_from(
+            "<IQiI", wire, layout.variant_offset),
+            (1, 0x1122334455667788, -501, len(original_password)))
+        self.assertEqual(
+            wire[layout.password_data_offset:
+                 layout.password_data_offset + len(original_password)],
+            original_password)
+        self.assertEqual(
+            wire[layout.password_data_offset + len(original_password):
+                 layout.password_padded_end],
+            bytes(layout.password_padded_end -
+                  layout.password_data_offset - len(original_password)))
+        self.assertEqual(struct.unpack_from(
+            "<I", wire, layout.context_length_offset)[0], 16)
+        self.assertEqual(
+            wire[layout.context_data_offset:layout.context_data_offset + 16],
+            original_context)
+        self.assertEqual(struct.unpack_from(
+            "<Q", wire, layout.device_state_offset)[0], 0x80)
+        aks.validate_protected_header(bytes(wire[4:0x54]), bytes(wire[0x54:]))
+        self.assertNotIn(original_password, repr(request).encode())
+        request.close()
+        self.assertEqual(bytes(wire), bytes(len(wire)))
+        with self.assertRaises(aks.AKSTransportError):
+            request.view()
+
+    def test_verify_secret_context_manager_scrubs_on_exception(self):
+        password = bytearray(b"temporary")
+        context = bytearray(range(16))
+        wire = None
+        with self.assertRaisesRegex(RuntimeError, "stop"):
+            with aks.consume_verify_secret_inputs(
+                    self._identity(1), password, context,
+                    keybag_handle=aks.SessionKeybagHandle(7),
+                    selector=aks.SessionKeybagSelector(-4),
+                    device_state_active=False) as request:
+                wire = request.view()
+                offset = aks.verify_secret_layout(9).device_state_offset
+                self.assertEqual(struct.unpack_from("<Q", wire, offset)[0], 0)
+                raise RuntimeError("stop")
+        self.assertIsNotNone(wire)
+        self.assertEqual(bytes(wire), bytes(len(wire)))
+
+    def test_verify_secret_consumption_rejects_bad_input_ownership(self):
+        metadata = (aks.SessionKeybagHandle(7),
+                    aks.SessionKeybagSelector(-4))
+        cases = (
+            (b"immutable", bytearray(16), False),
+            (bytearray(b"ok"), bytes(16), False),
+            (bytearray(b"ok"), bytearray(15), False),
+            (bytearray(b"ok"), bytearray(16), 1),
+        )
+        for password, context, state in cases:
+            with self.subTest(password_type=type(password),
+                              context_type=type(context), state=state):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.consume_verify_secret_inputs(
+                        self._identity(2), password, context,
+                        keybag_handle=metadata[0], selector=metadata[1],
+                        device_state_active=state)
+
+    def test_verify_secret_consumption_scrubs_after_internal_failure(self):
+        header = bytearray(self._identity(2))
+        struct.pack_into("<I", header, 0x10, 3)
+        password = bytearray(b"temporary")
+        context = bytearray(range(16))
+        with self.assertRaises(aks.AKSTransportError):
+            aks.consume_verify_secret_inputs(
+                bytes(header), password, context,
+                keybag_handle=aks.SessionKeybagHandle(7),
+                selector=aks.SessionKeybagSelector(-4),
+                device_state_active=False)
+        self.assertEqual(password, bytearray(9))
+        self.assertEqual(context, bytearray(16))
+
     def test_authorization_plan_validates_verify_reply_transport(self):
         plan = aks.AuthorizationPlan()
         plan.capabilities_request = aks.AKSEnvelope(0x4d, 1, 100, False)
@@ -129,6 +221,10 @@ class AKSTransportTests(unittest.TestCase):
         plan.plan_verify_secret(
             2, 12, keybag_handle=aks.SessionKeybagHandle(7),
             selector=aks.SessionKeybagSelector(-2))
+        secret_request = plan.consume_verify_secret_payload(
+            self._identity(), bytearray(12), bytearray(16),
+            device_state_active=False)
+        secret_request.close()
         body = struct.pack("<IQ", 1, 7)
         header = aks.protect_header(self._identity(), body)
         payload = struct.pack("<I", 0x50) + header + body
@@ -138,6 +234,31 @@ class AKSTransportTests(unittest.TestCase):
         with self.assertRaises(aks.AKSTransportError):
             plan.accept_verify_secret_success(
                 bytes.fromhex("07a103000000600000000000"), payload)
+
+    def test_authorization_plan_correlates_owned_secret_payload(self):
+        plan = aks.AuthorizationPlan()
+        plan.header_version = 2
+        plan.environment_initialized = True
+        plan.plan_verify_secret(
+            9, 5, keybag_handle=aks.SessionKeybagHandle(7),
+            selector=aks.SessionKeybagSelector(-4))
+        with self.assertRaises(aks.AKSTransportError):
+            plan.consume_verify_secret_payload(
+                self._identity(1), bytearray(5), bytearray(16),
+                device_state_active=False)
+        password = bytearray(b"12345")
+        context = bytearray(16)
+        request = plan.consume_verify_secret_payload(
+            self._identity(2), password, context, device_state_active=False)
+        self.assertEqual(len(request.view()),
+                         plan.verify_request.payload_length)
+        self.assertEqual(password, bytearray(5))
+        self.assertEqual(context, bytearray(16))
+        with self.assertRaises(aks.AKSTransportError):
+            plan.consume_verify_secret_payload(
+                self._identity(2), bytearray(5), bytearray(16),
+                device_state_active=False)
+        request.close()
 
     def test_build_identity_header_layout(self):
         cdhash = bytes(range(20))

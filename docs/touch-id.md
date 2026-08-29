@@ -1307,8 +1307,32 @@ For a 12-byte password, the variant, keybag, and selector begin at offsets
 four-byte-aligned password region ends at `116`, the 16-byte ACM context
 length/data occupy `116`/`120`, and device state begins at `136`, producing
 the proven 144-byte total. Other password lengths are derived with the same
-checked arithmetic. No function in this layer accepts password or context
-bytes.
+checked arithmetic.
+
+The ownership behavior is now recovered too. `__ipc_verify_secret_v1` creates
+and zero-initializes a `0x98`-byte stack descriptor, stores password and ACM
+context pointers and lengths at `0x68/0x70` and `0x78/0x80`, stores the input
+device-state qword at `0x88`, and always wipes the complete descriptor after
+the transport callback. `AppleKeyStore::verify_password` obtains both pointers
+directly from its two `OSData` arguments; its boolean argument becomes exactly
+bit `0x80` in the input device-state qword. On the receiving side,
+`_post_process_ipc_verify_secret` wipes and frees both decoded blob allocations
+for variants 0 and 1. Apple does not wipe the caller-owned `OSData` objects in
+this function, so their lifetime remains a caller responsibility.
+
+The offline model now adds a stricter ownership-transfer codec for future
+Linux code. It accepts the two secrets only as mutable caller-owned
+`bytearray`s, validates all non-secret metadata, copies them into one mutable
+serialized request, computes the digest incrementally without concatenating an
+immutable secret-bearing payload, and immediately zeros both inputs. The
+returned `VerifySecretRequest` exposes only a memory view and an idempotent
+`close`; context-manager exit wipes its complete backing buffer even when an
+exception is raised. Its representation contains only length and closed state.
+`AuthorizationPlan` correlates this buffer's negotiated header version and
+exact planned OOL length and refuses both duplicate construction and a success
+reply before construction. This is an offline memory-lifetime model, not a
+claim that Python can provide production-grade locked memory, and there is
+still no live authorization switch.
 
 The successful operation-`0x21` variant-1 response is only 96 bytes: the same
 `0x54`-byte serialized protected header, variant word `1`, and the returned
@@ -1319,8 +1343,7 @@ reinterpreted as a decodable success body. The strict decoder requires exact siz
 length, the already-negotiated header version, zero flags, valid digest, and
 variant `1`. `AuthorizationPlan` additionally correlates selector, tag, and
 OOL length and accepts the success reply only once. This models only the
-non-secret response path; no password serializer or live authorization call
-exists.
+strict response path; no live authorization call exists.
 
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
