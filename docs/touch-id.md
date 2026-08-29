@@ -2336,6 +2336,9 @@ independently passes `1` in `MKBKeyBagCreateBackup` and `3` in
 Apple-client value, not a gap filled by enumeration. The offline codec exposes
 named typed constants for those three values but still requires explicit
 selection and performs no live mutation.
+`tools/research/verify-bridgeos-keybag-store-types.py` makes the two binary
+hashes and the three immediate-plus-call instruction pairs reproducible and
+fails closed on either an image or call-site mismatch.
 
 ## Useful baseline commands
 
