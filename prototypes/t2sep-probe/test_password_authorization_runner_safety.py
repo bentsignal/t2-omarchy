@@ -19,6 +19,17 @@ class PasswordAuthorizationRunnerSafetyTests(unittest.TestCase):
                          "verify-password-authorization-log.py"):
             self.assertIn(fragment, SOURCE)
 
+    def test_failed_probe_still_prints_fresh_transcript(self):
+        load = SOURCE.index('sudo -n insmod "$module"')
+        status = SOURCE.index("load_status=$?", load)
+        journal = SOURCE.index('journalctl -k --after-cursor "$before"', status)
+        printed = SOURCE.index("printf '%s\\n' \"$log\"", journal)
+        checked = SOURCE.index("load_status == 0", printed)
+        self.assertLess(load, status)
+        self.assertLess(status, journal)
+        self.assertLess(journal, printed)
+        self.assertLess(printed, checked)
+
     def test_visible_prompt_has_a_bounded_wait(self):
         for fragment in ('exec 9<>"$prompt_fifo"',
                          'prompt_pid=$!',
