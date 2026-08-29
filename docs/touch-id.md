@@ -1163,7 +1163,10 @@ bytes.
 
 The successful operation-`0x21` variant-1 response is only 96 bytes: the same
 `0x54`-byte serialized protected header, variant word `1`, and the returned
-64-bit device-state value. The strict decoder requires exact size, header
+64-bit device-state value. The generated `_code_ipc_verify_secret` serializer
+selects offset `0x90` for that variant's response qword; there is no embedded
+status field in this successful payload, so an operation failure must never be
+reinterpreted as a decodable success body. The strict decoder requires exact size, header
 length, the already-negotiated header version, zero flags, valid digest, and
 variant `1`. `AuthorizationPlan` additionally correlates selector, tag, and
 OOL length and accepts the success reply only once. This models only the

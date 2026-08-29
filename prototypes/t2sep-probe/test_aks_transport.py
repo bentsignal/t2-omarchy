@@ -76,6 +76,18 @@ class AKSTransportTests(unittest.TestCase):
             with self.assertRaises(aks.AKSTransportError):
                 aks.decode_verify_secret_reply(bytes(changed), 2)
 
+    def test_verify_secret_fixed_success_vector(self):
+        identity = aks.build_identity_header(
+            1, continuous_usec=0x0102030405060708,
+            process_unique_id=0, audit_session_id=0, cdhash=bytes(20))
+        body = struct.pack("<IQ", 1, 0x1122334455667788)
+        wire = struct.pack("<I", 0x50) + aks.protect_header(identity, body) + body
+        self.assertEqual(
+            wire.hex(),
+            "500000001c3f43f92b051af9f53206a27222b4fb01000000080706050403020100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000008877665544332211")
+        self.assertEqual(aks.decode_verify_secret_reply(wire, 1),
+                         aks.VerifySecretReply(0x1122334455667788))
+
     def test_authorization_plan_validates_verify_reply_transport(self):
         plan = aks.AuthorizationPlan()
         plan.capabilities_request = aks.AKSEnvelope(0x4d, 1, 100, False)
