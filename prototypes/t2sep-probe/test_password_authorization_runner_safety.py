@@ -7,17 +7,22 @@ SOURCE = Path(__file__).with_name("run-password-authorization-probe.sh").read_te
 
 class PasswordAuthorizationRunnerSafetyTests(unittest.TestCase):
     def test_password_never_enters_shell_variable_or_argv(self):
-        self.assertIn("systemd-ask-password --no-tty --echo=no", SOURCE)
+        self.assertIn("prompt-password-key.sh", SOURCE)
         self.assertIn("set +x", SOURCE)
-        self.assertIn("|\n  keyctl padd user", SOURCE)
         self.assertNotIn("password=$(", SOURCE)
         self.assertNotIn("password=\"$", SOURCE)
         self.assertIn('password_key_serial="$serial"', SOURCE)
 
     def test_key_is_revoked_unlinked_and_module_unloaded(self):
         for fragment in ("trap cleanup EXIT", 'keyctl revoke "$serial"',
-                         'keyctl unlink "$serial" @s', "rmmod t2sep_probe",
+                         'keyctl unlink "$serial" @s', "sudo -n rmmod t2sep_probe",
                          "verify-password-authorization-log.py"):
+            self.assertIn(fragment, SOURCE)
+
+    def test_visible_prompt_has_a_bounded_wait(self):
+        for fragment in ('exec 9<>"$prompt_fifo"',
+                         'read -r -t 130 serial <&9',
+                         'password prompt timed out or was closed'):
             self.assertIn(fragment, SOURCE)
 
     def test_runner_has_exact_gate_and_preflight(self):

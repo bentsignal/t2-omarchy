@@ -7,9 +7,13 @@ device=/sys/bus/pci/devices/0000:04:00.2
 confirmation=${1:-}
 session_uid=${2:-}
 serial=
+prompt_dir=
+prompt_fifo=
+prompt_fd_open=0
 
 die() { echo "ERROR: $*" >&2; exit 1; }
-[[ $EUID -eq 0 ]] || die "run through pkexec or sudo"
+[[ $EUID -ne 0 ]] || die "run as the desktop user; this wrapper uses passwordless sudo internally"
+sudo -n true || die "passwordless sudo is unavailable"
 [[ $confirmation == I_UNDERSTAND_ONE_PASSWORD_ATTEMPT ]] ||
   die "missing exact interactive confirmation"
 [[ $session_uid =~ ^[0-9]+$ && $session_uid -ge 10 && $session_uid -lt 2147483647 ]] ||
@@ -25,30 +29,49 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ ! -d /sys/module/t2sep_probe ]] || die "t2sep_probe is already loaded"
 
 cleanup() {
-  [[ -d /sys/module/t2sep_probe ]] && rmmod t2sep_probe || true
+  if (( prompt_fd_open )); then
+    exec 9>&- 9<&-
+    prompt_fd_open=0
+  fi
+  [[ -d /sys/module/t2sep_probe ]] && sudo -n rmmod t2sep_probe || true
   if [[ -n $serial ]]; then
     keyctl revoke "$serial" 2>/dev/null || true
     keyctl unlink "$serial" @s 2>/dev/null || true
   fi
+  if [[ -n $prompt_fifo ]]; then
+    rm -f -- "$prompt_fifo"
+  fi
+  if [[ -n $prompt_dir ]]; then
+    rmdir -- "$prompt_dir" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
-echo "A hidden prompt will ask once for the macOS account password (UID $session_uid)." >&2
+echo "A new terminal will ask once for the macOS account password (UID $session_uid)." >&2
 set +x
-serial=$(systemd-ask-password --no-tty --echo=no --timeout=120 -n \
-  "Enter the macOS account password for one T2 verification attempt:" |
-  keyctl padd user "t2sep-password-$$" @s)
+prompt_dir=$(mktemp -d)
+prompt_fifo="$prompt_dir/key-serial"
+mkfifo -m 600 "$prompt_fifo"
+# Open both ends here so a failed prompt process cannot leave this wrapper
+# blocked forever while opening the FIFO. The timed read below is then the
+# sole wait for the desktop terminal to return a key serial.
+exec 9<>"$prompt_fifo"
+prompt_fd_open=1
+xdg-terminal-exec "$module_dir/prompt-password-key.sh" "$prompt_fifo"
+IFS= read -r -t 130 serial <&9 || die "password prompt timed out or was closed"
+exec 9>&- 9<&-
+prompt_fd_open=0
 [[ $serial =~ ^[0-9]+$ ]] || die "temporary password key creation failed"
 
-before=$(journalctl -k --show-cursor -n 0 --no-pager | sed -n 's/^-- cursor: //p')
+before=$(sudo -n journalctl -k --show-cursor -n 0 --no-pager | sed -n 's/^-- cursor: //p')
 [[ -n $before ]] || die "could not obtain a fresh kernel-journal cursor"
-insmod "$module" apple_start_cpu_probe=1 apple_start_with_msi=1 \
+sudo -n insmod "$module" apple_start_cpu_probe=1 apple_start_with_msi=1 \
   apple_send_control_nop=1 apple_probe_password_verification=1 \
   password_verification_confirmation=0x5041535356455249 \
   password_key_serial="$serial" macos_session_uid="$session_uid"
-rmmod t2sep_probe
+sudo -n rmmod t2sep_probe
 
-log=$(journalctl -k --after-cursor "$before" --no-pager)
+log=$(sudo -n journalctl -k --after-cursor "$before" --no-pager)
 printf '%s\n' "$log"
 python3 "$module_dir/verify-password-authorization-log.py" <<<"$log" ||
   die "password-authorization transcript failed independent verification"
