@@ -56,6 +56,29 @@ The SEP unload handler returns success even for an absent bag, so only the
 subsequent copy result can establish removal. These remain offline until
 store-type semantics are closed; they do not create or unload a live keybag.
 
+The kernel probe now composes those exact operations as a separate, default-off
+one-shot gate. With the ephemeral confirmation (distinct from the earlier
+missing-bag diagnostic), it creates one store-type-0 user-session bag under a
+fresh random namespace, uses the SEP-returned signed selector for verify-secret,
+then sends unload and requires a copy operation to return the exact absent-bag
+status before teardown can pass. The password remains in a temporary kernel
+user key through create, is revoked before verify-secret is sent, and every OOL
+buffer is scrubbed only after the corresponding reply or CPU stop. An
+independent transcript verifier requires the full create/authorize/unload/
+absence/context-delete/CPU-stop sequence exactly once.
+
+This is an experiment boundary, not account authentication. Because the probe
+creates the bag whose secret it then verifies, success establishes that Linux
+can manufacture a fresh ACM credential context; it does not independently
+prove knowledge of a pre-existing macOS account secret. Its purpose is to test
+whether bridgeOS accepts that fresh context for Linux-native enrollment while
+making the temporary AKS state auditable and bounded.
+
+```bash
+./run-password-authorization-probe.sh \
+  I_UNDERSTAND_EPHEMERAL_KEYBAG_ATTEMPT 501
+```
+
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
 envelope, OOL length bound, reply message-type correlation, zero-status SCRD
 initialization with Apple's fixed KDK-derived version `0x28`, and zero-status

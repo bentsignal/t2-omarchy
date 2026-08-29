@@ -37,7 +37,7 @@ class KernelOolSafetyTests(unittest.TestCase):
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
         self.assertIn(
-            "SBIO, single/dual credential OOL, AKS capabilities/time/startup, ACM context, combined startup, and password verification modes are mutually exclusive",
+            "SBIO, single/dual credential OOL, AKS capabilities/time/startup, ACM context, combined startup, password verification, and ephemeral keybag modes are mutually exclusive",
             SOURCE)
 
     def test_dual_credential_capture_is_separately_gated_and_nonsecret(self):
@@ -137,7 +137,8 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn(
             "bool dual_credential_ool = apple_capture_dual_credential_ool_acks ||\n"
             "\t\t\t\t   apple_probe_credential_startup ||\n"
-            "\t\t\t\t   apple_probe_password_verification;", SOURCE)
+            "\t\t\t\t   apple_probe_password_verification ||\n"
+            "\t\t\t\t   apple_probe_ephemeral_keybag_authorization;", SOURCE)
         self.assertIn(
             "pdev, bar4, second_in_buffer, second_out_buffer", SOURCE)
 
@@ -148,7 +149,7 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "\t\tT2SEP_PASSWORD_VERIFICATION_CONFIRMATION",
                 "key->type != &key_type_user", "payload->datalen",
                 "payload->datalen > T2SEP_AKS_MAX_PASSWORD_SIZE",
-                "key_revoke(key)", "memzero_explicit(&keybag_handle",
+                "key_revoke(key)",
                 "if (reply_received)",
                 "memzero_explicit(send, T2SEP_CREDENTIAL_OOL_SIZE)",
                 "password_bytes=not-logged", "device_state=not-logged",
@@ -159,6 +160,29 @@ class KernelOolSafetyTests(unittest.TestCase):
                               SOURCE.index("t2sep_probe_aks_verify_password"))
         send = SOURCE.index("t2sep_send_intel_message(bar4, request)", revoke)
         self.assertLess(revoke, send)
+
+    def test_ephemeral_keybag_gate_has_bounded_lifecycle(self):
+        for fragment in (
+                "static bool apple_probe_ephemeral_keybag_authorization;",
+                "T2SEP_EPHEMERAL_KEYBAG_CONFIRMATION",
+                "t2sep_probe_aks_create_device_keybag(",
+                "store_type=0 secret_bytes=not-logged",
+                "t2sep_probe_aks_verify_password(",
+                "version, 0x05, 5",
+                "version, 0x02, 6",
+                "status=-3 absent=yes",
+                "independent absence check still required"):
+            self.assertIn(fragment, SOURCE)
+        create = SOURCE.index("t2sep_probe_aks_create_device_keybag(",
+                              SOURCE.index("static int t2sep_probe_ephemeral"))
+        verify = SOURCE.index("t2sep_probe_aks_verify_password(", create)
+        unload = SOURCE.index("version, 0x05, 5", verify)
+        absence = SOURCE.index("version, 0x02, 6", unload)
+        delete = SOURCE.index("t2sep_probe_acm_context_delete(", absence)
+        self.assertLess(create, verify)
+        self.assertLess(verify, unload)
+        self.assertLess(unload, absence)
+        self.assertLess(absence, delete)
 
     def test_stop_precedes_scrub_and_free(self) -> None:
         function = SOURCE.index("static int t2sep_apple_start_cpu_probe")

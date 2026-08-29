@@ -2340,6 +2340,25 @@ selection and performs no live mutation.
 hashes and the three immediate-plus-call instruction pairs reproducible and
 fails closed on either an image or call-site mismatch.
 
+A new default-off live gate now composes the evidence-backed lifecycle without
+running it automatically: operation `0x01` creates exactly one type-0 bag under
+a fresh nonzero namespace; its returned signed selector feeds operation `0x21`;
+operation `0x05` unloads that exact namespace/selector; and operation `0x02`
+must subsequently return service status `-3` with no body. The ACM context is
+deleted and the SEP CPU stopped on the bounded path. Password input remains in
+the temporary kernel user key until create has replied, then is revoked before
+verify-secret is transmitted. The runner uses a distinct explicit confirmation
+and `verify-ephemeral-keybag-authorization-log.py` rejects missing, duplicated,
+out-of-order, or incomplete teardown markers.
+
+This experiment has a deliberately narrow interpretation. A successful
+verify-secret against a bag created moments earlier does not authenticate a
+pre-existing macOS account; it proves only that Linux can create and unlock an
+ephemeral user-session bag and obtain an ACM context. The next question is
+whether the biometric enrollment service accepts that freshly authenticated
+context. No enrollment command is chained into this gate, so authorization and
+enrollment remain separate supervised steps.
+
 ## Useful baseline commands
 
 ```bash
