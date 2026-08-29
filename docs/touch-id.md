@@ -2308,6 +2308,22 @@ operation `0x03` loading for compatibility with an existing macOS user), with
 the returned runtime handle retained under the same namespace through
 verify-secret and unloaded during bounded teardown.
 
+Static recovery of that next request has begun without choosing a live store
+type. AppleKeyStore's generated operation-`0x01` variant-1 codec serializes the
+protected `0x54`-byte prefix followed by variant word `1`, the 64-bit client
+namespace, a 32-bit store type, a signed 32-bit requested selector, and two
+32-bit-length-prefixed blobs with four-byte padding. Its successful response is
+exactly 92 bytes: the protected prefix, variant `1`, and one returned signed
+runtime selector. `aks-transport.py` now encodes and scrubs that request and
+strictly decodes the success form. The store value remains an opaque typed
+input because guessing device/system/volume semantics would turn an exact
+codec into an unsafe mutation policy. A live gate still requires exact store
+semantics plus operation-`0x05` unload and proof that teardown removes the
+created bag from the same namespace. The unload service returns success even
+when it finds no matching bag, so that proof must come from a subsequent
+operation-`0x02` copy returning the service's absent-bag status; unload success
+alone is not evidence of removal.
+
 ## Useful baseline commands
 
 ```bash

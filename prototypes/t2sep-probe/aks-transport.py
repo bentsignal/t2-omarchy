@@ -16,6 +16,9 @@ REPLY_BIT = 0x80
 GET_CAPABILITIES = 0x4D
 SET_ENVIRONMENT = 0x2A
 VERIFY_SECRET_V1 = 0x21
+CREATE_KEYBAG_V1 = 0x01
+COPY_KEYBAG = 0x02
+UNLOAD_KEYBAG = 0x05
 MAX_HEADER_VERSION = 2
 SERIALIZED_HEADER_SIZE = 0x54
 IPC_HEADER_SIZE = 0x50
@@ -30,6 +33,10 @@ STARTUP_ENVIRONMENT_REQUEST_SIZE = (
     SERIALIZED_HEADER_SIZE + 4 + 8 + 4 + STARTUP_ENVIRONMENT_BLOB_SIZE)
 SET_ENVIRONMENT_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4
 VERIFY_SECRET_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8
+CREATE_KEYBAG_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4 + 4
+UNLOAD_KEYBAG_REQUEST_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
+UNLOAD_KEYBAG_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4
+COPY_KEYBAG_REQUEST_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
 
 
 class AKSTransportError(ValueError):
@@ -158,6 +165,17 @@ class VerifySecretReply:
 
 
 @dataclass(frozen=True)
+class KeybagStoreType:
+    """Opaque Apple keybag store type; no guessed default is permitted."""
+    value: int
+
+
+@dataclass(frozen=True)
+class CreateKeybagReply:
+    selector: "SessionKeybagSelector"
+
+
+@dataclass(frozen=True)
 class SessionKeybagHandle:
     """Opaque AKS client handle derived from one boot/session namespace."""
     value: int
@@ -188,6 +206,58 @@ class VerifySecretLayout:
     context_data_offset: int
     context_padded_end: int
     device_state_offset: int
+
+
+@dataclass(frozen=True)
+class CreateKeybagLayout:
+    total_size: int
+    variant_offset: int
+    namespace_offset: int
+    store_type_offset: int
+    requested_selector_offset: int
+    primary_length_offset: int
+    primary_data_offset: int
+    primary_padded_end: int
+    secondary_length_offset: int
+    secondary_data_offset: int
+    secondary_padded_end: int
+
+
+class CreateKeybagRequest:
+    """Single-owner create-keybag request with explicit secret erasure."""
+
+    __slots__ = ("_wire", "_closed")
+
+    def __init__(self, wire: bytearray) -> None:
+        if not isinstance(wire, bytearray):
+            raise AKSTransportError("create-keybag request storage must be mutable")
+        self._wire = wire
+        self._closed = False
+
+    def view(self) -> memoryview:
+        if self._closed:
+            raise AKSTransportError("create-keybag request is already scrubbed")
+        return memoryview(self._wire)
+
+    def close(self) -> None:
+        if not self._closed:
+            self._wire[:] = b"\0" * len(self._wire)
+            self._closed = True
+
+    def __enter__(self) -> "CreateKeybagRequest":
+        if self._closed:
+            raise AKSTransportError("create-keybag request is already scrubbed")
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    def __repr__(self) -> str:
+        return (f"CreateKeybagRequest(length={len(self._wire)}, "
+                f"closed={self._closed})")
 
 
 class VerifySecretRequest:
@@ -297,6 +367,110 @@ def decode_verify_secret_reply(wire: bytes, expected_header_version: int) -> Ver
     return VerifySecretReply(device_state)
 
 
+def decode_create_keybag_reply(wire: bytes,
+                               expected_header_version: int) -> CreateKeybagReply:
+    """Validate operation 0x01 variant-1's exact successful response."""
+    if expected_header_version not in (1, 2):
+        raise AKSTransportError("expected AKS IPC header version must be 1 or 2")
+    if not isinstance(wire, bytes) or len(wire) != CREATE_KEYBAG_REPLY_SIZE:
+        raise AKSTransportError("AKS create-keybag reply must be exactly 92 bytes")
+    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS create-keybag reply has the wrong header length")
+    header = wire[4:SERIALIZED_HEADER_SIZE]
+    payload = wire[SERIALIZED_HEADER_SIZE:]
+    if struct.unpack_from("<I", header, 0x10)[0] != expected_header_version:
+        raise AKSTransportError("AKS create-keybag reply changed header version")
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("AKS create-keybag reply has unsupported header flags")
+    validate_protected_header(header, payload)
+    variant, selector = struct.unpack("<Ii", payload)
+    if variant != 1:
+        raise AKSTransportError("AKS create-keybag reply is not variant 1")
+    if selector < 0:
+        raise AKSTransportError("AKS create-keybag reply returned an invalid selector")
+    return CreateKeybagReply(SessionKeybagSelector(selector))
+
+
+def encode_unload_keybag_request(identity_header: bytes, *,
+                                 namespace: SessionKeybagHandle,
+                                 selector: SessionKeybagSelector) -> bytes:
+    """Encode operation 0x05 variant 0 for one exact namespace/selector."""
+    _require_plain_identity_header(identity_header)
+    metadata = verify_secret_metadata(namespace, selector)
+    payload = struct.pack("<IQi", 0, metadata.keybag_handle.value,
+                          metadata.selector.value)
+    protected = protect_header(identity_header, payload)
+    wire = struct.pack("<I", IPC_HEADER_SIZE) + protected + payload
+    if len(wire) != UNLOAD_KEYBAG_REQUEST_SIZE:
+        raise AssertionError("unload-keybag request size invariant failed")
+    return wire
+
+
+def encode_copy_keybag_request(identity_header: bytes, *,
+                               namespace: SessionKeybagHandle,
+                               selector: SessionKeybagSelector) -> bytes:
+    """Encode operation 0x02 variant 0 for a bounded presence check."""
+    _require_plain_identity_header(identity_header)
+    metadata = verify_secret_metadata(namespace, selector)
+    payload = struct.pack("<IQi", 0, metadata.keybag_handle.value,
+                          metadata.selector.value)
+    protected = protect_header(identity_header, payload)
+    wire = struct.pack("<I", IPC_HEADER_SIZE) + protected + payload
+    if len(wire) != COPY_KEYBAG_REQUEST_SIZE:
+        raise AssertionError("copy-keybag request size invariant failed")
+    return wire
+
+
+def decode_copy_keybag_reply(wire: bytes, expected_header_version: int,
+                             *, max_blob_size: int = 64 * 1024) -> bytes:
+    """Decode operation 0x02 variant 0's bounded length-prefixed bag copy."""
+    if expected_header_version not in (1, 2):
+        raise AKSTransportError("expected AKS IPC header version must be 1 or 2")
+    max_blob_size = _uint(max_blob_size, 32, "maximum keybag blob size")
+    if not isinstance(wire, bytes) or len(wire) < SERIALIZED_HEADER_SIZE + 8:
+        raise AKSTransportError("AKS copy-keybag reply is truncated")
+    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS copy-keybag reply has the wrong header length")
+    header = wire[4:SERIALIZED_HEADER_SIZE]
+    payload = wire[SERIALIZED_HEADER_SIZE:]
+    if struct.unpack_from("<I", header, 0x10)[0] != expected_header_version:
+        raise AKSTransportError("AKS copy-keybag reply changed header version")
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("AKS copy-keybag reply has unsupported header flags")
+    validate_protected_header(header, payload)
+    variant, blob_length = struct.unpack_from("<II", payload)
+    if variant != 0:
+        raise AKSTransportError("AKS copy-keybag reply is not variant 0")
+    if blob_length > max_blob_size:
+        raise AKSTransportError("AKS copy-keybag reply exceeds the configured bound")
+    expected_size = 8 + _align4(blob_length)
+    if len(payload) != expected_size:
+        raise AKSTransportError("AKS copy-keybag reply has inconsistent blob length")
+    if any(payload[8 + blob_length:]):
+        raise AKSTransportError("AKS copy-keybag reply has nonzero padding")
+    return payload[8:8 + blob_length]
+
+
+def decode_unload_keybag_reply(wire: bytes,
+                               expected_header_version: int) -> None:
+    """Validate operation 0x05's exact protected variant-0 success body."""
+    if expected_header_version not in (1, 2):
+        raise AKSTransportError("expected AKS IPC header version must be 1 or 2")
+    if not isinstance(wire, bytes) or len(wire) != UNLOAD_KEYBAG_REPLY_SIZE:
+        raise AKSTransportError("AKS unload-keybag reply must be exactly 88 bytes")
+    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS unload-keybag reply has the wrong header length")
+    header = wire[4:SERIALIZED_HEADER_SIZE]
+    payload = wire[SERIALIZED_HEADER_SIZE:]
+    if struct.unpack_from("<I", header, 0x10)[0] != expected_header_version:
+        raise AKSTransportError("AKS unload-keybag reply changed header version")
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("AKS unload-keybag reply has unsupported header flags")
+    validate_protected_header(header, payload)
+    if struct.unpack("<I", payload)[0] != 0:
+        raise AKSTransportError("AKS unload-keybag reply is not variant 0")
+
+
 def _require_plain_identity_header(header: bytes) -> None:
     if not isinstance(header, bytes) or len(header) != IPC_HEADER_SIZE:
         raise AKSTransportError("AKS IPC header must be exactly 0x50 bytes")
@@ -377,6 +551,82 @@ def verify_secret_serialized_size(password_length: int,
                                   context_length: int = ACM_CONTEXT_SIZE) -> int:
     """Plan the protected IPC size without accepting either secret blob."""
     return verify_secret_layout(password_length, context_length).total_size
+
+
+def create_keybag_layout(primary_length: int,
+                         secondary_length: int = 0) -> CreateKeybagLayout:
+    """Return operation 0x01 variant-1 boundaries without accepting secrets."""
+    primary_length = _length(primary_length, "primary keybag secret")
+    secondary_length = _length(secondary_length, "secondary keybag secret")
+    if not 1 <= primary_length <= 256:
+        raise AKSTransportError("primary keybag secret must contain 1..256 bytes")
+    if secondary_length > 256:
+        raise AKSTransportError("secondary keybag secret exceeds 256 bytes")
+    variant_offset = SERIALIZED_HEADER_SIZE
+    namespace_offset = variant_offset + 4
+    store_type_offset = namespace_offset + 8
+    requested_selector_offset = store_type_offset + 4
+    primary_length_offset = requested_selector_offset + 4
+    primary_data_offset = primary_length_offset + 4
+    primary_padded_end = primary_data_offset + _align4(primary_length)
+    secondary_length_offset = primary_padded_end
+    secondary_data_offset = secondary_length_offset + 4
+    secondary_padded_end = secondary_data_offset + _align4(secondary_length)
+    if secondary_padded_end > OOL_CAPACITY:
+        raise AKSTransportError("serialized create-keybag request exceeds OOL")
+    return CreateKeybagLayout(
+        secondary_padded_end, variant_offset, namespace_offset,
+        store_type_offset, requested_selector_offset, primary_length_offset,
+        primary_data_offset, primary_padded_end, secondary_length_offset,
+        secondary_data_offset, secondary_padded_end)
+
+
+def consume_create_keybag_inputs(identity_header: bytes, primary: bytearray,
+                                 secondary: bytearray, *,
+                                 namespace: SessionKeybagHandle,
+                                 store_type: KeybagStoreType,
+                                 requested_selector: SessionKeybagSelector
+                                 ) -> CreateKeybagRequest:
+    """Serialize variant 1 while consuming and wiping both secret inputs."""
+    _require_plain_identity_header(identity_header)
+    metadata = verify_secret_metadata(namespace, requested_selector)
+    if not isinstance(store_type, KeybagStoreType):
+        raise AKSTransportError("keybag store type must be an opaque typed value")
+    store_type_value = _uint(store_type.value, 32, "keybag store type")
+    if not isinstance(primary, bytearray) or not isinstance(secondary, bytearray):
+        raise AKSTransportError("keybag secrets must be caller-owned bytearrays")
+    layout = create_keybag_layout(len(primary), len(secondary))
+    wire = bytearray(layout.total_size)
+    try:
+        struct.pack_into("<I", wire, 0, IPC_HEADER_SIZE)
+        wire[4:SERIALIZED_HEADER_SIZE] = identity_header
+        struct.pack_into("<IQIiI", wire, layout.variant_offset, 1,
+                         metadata.keybag_handle.value, store_type_value,
+                         metadata.selector.value, len(primary))
+        wire[layout.primary_data_offset:
+             layout.primary_data_offset + len(primary)] = primary
+        struct.pack_into("<I", wire, layout.secondary_length_offset,
+                         len(secondary))
+        wire[layout.secondary_data_offset:
+             layout.secondary_data_offset + len(secondary)] = secondary
+        header = memoryview(wire)[4:SERIALIZED_HEADER_SIZE]
+        payload = memoryview(wire)[SERIALIZED_HEADER_SIZE:]
+        version = struct.unpack_from("<I", header, 0x10)[0]
+        if version not in (1, 2):
+            raise AKSTransportError("AKS IPC header version must be 1 or 2")
+        protected_end = 0x48 if version == 1 else 0x50
+        digest = hashlib.sha256()
+        digest.update(header[0x10:protected_end])
+        digest.update(payload)
+        wire[4:4 + IPC_DIGEST_SIZE] = digest.digest()[:IPC_DIGEST_SIZE]
+    except Exception:
+        wire[:] = b"\0" * len(wire)
+        primary[:] = b"\0" * len(primary)
+        secondary[:] = b"\0" * len(secondary)
+        raise
+    primary[:] = b"\0" * len(primary)
+    secondary[:] = b"\0" * len(secondary)
+    return CreateKeybagRequest(wire)
 
 
 def verify_secret_layout(password_length: int,

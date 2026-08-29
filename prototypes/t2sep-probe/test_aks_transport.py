@@ -391,6 +391,124 @@ class AKSTransportTests(unittest.TestCase):
         with self.assertRaises(aks.AKSTransportError):
             aks.verify_secret_serialized_size(b"password")
 
+    def test_create_keybag_layout_is_exact_and_nonoverlapping(self):
+        self.assertEqual(aks.create_keybag_layout(3), aks.CreateKeybagLayout(
+            total_size=116,
+            variant_offset=84,
+            namespace_offset=88,
+            store_type_offset=96,
+            requested_selector_offset=100,
+            primary_length_offset=104,
+            primary_data_offset=108,
+            primary_padded_end=112,
+            secondary_length_offset=112,
+            secondary_data_offset=116,
+            secondary_padded_end=116))
+        self.assertEqual(aks.create_keybag_layout(4, 5).total_size, 124)
+        for primary, secondary in ((0, 0), (257, 0), (1, 257),
+                                   (b"secret", 0)):
+            with self.subTest(primary=primary, secondary=secondary):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.create_keybag_layout(primary, secondary)
+
+    def test_create_keybag_consumes_secrets_and_scrubs_request(self):
+        primary = bytearray(b"abc")
+        secondary = bytearray(b"12345")
+        original_primary = bytes(primary)
+        original_secondary = bytes(secondary)
+        request = aks.consume_create_keybag_inputs(
+            self._identity(2), primary, secondary,
+            namespace=aks.SessionKeybagHandle(0x1122334455667788),
+            store_type=aks.KeybagStoreType(1),
+            requested_selector=aks.SessionKeybagSelector(-501))
+        self.assertEqual(primary, bytearray(3))
+        self.assertEqual(secondary, bytearray(5))
+        layout = aks.create_keybag_layout(3, 5)
+        wire = request.view()
+        self.assertEqual(struct.unpack_from(
+            "<IQIiI", wire, layout.variant_offset),
+            (1, 0x1122334455667788, 1, -501, 3))
+        self.assertEqual(bytes(wire[layout.primary_data_offset:
+                                    layout.primary_data_offset + 3]),
+                         original_primary)
+        self.assertEqual(bytes(wire[layout.secondary_data_offset:
+                                    layout.secondary_data_offset + 5]),
+                         original_secondary)
+        aks.validate_protected_header(bytes(wire[4:0x54]), bytes(wire[0x54:]))
+        self.assertNotIn(original_primary, repr(request).encode())
+        request.close()
+        self.assertEqual(bytes(wire), bytes(len(wire)))
+
+    def test_create_keybag_rejects_untyped_metadata_and_immutable_secrets(self):
+        cases = (
+            (b"secret", bytearray(), aks.KeybagStoreType(1)),
+            (bytearray(b"secret"), b"", aks.KeybagStoreType(1)),
+            (bytearray(b"secret"), bytearray(), 1),
+            (bytearray(b"secret"), bytearray(), aks.KeybagStoreType(-1)),
+        )
+        for primary, secondary, store_type in cases:
+            with self.subTest(store_type=store_type):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.consume_create_keybag_inputs(
+                        self._identity(), primary, secondary,
+                        namespace=aks.SessionKeybagHandle(7),
+                        store_type=store_type,
+                        requested_selector=aks.SessionKeybagSelector(-501))
+
+    def test_create_keybag_success_reply_is_strict(self):
+        body = struct.pack("<Ii", 1, 9)
+        header = aks.protect_header(self._identity(2), body)
+        wire = struct.pack("<I", 0x50) + header + body
+        self.assertEqual(aks.decode_create_keybag_reply(wire, 2),
+                         aks.CreateKeybagReply(aks.SessionKeybagSelector(9)))
+        for changed in (
+                wire[:-1],
+                wire[:84] + struct.pack("<Ii", 0, 9),
+                wire[:84] + struct.pack("<Ii", 1, -1),
+                struct.pack("<I", 0x48) + wire[4:]):
+            with self.subTest(length=len(changed)):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.decode_create_keybag_reply(changed, 2)
+
+    def test_unload_keybag_request_and_reply_are_exact(self):
+        request = aks.encode_unload_keybag_request(
+            self._identity(2), namespace=aks.SessionKeybagHandle(7),
+            selector=aks.SessionKeybagSelector(9))
+        self.assertEqual(len(request), 100)
+        self.assertEqual(struct.unpack_from("<IQi", request, 84), (0, 7, 9))
+        aks.validate_protected_header(request[4:84], request[84:])
+        body = struct.pack("<I", 0)
+        header = aks.protect_header(self._identity(2), body)
+        reply = struct.pack("<I", 0x50) + header + body
+        self.assertIsNone(aks.decode_unload_keybag_reply(reply, 2))
+        for changed in (reply[:-1], reply[:84] + struct.pack("<I", 1)):
+            with self.subTest(length=len(changed)):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.decode_unload_keybag_reply(changed, 2)
+
+    def test_copy_keybag_request_and_bounded_reply_are_exact(self):
+        request = aks.encode_copy_keybag_request(
+            self._identity(2), namespace=aks.SessionKeybagHandle(7),
+            selector=aks.SessionKeybagSelector(9))
+        self.assertEqual(len(request), 100)
+        self.assertEqual(struct.unpack_from("<IQi", request, 84), (0, 7, 9))
+        aks.validate_protected_header(request[4:84], request[84:])
+
+        body = struct.pack("<II", 0, 3) + b"bag\0"
+        header = aks.protect_header(self._identity(2), body)
+        reply = struct.pack("<I", 0x50) + header + body
+        self.assertEqual(aks.decode_copy_keybag_reply(reply, 2), b"bag")
+        for changed in (
+                reply[:-1],
+                reply[:84] + struct.pack("<II", 1, 3) + b"bag\0",
+                reply[:84] + struct.pack("<II", 0, 5) + b"bag\0",
+                reply[:-1] + b"x"):
+            with self.subTest(length=len(changed)):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.decode_copy_keybag_reply(changed, 2)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.decode_copy_keybag_reply(reply, 2, max_blob_size=2)
+
     def test_verify_secret_layout_has_exact_nonoverlapping_boundaries(self):
         layout = aks.verify_secret_layout(12)
         self.assertEqual(layout, aks.VerifySecretLayout(

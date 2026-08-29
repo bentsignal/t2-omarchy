@@ -35,8 +35,22 @@ rejects bare integers so UID/PID constants cannot be substituted accidentally.
 It also mirrors AppleKeyStore's authenticated login-session selector mapping
 (UID 0 to `-4`, UID 10 through `INT32_MAX-1` to its negation), returns a
 separate opaque selector type, and never reads the ambient process UID. It
-performs no MMIO, DMA, password handling, Linux identity substitution, or
-secret serialization.
+performs no MMIO, DMA, live password prompting, or Linux identity substitution.
+
+The same module now has an offline operation-`0x01` variant-1 keybag-create
+codec, which addresses the prerequisite exposed by the first live
+verify-secret rejection. It requires an explicit typed store value, client
+namespace, requested selector, and two caller-owned mutable secret buffers; it
+supplies no guessed Apple bag type. It serializes the exact protected header,
+qword namespace, two metadata words, and two four-byte-aligned
+length-prefixed blobs recovered from `_code_ipc_create_keybag`. Both input
+buffers are consumed and wiped, and closing the request wipes its complete
+backing store. The strict 92-byte success decoder returns only the runtime
+selector. Exact offline operation-`0x05` unload and bounded operation-`0x02`
+copy codecs provide the lifecycle teardown and independent presence check.
+The SEP unload handler returns success even for an absent bag, so only the
+subsequent copy result can establish removal. These remain offline until
+store-type semantics are closed; they do not create or unload a live keybag.
 
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
 envelope, OOL length bound, reply message-type correlation, zero-status SCRD
