@@ -14,7 +14,7 @@ MAGIC = b"T2CATDB\0"
 VERSION = 1
 HEADER = struct.Struct("<8sIII32s")
 MINIMUM_BLOB_SIZE = 33
-MAXIMUM_BLOB_SIZE = 64 * 1024 * 1024
+MAXIMUM_BLOB_SIZE = 75 * 4096
 
 
 class CatacombStoreError(ValueError):

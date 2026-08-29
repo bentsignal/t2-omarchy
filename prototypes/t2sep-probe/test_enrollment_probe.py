@@ -49,7 +49,7 @@ class EnrollmentProbeTests(unittest.TestCase):
     USER = 1000
     UUID = bytes(range(16))
     IDS = tuple(f"{index:08d}-89AB-4CDE-8FAB-0123456789AB"
-                for index in range(10))
+                for index in range(13))
 
     def incoming(self, *, after_record=True, terminal_uuid=UUID):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
@@ -137,6 +137,34 @@ class EnrollmentProbeTests(unittest.TestCase):
         self.assertTrue(result.policy_initialized)
         self.assertTrue(policy_request.closed)
         self.assertTrue(enroll_request.closed)
+
+    def test_successful_enrollment_is_persisted_before_confirmation(self):
+        identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
+        blob = bytearray(128)
+        struct.pack_into("<I", blob, 8, self.USER)
+        incoming = (envelope(self.IDS[0], [0, 3])
+                    + envelope(self.IDS[1], [0])
+                    + envelope(self.IDS[2], [0, True])
+                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
+                    + service_event(0xE3FF8001)
+                    + service_event(0xE3FF8003, identity, 2)
+                    + envelope(self.IDS[5], [0, identity])
+                    + envelope(self.IDS[6], [0, struct.pack("<I", len(blob))])
+                    + envelope(self.IDS[7], [0, bytes(blob)])
+                    + envelope(self.IDS[8], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[9], [0, protocol.NO_REPLY_UUID.lower()]))
+        saved = []
+        ids = iter(self.IDS)
+        original = probe.coupled.bridge_query.uuid.uuid4
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            result = probe.probe_socket(FakeSocket(incoming), user_id=self.USER,
+                                        catacomb_sink=saved.append)
+        finally:
+            probe.coupled.bridge_query.uuid.uuid4 = original
+        self.assertEqual(saved, [bytes(blob)])
+        self.assertTrue(result.catacomb_saved)
 
     def test_progress_callback_gets_metadata_only(self):
         seen = []

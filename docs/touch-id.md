@@ -2662,7 +2662,8 @@ command `0x37`.
 `LoadCatacomb` is current outer command `0x40`, version 1. It accepts the opaque
 blob returned by Complete, requires more than the 32-byte catacomb header,
 reads the UID at byte offset 8, and forwards the entire blob as internal
-command `0x6d`. Linux codecs now bound blobs to 64 MiB, correlate the UID,
+command `0x6d`. Linux codecs bound blobs to the independently recovered
+75-page (300 KiB) biometric outbound SBIO aperture, correlate the UID,
 and make every save phase explicit. A local storage envelope adds version,
 UID, length, and SHA-256 corruption detection around the otherwise untouched
 opaque SEP blob, uses mode `0600` beneath a mode-`0700` directory, and replaces
@@ -2670,6 +2671,16 @@ records with file-and-directory `fsync`. These codecs and storage behavior
 bring the offline suite to 406 tests. Live save remains downstream of a
 successful enrollment; no biometric template bytes have yet been captured or
 written by Linux.
+
+The supervised policy-enrollment transaction now includes persistence in the
+same live Bridge session. Only after the terminal identity exactly matches a
+one-record enumeration delta does it prepare the save, accept an exact bounded
+blob, validate its embedded UID, atomically fsync the root-only record, and
+send Confirm. A storage failure deliberately prevents confirmation. The
+Bridge receive cap is expanded only around that one Complete reply and only to
+the prepared size plus bounded binary-plist overhead, then restored. The root
+record path is `/var/lib/t2-touchid/<uid>.catacomb`. This end-to-end path has
+407 passing offline tests but still awaits its first supervised hardware run.
 
 ## Useful baseline commands
 

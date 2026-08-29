@@ -17,6 +17,7 @@ prompt_pid=
 insmod_pid=
 client_name=
 client_confirmation=
+catacomb_path=
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] || die "run as the desktop user"
@@ -29,6 +30,7 @@ case $confirmation in
   I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY)
     client_name=authorized-policy-enrollment-client.py
     client_confirmation=$confirmation
+    catacomb_path="/var/lib/t2-touchid/$session_uid.catacomb"
     ;;
   *) die "missing exact enrollment confirmation" ;;
 esac
@@ -105,11 +107,19 @@ done
 
 echo "Enrollment is starting. Follow the short touch/lift prompts printed here." >&2
 set +e
-sudo -n cat "$credential_path" |
-  python3 "$module_dir/$client_name" \
-    --user-id "$session_uid" --interface "$interface" \
-    --confirm="$client_confirmation"
-client_status=${PIPESTATUS[1]}
+if [[ -n $catacomb_path ]]; then
+  sudo -n cat "$credential_path" |
+    sudo -n python3 "$module_dir/$client_name" \
+      --user-id "$session_uid" --interface "$interface" \
+      --catacomb-output "$catacomb_path" --confirm="$client_confirmation"
+  client_status=${PIPESTATUS[1]}
+else
+  sudo -n cat "$credential_path" |
+    python3 "$module_dir/$client_name" \
+      --user-id "$session_uid" --interface "$interface" \
+      --confirm="$client_confirmation"
+  client_status=${PIPESTATUS[1]}
+fi
 set -e
 
 printf '1\n' | sudo -n tee "$done_path" >/dev/null

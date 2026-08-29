@@ -22,6 +22,7 @@ class AuthorizedPolicyEnrollmentClientTests(unittest.TestCase):
         self.assertNotIn("print(credential", source)
         self.assertIn("credential[:] = bytes(len(credential))", source)
         self.assertIn("policy_credential[:] = bytes(len(policy_credential))", source)
+        self.assertIn("catacomb_sink=lambda blob: store.save(", source)
 
 
 if __name__ == "__main__":

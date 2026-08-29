@@ -20,6 +20,7 @@ def _load(name: str, filename: str):
 
 client = _load("policy_enrollment_input", "authorized-enrollment-client.py")
 enrollment = client.enrollment
+store = _load("policy_enrollment_store", "catacomb-store.py")
 CONFIRMATION = "I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY"
 
 
@@ -28,6 +29,7 @@ def main() -> None:
     parser.add_argument("--user-id", type=int, required=True)
     parser.add_argument("--interface", default="enp4s0f1u1")
     parser.add_argument("--confirm", required=True)
+    parser.add_argument("--catacomb-output", type=Path, required=True)
     args = parser.parse_args()
     if args.confirm != CONFIRMATION:
         parser.error(f"live policy enrollment requires --confirm={CONFIRMATION}")
@@ -46,6 +48,8 @@ def main() -> None:
         result = enrollment.live_probe(
             user_id=args.user_id, interface=args.interface, event_timeout=60.0,
             authorized_request=enroll_request, policy_request=policy_request,
+            catacomb_sink=lambda blob: store.save(
+                args.catacomb_output, user_id=args.user_id, blob=blob),
             progress=client.progress_instruction)
     finally:
         credential[:] = bytes(len(credential))
@@ -57,6 +61,7 @@ def main() -> None:
         enrollment.LIVE_ENROLLMENT_ENABLED = False
     print("authorized policy enrollment completed: "
           f"policy_initialized={result.policy_initialized} "
+          f"catacomb_saved={result.catacomb_saved} "
           f"identities_before={result.identities_before} "
           f"identities_after={result.identities_after} "
           f"cancel_status={result.cancel_status}")
