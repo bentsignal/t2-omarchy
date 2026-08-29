@@ -127,6 +127,18 @@ also covers the observed fact that promotion moves/remaps the positive source
 rather than necessarily retaining two live bags. A corrected supervised run
 is still required before BiometricKit acceptance is known.
 
+The following run began with two replies still pending from that displaced
+queue, so its control NOP correctly failed before OOL setup or password use.
+The startup gate now handles this recoverable state only while CPU control is
+the exact stopped value `0x7f`: it drains at most 16 already-pending mailbox
+records without reading any OOL payload, requires the inbox to become empty,
+and only then starts the CPU and sends the tagged NOP. A password-free live
+validation drained the remaining endpoint-7 copy reply and endpoint-0 control
+reply, then received the exact fresh NOP response `00010100 00000000
+00000000 ...`. CPU stop and module removal completed normally. This avoids a
+power cycle after a fail-closed correlation experiment without allowing live
+traffic to be discarded while the SEP is running.
+
 `run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
 experiment. It repeats that proven lifecycle but keeps the authorized ACM
 context and temporary keybag live while one BiometricKit enrollment runs. A

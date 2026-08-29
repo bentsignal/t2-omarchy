@@ -1941,6 +1941,34 @@ out_revoke:
 	return ret;
 }
 
+static int t2sep_drain_stopped_stale_inbox(
+	struct pci_dev *pdev, void __iomem *bar4)
+{
+	u32 words[4];
+	unsigned int count;
+	int ret;
+
+	if (ioread32(bar4 + T2SEP_INTEL_CPU_CONTROL) != 0x7f)
+		return -EBUSY;
+	for (count = 0; count < 16; count++) {
+		ret = t2sep_read_intel_message(bar4, words);
+		if (ret == -EAGAIN) {
+			dev_info(&pdev->dev,
+				 "stopped-CPU stale inbox drain completed: messages=%u inbox=empty\n",
+				 count);
+			return 0;
+		}
+		if (ret)
+			return ret;
+		dev_info(&pdev->dev,
+			 "stopped-CPU stale inbox message drained: ordinal=%u endpoint=%u opcode=%u tag=%u status=%d length=%u\n",
+			 count + 1, words[0] & 0xff, (words[0] >> 8) & 0xff,
+			 (words[0] >> 16) & 0xff, (s8)(words[0] >> 24),
+			 words[1] >> 16);
+	}
+	return -EOVERFLOW;
+}
+
 static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 {
 	u32 inbox_before = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
@@ -1976,6 +2004,20 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			      apple_probe_authorized_enrollment_handoff;
 	int ret = 0;
 	int i;
+
+	if (!(inbox_before & T2SEP_INTEL_INBOX_EMPTY)) {
+		ret = t2sep_drain_stopped_stale_inbox(pdev, bar4);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"could not resynchronize stopped-CPU stale inbox: %d\n",
+				ret);
+			return ret;
+		}
+		inbox_before = ioread32(bar4 + T2SEP_INTEL_INBOX_STATUS);
+		outbox_before = ioread32(bar4 + T2SEP_INTEL_OUTBOX_STATUS);
+		inbox = inbox_before;
+		outbox = outbox_before;
+	}
 
 	/* Exact ordering from AppleSEPIntelIOP::_startCPUGated(). */
 	iowrite32(0, bar4 + T2SEP_INTEL_CPU_RESET);

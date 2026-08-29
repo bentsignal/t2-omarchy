@@ -1616,6 +1616,24 @@ both a moved source and a retained source without guessing after a partial
 promotion. Another supervised run is required to prove the corrected promotion
 and determine whether it changes BiometricKit's synchronous `-3`.
 
+One subsequent attempt stopped even earlier because two replies from the
+previous displaced queue remained pending across CPU stop. The stale ACM reply
+was consumed where the new control NOP reply was expected, so strict NOP
+validation aborted before OOL registration and before the password-backed
+operation. This was a transport-resynchronization failure, not a password or
+biometric result.
+
+Startup now performs a tightly bounded recovery only when the CPU-control
+register has Apple's observed stopped value `0x7f`. If the inbox is already
+nonempty, it drains at most 16 mailbox records (never OOL payload data),
+requires an empty inbox, and then executes the unchanged CPU-start and tagged
+NOP sequence. Any other CPU state, read error, or record overflow fails before
+startup. A password-free live probe drained exactly the remaining endpoint-7
+copy reply and endpoint-0 control reply, after which a fresh NOP returned
+`00010100 00000000 00000000 ...` and passed strict validation. CPU stop and
+module removal then completed normally, proving the transport was resynchronized
+without requiring a power cycle.
+
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
 runs. Its 16-byte external form is readable once through a root-only sysfs

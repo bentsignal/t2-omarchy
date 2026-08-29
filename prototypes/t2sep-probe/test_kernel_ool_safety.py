@@ -224,6 +224,20 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertLess(stop, scrub)
         self.assertLess(scrub, free)
 
+    def test_stale_inbox_is_bounded_and_only_drained_while_stopped(self):
+        for fragment in (
+                "t2sep_drain_stopped_stale_inbox(",
+                "T2SEP_INTEL_CPU_CONTROL) != 0x7f",
+                "count < 16",
+                "stopped-CPU stale inbox drain completed",
+                "return -EOVERFLOW;"):
+            self.assertIn(fragment, SOURCE)
+        function = SOURCE.index("static int t2sep_apple_start_cpu_probe")
+        drain = SOURCE.index("t2sep_drain_stopped_stale_inbox", function)
+        start = SOURCE.index("iowrite32(1, bar4 + T2SEP_INTEL_CPU_START)",
+                             function)
+        self.assertLess(drain, start)
+
 
 if __name__ == "__main__":
     unittest.main()
