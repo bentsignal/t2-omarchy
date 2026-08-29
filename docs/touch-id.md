@@ -2646,6 +2646,31 @@ failure still executes cancellation and the existing SEP/AKS teardown. The
 transaction has 402 passing offline tests; its new policy-setting path has not
 yet been run on hardware.
 
+### Current catacomb persistence ABI
+
+Current generation-3 KDK dispatch also recovers the complete save handshake.
+`PrepareSaveCatacomb`, `CompleteSaveCatacomb`, and `ConfirmSaveCatacomb` are
+outer commands `0x3d`, `0x3e`, and `0x3f`; all use command version 2 and the
+same exact 24-byte context. That context is the UID followed by the 20-byte
+built-in device-group record already established for enrollment. Prepare
+forwards internal command `0x6c`, pins the resulting SBIO allocation, and
+returns its four-byte blob length. Complete requires the byte-identical context,
+copies exactly that many opaque bytes to the caller, and frees the pinned
+allocation. Confirm again requires the same context and forwards internal
+command `0x37`.
+
+`LoadCatacomb` is current outer command `0x40`, version 1. It accepts the opaque
+blob returned by Complete, requires more than the 32-byte catacomb header,
+reads the UID at byte offset 8, and forwards the entire blob as internal
+command `0x6d`. Linux codecs now bound blobs to 64 MiB, correlate the UID,
+and make every save phase explicit. A local storage envelope adds version,
+UID, length, and SHA-256 corruption detection around the otherwise untouched
+opaque SEP blob, uses mode `0600` beneath a mode-`0700` directory, and replaces
+records with file-and-directory `fsync`. These codecs and storage behavior
+bring the offline suite to 406 tests. Live save remains downstream of a
+successful enrollment; no biometric template bytes have yet been captured or
+written by Linux.
+
 ## Useful baseline commands
 
 ```bash

@@ -27,6 +27,10 @@ COMMAND_GET_PROTECTED_CONFIG = 0x2E
 COMMAND_SET_PROTECTED_CONFIG = 0x2F
 COMMAND_NO_CATACOMB = 0x31
 COMMAND_GET_CATACOMB_STATE = 0x3C
+COMMAND_PREPARE_SAVE_CATACOMB = 0x3D
+COMMAND_COMPLETE_SAVE_CATACOMB = 0x3E
+COMMAND_CONFIRM_SAVE_CATACOMB = 0x3F
+COMMAND_LOAD_CATACOMB = 0x40
 COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
 COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
@@ -52,6 +56,9 @@ CATACOMB_STATE_RECORD_SIZE = 8
 CATACOMB_GROUP_STATE_RECORD_SIZE = 56
 MAX_CATACOMB_STATE_RECORDS = 256
 MAX_CATACOMB_GROUP_STATE_RECORDS = 64
+CATACOMB_SAVE_CONTEXT = struct.Struct("<II16s")
+CATACOMB_HEADER_MINIMUM_SIZE = 33
+MAX_CATACOMB_BLOB_SIZE = 64 * 1024 * 1024
 SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
 SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
 SERVICE_EVENT_MATCH_ACTIVITY = 0xE3FF800B
@@ -240,6 +247,49 @@ def catacomb_state_fields():
 def catacomb_group_state_fields():
     return (COMMAND_GET_CATACOMB_GROUP_STATE, 0, 0, b"",
             CATACOMB_GROUP_STATE_RECORD_SIZE * MAX_CATACOMB_GROUP_STATE_RECORDS)
+
+
+def builtin_catacomb_save_context(*, user_id: int) -> bytes:
+    """Encode generation-3 UID plus built-in device-group save context."""
+    return CATACOMB_SAVE_CONTEXT.pack(
+        _u32(user_id, "user ID"), BUILTIN_DEVICE_GROUP, bytes(16))
+
+
+def prepare_save_catacomb_fields(*, user_id: int):
+    return (COMMAND_PREPARE_SAVE_CATACOMB, CURRENT_COMMAND_VERSION, 0,
+            builtin_catacomb_save_context(user_id=user_id), 4)
+
+
+def decode_prepared_catacomb_size(output: bytes) -> int:
+    if not isinstance(output, bytes) or len(output) != 4:
+        raise BiometricCommandError("prepared catacomb size must be exactly four bytes")
+    size = struct.unpack("<I", output)[0]
+    if not CATACOMB_HEADER_MINIMUM_SIZE <= size <= MAX_CATACOMB_BLOB_SIZE:
+        raise BiometricCommandError("prepared catacomb size is outside safe bounds")
+    return size
+
+
+def complete_save_catacomb_fields(*, user_id: int, blob_size: int):
+    if (isinstance(blob_size, bool) or not isinstance(blob_size, int)
+            or not CATACOMB_HEADER_MINIMUM_SIZE <= blob_size <= MAX_CATACOMB_BLOB_SIZE):
+        raise BiometricCommandError("catacomb blob size is outside safe bounds")
+    return (COMMAND_COMPLETE_SAVE_CATACOMB, CURRENT_COMMAND_VERSION, 0,
+            builtin_catacomb_save_context(user_id=user_id), blob_size)
+
+
+def confirm_save_catacomb_fields(*, user_id: int):
+    return (COMMAND_CONFIRM_SAVE_CATACOMB, CURRENT_COMMAND_VERSION, 0,
+            builtin_catacomb_save_context(user_id=user_id), 0)
+
+
+def load_catacomb_fields(*, user_id: int, blob: bytes):
+    """Validate a bounded opaque CompleteSave blob for current LoadCatacomb."""
+    if (not isinstance(blob, bytes)
+            or not CATACOMB_HEADER_MINIMUM_SIZE <= len(blob) <= MAX_CATACOMB_BLOB_SIZE):
+        raise BiometricCommandError("catacomb blob is outside safe bounds")
+    if struct.unpack_from("<I", blob, 8)[0] != _u32(user_id, "user ID"):
+        raise BiometricCommandError("catacomb blob belongs to a different user")
+    return COMMAND_LOAD_CATACOMB, COMMAND_VERSION, 0, blob, 0
 
 
 def validate_opaque_record_array(output: bytes, *, record_size: int,

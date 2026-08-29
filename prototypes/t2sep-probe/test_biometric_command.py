@@ -21,6 +21,35 @@ BRIDGE_SPEC.loader.exec_module(bridge)
 
 
 class OrdinaryMatchPayloadTests(unittest.TestCase):
+    def test_current_catacomb_save_and_load_codecs(self):
+        context = struct.pack("<II16s", 501, 1, bytes(16))
+        self.assertEqual(command.builtin_catacomb_save_context(user_id=501), context)
+        self.assertEqual(command.prepare_save_catacomb_fields(user_id=501),
+                         (0x3d, 2, 0, context, 4))
+        self.assertEqual(command.decode_prepared_catacomb_size(
+            struct.pack("<I", 4096)), 4096)
+        self.assertEqual(command.complete_save_catacomb_fields(
+            user_id=501, blob_size=4096), (0x3e, 2, 0, context, 4096))
+        self.assertEqual(command.confirm_save_catacomb_fields(user_id=501),
+                         (0x3f, 2, 0, context, 0))
+        blob = bytearray(64)
+        struct.pack_into("<I", blob, 8, 501)
+        self.assertEqual(command.load_catacomb_fields(user_id=501, blob=bytes(blob)),
+                         (0x40, 1, 0, bytes(blob), 0))
+
+    def test_catacomb_persistence_codecs_reject_unbounded_or_wrong_user_data(self):
+        for output in (b"", b"123", struct.pack("<I", 32),
+                       struct.pack("<I", command.MAX_CATACOMB_BLOB_SIZE + 1)):
+            with self.assertRaises(command.BiometricCommandError):
+                command.decode_prepared_catacomb_size(output)
+        for size in (32, command.MAX_CATACOMB_BLOB_SIZE + 1, True):
+            with self.assertRaises(command.BiometricCommandError):
+                command.complete_save_catacomb_fields(user_id=501, blob_size=size)
+        blob = bytearray(64)
+        struct.pack_into("<I", blob, 8, 502)
+        with self.assertRaises(command.BiometricCommandError):
+            command.load_catacomb_fields(user_id=501, blob=bytes(blob))
+
     def test_authorized_user_policy_exact_layout_and_scrubbing(self):
         credential = bytearray(range(16))
         policy = command.UserProtectedPolicy(1, 1, 1, 0)
