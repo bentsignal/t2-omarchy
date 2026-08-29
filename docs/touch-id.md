@@ -1200,6 +1200,17 @@ Primary source anchors are XNU's
 [`bsd_init.c`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/bsd_init.c)
 and [`audit.h`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/bsm/audit.h).
 
+The Catalina 10.15.7 build-19H15 AppleKeyStore image has now also been
+recovered directly from its prelinked kernel and checked independently. Its
+version-1 header layout, 100-byte capabilities request, operation `0x4d`,
+version-1 fallback, endpoint-7 envelope, and protected hash input match the
+Sonoma-derived model. Catalina additionally supports a later negotiated IPC
+encryption session: only after a nonzero global session ID exists does header
+flag bit zero become set and the session ID occupy offset `0x20`. That global
+is initially zero and is not a prerequisite for capabilities negotiation.
+This cross-version comparison rules out an omitted initial encryption session
+as the reason Linux's first two protected requests receive no reply.
+
 AKS does not use the SBIO generic-transfer notification. Its Intel mailbox
 envelope is exactly 12 bytes: endpoint `0x07`; a 7-bit selector in byte 1 with
 bit 7 set only on replies; a wrapping correlation byte; zero at byte 3 and
