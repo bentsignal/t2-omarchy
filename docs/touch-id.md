@@ -2608,6 +2608,27 @@ used by the current Settings enrollment path and any keybag/session operation
 between verification and command 3; repeating command 3 with the current
 credential cannot add evidence.
 
+That static comparison is now complete. In the checksum-pinned current
+Settings extension, `ACMContextGetExternalForm` invokes a callback that calls
+the local `_aks_verify_password` wrapper with caller-facing keybag handle `-3`,
+the bounded password, and the same ACM external form. The selected wrapper
+hard-codes both optional Boolean arguments false; consequently the
+AppleKeyStore Boolean that controls input device-state bit `0x80` is false and
+the operation-`0x21` device-state input is zero. On success the callback copies
+that same external form into `NSData`. No further AKS, keybag, or session call
+occurs before the form is returned to the enrollment UI and BiometricKit.
+
+Handle `-3` is AppleKeyStore's caller-facing current-login-session request, not
+the selector serialized to SEP. The previously recovered authenticated session
+mapping resolves it to `-501` for UID 501. Linux's promotion and verify-secret
+against effective selector `-501` therefore match the macOS SEP-side operation,
+as does Linux's zero device-state input. Setting bit `0x80` or sending literal
+`-3` to SEP is disproved. The installed x86_64 extension hash and exact
+instruction sequences are enforced by
+`tools/research/macos-enrollment-authorization-evidence.py` and its negative
+tests. Synchronous enrollment status 261 must have another prerequisite; the
+password/ACM request framing itself is no longer an open variable.
+
 Sanitized logs from the current boot establish the pre-client ordering:
 bridge and sensor initialization, accessory caching, general catacomb load,
 successful UID 501 catacomb load with user protected configuration present,

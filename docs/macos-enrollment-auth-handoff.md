@@ -126,3 +126,46 @@ Linux uses. Do not capture or print the password, ACM external form, keybag
 blob, biometric identity/template, or raw sensor events. Add checksum-pinned
 instruction evidence, update this handoff and `docs/touch-id.md`, run tests,
 commit, and push `main`.
+
+## macOS return result: current-session verification is already matched
+
+Checksum-pinned static analysis of the installed 25G83 Settings extension
+closed the follow-up without observing a password or authorization value. The
+x86_64 slice still hashes to
+`e86ab74e0246bbd7b88cec36fd901106a49bab8e95edfc687e77d06083c359f1`.
+
+The exact success path is:
+
+1. `ACMContextCreate` creates the context.
+2. `ACMContextGetExternalForm` supplies its pointer and length to a callback.
+3. The callback reads the entered password, bounds it with `strnlen(..., 128)`,
+   and invokes the local `_aks_verify_password` wrapper with API keybag handle
+   `-3`, password pointer/length, and ACM external-form pointer/length.
+4. That exact wrapper sets both optional Boolean inputs to false. In particular,
+   the Boolean that `AppleKeyStore::verify_password` maps to device-state bit
+   `0x80` is false, so the serialized input device-state qword is zero.
+5. On success the callback copies the same ACM external form into `NSData` and
+   returns it. There is no intervening AKS/keybag/session call before the form
+   is placed in the enrollment dictionary and passed to BiometricKit.
+
+The apparent `-3` versus `-501` discrepancy is not a wire mismatch. `-3` is
+the caller-facing current-login-session keybag handle. The already recovered
+AppleKeyStore path resolves it through authenticated session identity to
+effective selector `-501` for UID 501 before operation `0x21` reaches SEP.
+Linux explicitly promotes its fresh bag to `-501` and verifies against that
+effective selector, which matches the macOS SEP-side request. Linux's zero
+input device-state also matches. Do not retry with bit `0x80` set or send
+literal selector `-3` to SEP; neither is supported by this evidence.
+
+The exact request/response remains the existing operation-`0x21` variant-1
+codec documented in `docs/touch-id.md`: protected header, variant 1, keybag
+namespace, effective signed selector, padded password and 16-byte ACM
+external-form blobs, then the 64-bit zero device-state input. A successful
+reply contains variant 1 and one 64-bit returned device-state value; it does
+not replace or mint another ACM handle.
+
+Reproducible verification is in
+`tools/research/macos-enrollment-authorization-evidence.py`, with negative
+tests in `tools/research/test_macos_enrollment_authorization_evidence.py`. The
+next Linux investigation must move past password/ACM serialization and compare
+another authenticated-session or biometric-service enrollment prerequisite.
