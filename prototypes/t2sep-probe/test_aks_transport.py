@@ -47,6 +47,29 @@ class AKSTransportTests(unittest.TestCase):
                 with self.assertRaises(aks.AKSTransportError):
                     aks.validate_reply(request, wire)
 
+    def test_header_negotiation_matches_apple_fallback_and_cap(self):
+        self.assertEqual(aks.negotiated_header_version(-1, None), 1)
+        self.assertEqual(aks.negotiated_header_version(0, 0), 0)
+        self.assertEqual(aks.negotiated_header_version(0, 1), 1)
+        self.assertEqual(aks.negotiated_header_version(0, 2), 2)
+        self.assertEqual(aks.negotiated_header_version(0, 99), 2)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.negotiated_header_version(-1, 2)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.negotiated_header_version(0, None)
+
+    def test_verify_secret_size_plan_never_accepts_secret_bytes(self):
+        self.assertEqual(aks.verify_secret_serialized_size(0), 132)
+        self.assertEqual(aks.verify_secret_serialized_size(1), 136)
+        self.assertEqual(aks.verify_secret_serialized_size(4), 136)
+        self.assertEqual(aks.verify_secret_serialized_size(5), 140)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.verify_secret_serialized_size(1, 15)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.verify_secret_serialized_size(0x4000)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.verify_secret_serialized_size(b"password")
+
 
 if __name__ == "__main__":
     unittest.main()

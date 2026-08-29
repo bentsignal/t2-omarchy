@@ -994,8 +994,10 @@ bytes before pointer-to-blob serialization and is dispatched as operation
 offset `0x58` is the keybag handle, offset `0x60` its 32-bit selector, offsets
 `0x68`/`0x70` describe the password blob, offsets `0x78`/`0x80` describe the
 ACM-context blob, offset `0x88` is the boolean option promoted to a qword, and
-offset `0x90` is the returned 64-bit device state. The codec walks both blobs
-with explicit lengths rather than transmitting kernel pointers. The caller
+offset `0x90` is the 64-bit device state. For request variant 1 the codec
+serializes the `0x90` state qword after the two blobs; it does not serialize
+the in-memory option at `0x88`. The codec walks both blobs with explicit
+lengths rather than transmitting kernel pointers. The caller
 maps the secure-key-store result to an AKS result and updates device state only
 after success. This explains how password verification authorizes the already
 created ACM context without exposing password material to BiometricKit.
@@ -1008,12 +1010,15 @@ the current SEP transport lifetime. No live AKS password request is enabled in
 the prototype yet; header negotiation, exact endpoint OOL limits, reply
 validation, and teardown must be recovered first.
 
-Endpoint initialization first issues `ipc_get_capabilities`. If that fails,
+Endpoint initialization first issues `ipc_get_capabilities` as AKS operation
+`0x4d`. If that fails,
 AppleKeyStore falls back to IPC header version 1. Otherwise it negotiates
 `min(remote_version, 2)`. Only after fixing that global negotiated version does
 it continue with environment and entropy initialization. A Linux client must
 therefore not hard-code the richer version-2 header or send verify-secret as
-its first AKS transaction.
+its first AKS transaction. The offline transport model includes this exact
+fallback/cap decision and names verify-secret operation `0x21`, but does not
+encode either IPC payload.
 
 AKS does not use the SBIO generic-transfer notification. Its Intel mailbox
 envelope is exactly 12 bytes: endpoint `0x07`; a 7-bit selector in byte 1 with
@@ -1026,6 +1031,13 @@ and correlates the response before consuming the receive OOL buffer.
 `0x4000`, rejects reserved data and wrong endpoints, and requires the reply
 bit, selector, and tag to match before exposing a response length. It has no
 password input and no device-I/O path.
+
+The same offline model computes the exact verify-secret serialized size
+without accepting secret bytes: an `0x54`-byte serialized header, the variant
+word, keybag qword, selector word, two 32-bit-length-prefixed blobs padded to
+four-byte boundaries, and the final device-state qword. It requires the ACM
+external form to be exactly 16 bytes and refuses any plan exceeding the
+`0x4000` AKS OOL buffer.
 
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.

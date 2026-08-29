@@ -11,6 +11,11 @@ AKS_ENDPOINT = 0x07
 OOL_CAPACITY = 0x4000
 ENVELOPE_SIZE = 12
 REPLY_BIT = 0x80
+GET_CAPABILITIES = 0x4D
+VERIFY_SECRET_V1 = 0x21
+MAX_HEADER_VERSION = 2
+SERIALIZED_HEADER_SIZE = 0x54
+ACM_CONTEXT_SIZE = 16
 
 
 class AKSTransportError(ValueError):
@@ -67,3 +72,46 @@ def validate_reply(request: AKSEnvelope, reply_data: bytes) -> AKSEnvelope:
     if (reply.selector, reply.tag) != (request.selector, request.tag):
         raise AKSTransportError("AKS response does not correlate to the request")
     return reply
+
+
+def negotiated_header_version(capabilities_status: int,
+                              remote_version: int | None) -> int:
+    """Mirror AppleKeyStore's fail-compatible initial header negotiation."""
+    if isinstance(capabilities_status, bool) or not isinstance(capabilities_status, int):
+        raise AKSTransportError("capabilities status must be an integer")
+    if capabilities_status != 0:
+        if remote_version is not None:
+            raise AKSTransportError("failed capabilities query cannot supply a version")
+        return 1
+    if (isinstance(remote_version, bool) or not isinstance(remote_version, int)
+            or not 0 <= remote_version <= 0xffffffffffffffff):
+        raise AKSTransportError("remote header version must be an unsigned qword")
+    return min(remote_version, MAX_HEADER_VERSION)
+
+
+def verify_secret_serialized_size(password_length: int,
+                                  context_length: int = ACM_CONTEXT_SIZE) -> int:
+    """Plan the protected IPC size without accepting either secret blob."""
+    password_length = _length(password_length, "password")
+    context_length = _length(context_length, "ACM context")
+    if context_length != ACM_CONTEXT_SIZE:
+        raise AKSTransportError("ACM external form must be exactly 16 bytes")
+    # Header, variant word, keybag qword, selector word, two length-prefixed
+    # four-byte-aligned blobs, and the variant-1 device-state qword. The
+    # in-memory option at offset 0x88 is not serialized by this variant.
+    total = (SERIALIZED_HEADER_SIZE + 4 + 8 + 4
+             + 4 + _align4(password_length)
+             + 4 + _align4(context_length) + 8)
+    if total > OOL_CAPACITY:
+        raise AKSTransportError("serialized verify-secret request exceeds OOL")
+    return total
+
+
+def _length(value: int, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise AKSTransportError(f"{label} length must be a nonnegative integer")
+    return value
+
+
+def _align4(value: int) -> int:
+    return (value + 3) & ~3
