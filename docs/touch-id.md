@@ -1791,6 +1791,12 @@ the recovered PCI transport. A control NOP does not enumerate endpoints or
 prove that xART/SBIO is online, so the next milestone remains a bounded
 discovery/status transaction after preserving the enrolled APFS baseline.
 
+The runner now independently verifies that whole lifecycle rather than
+assuming a successful unload means the NOP passed. Its offline verifier
+requires the exact tagged response, strict-validation record, both MSI counts,
+CPU stop, PCI restoration/release, and final removal in order; failure or a
+truncated cursor-bounded transcript makes the wrapper fail.
+
 The x86_64 KDK implementation shows that discovery is passive. macOS creates
 an `AppleSEPEndpoint` for endpoint `0xfd`; it does not send a guessed discovery
 request. Its callback accepts exactly two message opcodes. Opcode 0 advertises

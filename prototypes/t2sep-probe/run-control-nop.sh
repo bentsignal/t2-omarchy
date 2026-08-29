@@ -32,7 +32,10 @@ insmod "$module" apple_start_cpu_probe=1 apple_start_with_msi=1 \
 rmmod t2sep_probe
 trap - EXIT
 
-journalctl -k --after-cursor "$before" --no-pager
+log=$(journalctl -k --after-cursor "$before" --no-pager)
+printf '%s\n' "$log"
+python3 "$module_dir/verify-control-nop-log.py" <<<"$log" ||
+  die "control-NOP transcript failed independent verification"
 
 [[ ! -L $device/driver ]] || die "SEP remained bound after probe"
 [[ ! -d /sys/module/t2sep_probe ]] || die "module remained loaded after probe"

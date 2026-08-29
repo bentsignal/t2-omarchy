@@ -517,6 +517,15 @@ zero/missing MSI observations, incomplete PCI restoration/release, and missing
 probe removal. Both the NOP and discovery wrappers require a freshly built
 module, an exact human confirmation, and a fresh journal cursor; neither can
 fall back to older recent log lines.
+
+`run-control-nop.sh` no longer treats a clean module unload as proof that the
+NOP succeeded. It feeds only the fresh cursor-bounded lines to
+`verify-control-nop-log.py`, which requires the exact `00010100/0/0` response,
+no transport error/fatal flags, the kernel's strict-validation record, nonzero
+counts on both MSI vectors, stop, PCI restoration/release, and removal in one
+ordered device-qualified session. It rejects discovery, OOL registration, or
+AKS capability records so a broader probe cannot masquerade as the NOP-only
+run.
 summary disagreement, and transport-error candidate bits.
 
 The first privileged run was performed after a true cold boot on 2026-08-28.

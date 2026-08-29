@@ -29,6 +29,8 @@ class SupervisedRunnerSafetyTests(unittest.TestCase):
                 self.assertNotIn("journalctl -k -n ", source)
                 self.assertIn("trap cleanup EXIT", source)
                 self.assertIn("rmmod t2sep_probe", source)
+                if filename == "run-control-nop.sh":
+                    self.assertIn("verify-control-nop-log.py", source)
 
 
 if __name__ == "__main__":
