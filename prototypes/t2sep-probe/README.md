@@ -48,8 +48,9 @@ wrappers pass `1` and `3`. It serializes the exact protected header,
 qword namespace, two metadata words, and two four-byte-aligned
 length-prefixed blobs recovered from `_code_ipc_create_keybag`. Both input
 buffers are consumed and wiped, and closing the request wipes its complete
-backing store. The strict 92-byte success decoder returns only the runtime
-selector. Exact offline operation-`0x05` unload and bounded operation-`0x02`
+backing store. The strict 92-byte success decoder returns only the signed
+runtime selector; negative user-session selectors are valid Apple handles.
+Exact offline operation-`0x05` unload and bounded operation-`0x02`
 copy codecs provide the lifecycle teardown and independent presence check.
 The SEP unload handler returns success even for an absent bag, so only the
 subsequent copy result can establish removal. These remain offline until

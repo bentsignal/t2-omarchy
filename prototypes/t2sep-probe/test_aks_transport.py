@@ -459,15 +459,14 @@ class AKSTransportTests(unittest.TestCase):
                         requested_selector=aks.SessionKeybagSelector(-501))
 
     def test_create_keybag_success_reply_is_strict(self):
-        body = struct.pack("<Ii", 1, 9)
+        body = struct.pack("<Ii", 1, -501)
         header = aks.protect_header(self._identity(2), body)
         wire = struct.pack("<I", 0x50) + header + body
         self.assertEqual(aks.decode_create_keybag_reply(wire, 2),
-                         aks.CreateKeybagReply(aks.SessionKeybagSelector(9)))
+                         aks.CreateKeybagReply(aks.SessionKeybagSelector(-501)))
         for changed in (
                 wire[:-1],
                 wire[:84] + struct.pack("<Ii", 0, 9),
-                wire[:84] + struct.pack("<Ii", 1, -1),
                 struct.pack("<I", 0x48) + wire[4:]):
             with self.subTest(length=len(changed)):
                 with self.assertRaises(aks.AKSTransportError):

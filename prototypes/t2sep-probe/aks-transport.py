@@ -394,8 +394,6 @@ def decode_create_keybag_reply(wire: bytes,
     variant, selector = struct.unpack("<Ii", payload)
     if variant != 1:
         raise AKSTransportError("AKS create-keybag reply is not variant 1")
-    if selector < 0:
-        raise AKSTransportError("AKS create-keybag reply returned an invalid selector")
     return CreateKeybagReply(SessionKeybagSelector(selector))
 
 
