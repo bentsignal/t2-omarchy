@@ -85,6 +85,19 @@ class CredentialServiceBootstrap:
     def accept_registration_replies(self, send_reply: list[int],
                                     receive_reply: list[int],
                                     profile: ReplyProfile) -> None:
+        self.validate_registration_replies(send_reply, receive_reply, profile)
+        try:
+            self.ownership.commit_registration(
+                "send", f"{self.profile.name}-send", control_succeeded=True)
+            self.ownership.commit_registration(
+                "receive", f"{self.profile.name}-receive", control_succeeded=True)
+        except lifecycle.LifecycleError as error:
+            raise CredentialBootstrapError(str(error)) from error
+
+    def validate_registration_replies(self, send_reply: list[int],
+                                      receive_reply: list[int],
+                                      profile: ReplyProfile) -> None:
+        """Validate both acknowledgements without changing mapping ownership."""
         if set(self._requests) != {"send", "receive"}:
             raise CredentialBootstrapError("registration requests are incomplete")
         if not isinstance(profile, ReplyProfile):
@@ -98,11 +111,7 @@ class CredentialServiceBootstrap:
                 self._requests["receive"], receive_reply,
                 expected_opcode=profile.receive_opcode,
                 expected_target=profile.receive_target)
-            self.ownership.commit_registration(
-                "send", f"{self.profile.name}-send", control_succeeded=True)
-            self.ownership.commit_registration(
-                "receive", f"{self.profile.name}-receive", control_succeeded=True)
-        except (control.ControlMessageError, lifecycle.LifecycleError) as error:
+        except control.ControlMessageError as error:
             raise CredentialBootstrapError(str(error)) from error
 
     @property
@@ -117,6 +126,100 @@ class CredentialServiceBootstrap:
             for token in tokens:
                 self.ownership.scrub(token)
                 self.ownership.release(token)
+            return tokens
+        except lifecycle.LifecycleError as error:
+            raise CredentialBootstrapError(str(error)) from error
+
+
+class DualCredentialBootstrap:
+    """Atomically plan both fixed services under one SEP transport lifetime."""
+
+    def __init__(self) -> None:
+        self.aks = CredentialServiceBootstrap(AKS)
+        self.acm = CredentialServiceBootstrap(ACM)
+        self._requests: tuple[list[int], ...] | None = None
+
+    @staticmethod
+    def _validate_mappings(addresses: tuple[int, int, int, int]) -> None:
+        if any(isinstance(value, bool) or not isinstance(value, int)
+               for value in addresses):
+            raise CredentialBootstrapError("DMA addresses must be integers")
+        ranges = sorted((address, address + OOL_SIZE) for address in addresses)
+        if any(start < 0 or end > (1 << 44) for start, end in ranges):
+            # 32-bit page-frame field covers byte addresses through 2**44 - 1.
+            raise CredentialBootstrapError("DMA mapping exceeds the control field")
+        if any(ranges[index][1] > ranges[index + 1][0]
+               for index in range(len(ranges) - 1)):
+            raise CredentialBootstrapError("credential DMA mappings overlap")
+
+    def registration_requests(
+            self, aks_send_dma: int, aks_receive_dma: int,
+            acm_send_dma: int, acm_receive_dma: int, *,
+            first_tag: int = 2) -> tuple[list[int], list[int], list[int], list[int]]:
+        if self._requests is not None:
+            raise CredentialBootstrapError("dual registration was already prepared")
+        if (isinstance(first_tag, bool) or not isinstance(first_tag, int)
+                or not 1 <= first_tag <= 0xfc):
+            raise CredentialBootstrapError("four nonzero control tags must fit in one byte")
+        addresses = (aks_send_dma, aks_receive_dma, acm_send_dma, acm_receive_dma)
+        self._validate_mappings(addresses)
+        aks_requests = self.aks.registration_requests(
+            aks_send_dma, aks_receive_dma, send_tag=first_tag,
+            receive_tag=first_tag + 1)
+        acm_requests = self.acm.registration_requests(
+            acm_send_dma, acm_receive_dma, send_tag=first_tag + 2,
+            receive_tag=first_tag + 3)
+        self._requests = (*aks_requests, *acm_requests)
+        return tuple(list(request) for request in self._requests)
+
+    def accept_registration_replies(
+            self, aks_send_reply: list[int], aks_receive_reply: list[int],
+            acm_send_reply: list[int], acm_receive_reply: list[int]) -> None:
+        if self._requests is None:
+            raise CredentialBootstrapError("dual registration was not prepared")
+        # Validate every wire acknowledgement before committing either endpoint.
+        self.aks.validate_registration_replies(
+            aks_send_reply, aks_receive_reply, AKS_REPLY_PROFILE)
+        self.acm.validate_registration_replies(
+            acm_send_reply, acm_receive_reply, ACM_REPLY_PROFILE)
+        try:
+            for service in (self.aks, self.acm):
+                service.ownership.commit_registration(
+                    "send", f"{service.profile.name}-send",
+                    control_succeeded=True)
+                service.ownership.commit_registration(
+                    "receive", f"{service.profile.name}-receive",
+                    control_succeeded=True)
+        except lifecycle.LifecycleError as error:
+            raise CredentialBootstrapError(str(error)) from error
+
+    @property
+    def ready(self) -> bool:
+        return self.aks.ready and self.acm.ready
+
+    def stop_and_release(self) -> tuple[str, ...]:
+        """Model one global CPU stop before any of the four mappings is freed."""
+        if not self.ready:
+            raise CredentialBootstrapError("dual credential endpoints are not ready")
+        try:
+            services = (self.aks, self.acm)
+            # Preflight both lifecycles so one cannot stop while the other still
+            # has an operation in flight.
+            if any(service.ownership.operations
+                   or service.ownership.transport_stopped
+                   for service in services):
+                raise CredentialBootstrapError(
+                    "both credential endpoints must be idle and running")
+            for service in services:
+                service.ownership.stop_transport()
+            tokens = tuple(sorted(
+                mapping.identifier
+                for service in services
+                for mapping in service.ownership.mappings))
+            for service in services:
+                for mapping in tuple(service.ownership.mappings):
+                    service.ownership.scrub(mapping.identifier)
+                    service.ownership.release(mapping.identifier)
             return tokens
         except lifecycle.LifecycleError as error:
             raise CredentialBootstrapError(str(error)) from error

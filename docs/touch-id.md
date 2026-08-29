@@ -1164,6 +1164,16 @@ mapping. Successful mappings remain retained until transport stop, explicit
 scrub, and release. This is still a pure plan: it allocates no memory and has
 no route into the kernel probe.
 
+The dual-service form closes the offline composition boundary between those
+individually observed profiles. It reserves four globally distinct nonzero
+control tags (default `2` through `5`) and four distinct, non-overlapping 16
+KiB DMA ranges. All four replies are validated before ownership is committed
+to either endpoint, and readiness requires both ACM and AKS. Teardown first
+preflights both endpoints as idle, stops both, and only then scrubs and releases
+any mapping; an active operation on either endpoint leaves both running and all
+four mappings retained. This does not establish a live combined registration
+sequence: no dual-endpoint kernel probe has been added or executed.
+
 The corresponding kernel capture path is default-off and was executed once
 under direct user supervision on this MacBookPro16,1 at 2026-08-28 22:55 EDT.
 It requires CPU start, both MSI vectors, a strictly

@@ -52,7 +52,10 @@ independently observed acknowledgement profiles, and stop-scrub-release
 ownership. Separate supervised 2026-08-28 captures established fixed
 acknowledgement profiles for both mappings of each service: AKS `(opcode 1,
 target 7)` and ACM `(opcode 1, target 10)`. The pure bootstrap deliberately has
-no kernel or DMA-allocation path.
+no kernel or DMA-allocation path. Its dual-service model reserves four globally
+distinct control tags and four non-overlapping mappings, validates every ACK
+before committing either endpoint, and stops both idle endpoints before any
+mapping can be scrubbed or released.
 
 `run-aks-capabilities-probe.sh` is the separately confirmed next-stage wrapper.
 Its default-off kernel gate sends only the non-mutating empty operation `0x4d`
