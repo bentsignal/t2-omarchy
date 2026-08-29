@@ -1676,11 +1676,16 @@ object; that routine otherwise sends biometric command `0x39`
 (`GetSystemProtectedConfig`) and validates a 36-byte response. The common
 `IOBiometricService::cacheSysProtectedConfiguration(bool)` path allocates and
 caches that object, refreshes per-user protected configuration, and updates the
-biometric-token, passcode-input, and match timers. This makes missing system or
-per-user protected configuration the leading explanation for the newly reached
-status, but the next experiment must reproduce Apple's configuration lifecycle
-or obtain direct command-side evidence rather than treating the shared numeric
-value alone as a definitive error name.
+biometric-token, passcode-input, and match timers. This initially made missing
+system or per-user protected configuration a candidate explanation, but a
+subsequent read-only Linux query sent command `0x39` through the live
+BiometricKit bridge and received status zero with the expected 36-byte output.
+All nine 32-bit fields were zero. The object/query path therefore exists; the
+stronger remaining hypothesis is that macOS populates policy/timer fields which
+Linux has not initialized. The shared numeric value alone is still not a
+definitive error name. Before any setter is attempted, the same 36-byte
+structure must be captured on macOS and the exact command `0x3a`
+(`SetSystemProtectedConfig`) ownership and mutation semantics recovered.
 
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client

@@ -170,7 +170,11 @@ Static KDK analysis shows one relevant use of `0x105`:
 when the cached system-configuration object is unavailable, while the success
 path sends `GetSystemProtectedConfig` (`0x39`) and consumes a 36-byte response.
 This is evidence for the next configuration-lifecycle gate, not yet proof that
-the live `261` has that exact origin.
+the live `261` has that exact origin. A read-only Linux command-`0x39` query
+subsequently succeeded with the exact 36-byte response shape, but every 32-bit
+field was zero. The next safe comparison is the same query under macOS; command
+`0x3a` must not be sent until its ownership, field meanings, and macOS values
+are independently recovered.
 
 `run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
 experiment. It repeats that proven lifecycle but keeps the authorized ACM
