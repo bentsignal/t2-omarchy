@@ -48,8 +48,8 @@ class FakeSocket:
 class EnrollmentProbeTests(unittest.TestCase):
     USER = 1000
     UUID = bytes(range(16))
-    IDS = tuple(f"{index}1234567-89AB-4CDE-8FAB-0123456789AB"
-                for index in range(7))
+    IDS = tuple(f"{index:08d}-89AB-4CDE-8FAB-0123456789AB"
+                for index in range(10))
 
     def incoming(self, *, after_record=True, terminal_uuid=UUID):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
@@ -103,6 +103,40 @@ class EnrollmentProbeTests(unittest.TestCase):
         self.assertEqual(result.identities_after, 1)
         self.assertTrue(request.closed)
         self.assertEqual(bytes(view), bytes(68))
+
+    def test_policy_is_created_read_back_then_enrollment_runs(self):
+        enroll_request = probe.biometric.consume_builtin_enrollment_credential(
+            user_id=self.USER, credential_set=bytearray(range(16)))
+        policy_request = probe.biometric.consume_user_policy_credential(
+            user_id=self.USER,
+            policy=probe.biometric.UserProtectedPolicy(1, 1, 1, 0),
+            credential_set=bytearray(range(16)))
+        identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
+        policy_reply = struct.pack("<8I", 1, 1, 1, 0, 1, 1, 1, 0)
+        incoming = (envelope(self.IDS[0], [0, 3])
+                    + envelope(self.IDS[1], [0])
+                    + envelope(self.IDS[2], [0, True])
+                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[5], [0, policy_reply])
+                    + envelope(self.IDS[6], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[7], [0, protocol.NO_REPLY_UUID.lower()])
+                    + service_event(0xE3FF8001)
+                    + service_event(0xE3FF8003, identity, 2)
+                    + envelope(self.IDS[8], [0, identity])
+                    + envelope(self.IDS[9], [0, protocol.NO_REPLY_UUID.lower()]))
+        ids = iter(self.IDS)
+        original = probe.coupled.bridge_query.uuid.uuid4
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            result = probe.probe_socket(
+                FakeSocket(incoming), user_id=self.USER,
+                authorized_request=enroll_request, policy_request=policy_request)
+        finally:
+            probe.coupled.bridge_query.uuid.uuid4 = original
+        self.assertTrue(result.policy_initialized)
+        self.assertTrue(policy_request.closed)
+        self.assertTrue(enroll_request.closed)
 
     def test_progress_callback_gets_metadata_only(self):
         seen = []

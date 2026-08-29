@@ -2635,6 +2635,17 @@ policy choice, not a claim about macOS defaults. A live send remains gated
 until it is composed with the already proven password-to-ACM lifecycle and an
 immediate readback.
 
+That composition is now implemented behind a distinct explicit confirmation.
+One kernel authorization handoff supplies a verified ACM external form to a
+single Bridge connection. The client initializes the empty UID catacomb,
+sends the complete `(1, 1, 1, 0)` policy with one credential copy, requires a
+successful exact-size getter reply whose first four set-policy words match,
+and only then sends enrollment with the independently scrub-owned credential
+copy. Both request buffers and the original handoff are zeroed, and every
+failure still executes cancellation and the existing SEP/AKS teardown. The
+transaction has 402 passing offline tests; its new policy-setting path has not
+yet been run on hardware.
+
 ## Useful baseline commands
 
 ```bash

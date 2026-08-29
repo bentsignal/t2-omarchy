@@ -9,6 +9,7 @@ from pathlib import Path
 import socket
 import sys
 import math
+import struct
 from typing import Callable
 
 
@@ -51,6 +52,7 @@ class EnrollmentProbeResult:
     observed_statuses: tuple[int, ...]
     observed_events: tuple[tuple[int, int, int], ...]
     cancel_status: int
+    policy_initialized: bool = False
 
 
 def _perform(session, fields):
@@ -91,11 +93,40 @@ def _initialize_current_bridge(session) -> None:
 
 def probe_socket(sock, *, user_id: int,
                  authorized_request=None,
+                 policy_request=None,
                  progress: Callable[[tuple[int, int, int]], None] | None = None
                  ) -> EnrollmentProbeResult:
     """Enroll one token-free identity and prove an exact terminal/list delta."""
     session = coupled.bridge_query.BridgeSession(sock)
     _initialize_current_bridge(session)
+    policy_initialized = False
+    if policy_request is not None:
+        if not isinstance(policy_request, biometric.AuthorizedPolicyRequest):
+            raise EnrollmentProbeError("policy request has the wrong type")
+        policy_payload = bytes(policy_request.view())
+        expected_policy = struct.unpack_from("<4I", policy_payload, 4)
+        no_catacomb_status, no_catacomb_output = _perform(
+            session, biometric.no_catacomb_fields(user_id=user_id))
+        if no_catacomb_status != 0 or no_catacomb_output is not None:
+            policy_request.close()
+            raise EnrollmentProbeError(
+                f"empty catacomb initialization failed with status {no_catacomb_status}")
+        try:
+            policy_status, policy_output = _perform(
+                session, biometric.authorized_user_policy_fields(policy_request))
+        finally:
+            policy_request.close()
+        if policy_status != 0 or policy_output is not None:
+            raise EnrollmentProbeError(
+                f"protected policy creation failed with status {policy_status}")
+        read_status, read_output = _perform(
+            session, biometric.protected_config_fields(user_id=user_id))
+        if read_status != 0 or not isinstance(read_output, bytes) or len(read_output) != 32:
+            raise EnrollmentProbeError(
+                f"protected policy readback failed with status {read_status}")
+        if struct.unpack_from("<4I", read_output) != expected_policy:
+            raise EnrollmentProbeError("protected policy readback did not match the requested policy")
+        policy_initialized = True
     before = _identities(session, user_id)
     statuses: list[int] = []
     events: list[tuple[int, int, int]] = []
@@ -168,12 +199,14 @@ def probe_socket(sock, *, user_id: int,
             cancel_status = -1
     assert after is not None
     return EnrollmentProbeResult(user_id, len(before), len(after),
-                                 tuple(statuses), tuple(events), cancel_status)
+                                 tuple(statuses), tuple(events), cancel_status,
+                                 policy_initialized)
 
 
 def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
                timeout: float = 5.0, event_timeout: float = 30.0,
                authorized_request=None,
+               policy_request=None,
                progress: Callable[[tuple[int, int, int]], None] | None = None
                ) -> EnrollmentProbeResult:
     if not LIVE_ENROLLMENT_ENABLED:
@@ -190,6 +223,7 @@ def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
         sock.settimeout(event_timeout)
         result = probe_socket(sock, user_id=user_id,
                               authorized_request=authorized_request,
+                              policy_request=policy_request,
                               progress=progress)
         return result
 

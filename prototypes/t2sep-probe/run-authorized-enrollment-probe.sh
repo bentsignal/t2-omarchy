@@ -15,12 +15,23 @@ prompt_dir=
 prompt_fifo=
 prompt_pid=
 insmod_pid=
+client_name=
+client_confirmation=
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] || die "run as the desktop user"
 sudo -n true || die "passwordless sudo is unavailable"
-[[ $confirmation == I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY ]] ||
-  die "missing exact enrollment confirmation"
+case $confirmation in
+  I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY)
+    client_name=authorized-enrollment-client.py
+    client_confirmation=$confirmation
+    ;;
+  I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY)
+    client_name=authorized-policy-enrollment-client.py
+    client_confirmation=$confirmation
+    ;;
+  *) die "missing exact enrollment confirmation" ;;
+esac
 [[ $session_uid =~ ^[0-9]+$ && $session_uid -ge 10 && $session_uid -lt 2147483647 ]] ||
   die "macOS session UID must be explicit and supported"
 [[ $interface =~ ^[[:alnum:]_.:-]+$ && -d /sys/class/net/$interface ]] ||
@@ -95,9 +106,9 @@ done
 echo "Enrollment is starting. Follow the short touch/lift prompts printed here." >&2
 set +e
 sudo -n cat "$credential_path" |
-  python3 "$module_dir/authorized-enrollment-client.py" \
+  python3 "$module_dir/$client_name" \
     --user-id "$session_uid" --interface "$interface" \
-    --confirm=I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY
+    --confirm="$client_confirmation"
 client_status=${PIPESTATUS[1]}
 set -e
 
