@@ -11,6 +11,7 @@ import importlib.util
 from pathlib import Path
 import socket
 import sys
+from typing import Callable
 
 
 def _load(name: str, filename: str):
@@ -52,6 +53,7 @@ class MatchProbeResult:
     observed_statuses: tuple[int, ...]
     observed_events: tuple[tuple[int, int, int], ...]
     cancel_status: int
+    catacomb_loaded: bool = False
 
 
 def _perform(session, fields):
@@ -75,9 +77,34 @@ def _trusted_identities(session, user_id: int):
     return identities
 
 
-def probe_socket(sock, *, user_id: int) -> MatchProbeResult:
+def _initialize_current_bridge(session) -> None:
+    protocol = coupled.bridge_query.protocol
+    version = session.call([protocol.GET_BRIDGE_VERSION])
+    if (len(version) != 2 or version[0] != 0
+            or isinstance(version[1], bool) or not isinstance(version[1], int)
+            or version[1] < 1):
+        raise MatchProbeError("bridge version reply was invalid")
+    if version[1] > 1:
+        if session.call([protocol.SET_BRIDGE_CLIENT_VERSION, 2]) != [0]:
+            raise MatchProbeError("bridge client-version negotiation failed")
+    if session.call([protocol.GET_SERVICE_OPENED]) != [0, True]:
+        raise MatchProbeError("biometric service did not report opened")
+
+
+def probe_socket(sock, *, user_id: int, catacomb_blob: bytes | None = None,
+                 progress: Callable[[tuple[int, int, int]], None] | None = None
+                 ) -> MatchProbeResult:
     """Run one match, bind its terminal event to a fresh trusted snapshot."""
     session = coupled.bridge_query.BridgeSession(sock)
+    _initialize_current_bridge(session)
+    catacomb_loaded = False
+    if catacomb_blob is not None:
+        load_status, load_output = _perform(
+            session, biometric.load_catacomb_fields(
+                user_id=user_id, blob=catacomb_blob))
+        if load_status != 0 or load_output is not None:
+            raise MatchProbeError(f"catacomb load failed with status {load_status}")
+        catacomb_loaded = True
     identities = _trusted_identities(session, user_id)
     trusted = tuple(authentication.biometric.BiometricIdentity(
         identity.user_id, identity.uuid) for identity in identities)
@@ -109,7 +136,10 @@ def probe_socket(sock, *, user_id: int) -> MatchProbeResult:
                 operation.abort()
                 raise MatchProbeError("match event transport was invalid") from error
             statuses.append(event.status)
-            events.append((event.status, event.version, len(event.data)))
+            metadata = (event.status, event.version, len(event.data))
+            events.append(metadata)
+            if progress is not None:
+                progress(metadata)
             if event.status == biometric.SERVICE_EVENT_MATCH_RESULT:
                 try:
                     terminal = operation.accept_terminal(
@@ -155,18 +185,23 @@ def probe_socket(sock, *, user_id: int) -> MatchProbeResult:
     return MatchProbeResult(
         decision.matched,
         decision.identity.user_id if decision.identity is not None else None,
-        len(identities), tuple(statuses), tuple(events), cancel_status)
+        len(identities), tuple(statuses), tuple(events), cancel_status,
+        catacomb_loaded)
 
 
 def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
-               timeout: float = 5.0) -> MatchProbeResult:
+               timeout: float = 5.0,
+               catacomb_blob: bytes | None = None,
+               progress: Callable[[tuple[int, int, int]], None] | None = None
+               ) -> MatchProbeResult:
     if not LIVE_MATCH_ENABLED:
         raise MatchProbeError("live match probe is disabled in source")
     result = None
 
     def run(sock):
         nonlocal result
-        result = probe_socket(sock, user_id=user_id)
+        result = probe_socket(sock, user_id=user_id, catacomb_blob=catacomb_blob,
+                              progress=progress)
         return result
 
     original = coupled.bridge_query.query_connected_socket

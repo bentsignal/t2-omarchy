@@ -62,22 +62,24 @@ class TimeoutSocket(FakeSocket):
 class MatchProbeTests(unittest.TestCase):
     USER = 501
     UUID = bytes(range(16))
-    IDS = (
-        "01234567-89AB-4CDE-8FAB-0123456789AB",
-        "11234567-89AB-4CDE-8FAB-0123456789AB",
-        "21234567-89AB-4CDE-8FAB-0123456789AB",
-    )
+    IDS = tuple(f"{index:08d}-89AB-4CDE-8FAB-0123456789AB" for index in range(6))
+
+    def initialized(self):
+        return (envelope(self.IDS[0], [0, 3])
+                + envelope(self.IDS[1], [0])
+                + envelope(self.IDS[2], [0, True]))
 
     def incoming(self, terminal_user=USER, terminal_uuid=UUID):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
-        return (envelope(self.IDS[0], [0, identity])
-                + envelope(self.IDS[1], [0, protocol.NO_REPLY_UUID.lower()])
+        return (self.initialized()
+                + envelope(self.IDS[3], [0, identity])
+                + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
                 + service_event(0xE3FF8001, b"bounded-touch-metadata")
                 + service_event(0xE3FF8004, b"p" * 12, 2)
                 + service_event(0xE3FF800B, b"123456789", 3)
                 + service_event(0xE3FF8002,
                                 match_result(terminal_user, terminal_uuid), 4)
-                + envelope(self.IDS[2], [0, protocol.NO_REPLY_UUID.lower()]))
+                + envelope(self.IDS[5], [0, protocol.NO_REPLY_UUID.lower()]))
 
     def run_probe(self, incoming):
         ids = iter(self.IDS)
@@ -113,23 +115,48 @@ class MatchProbeTests(unittest.TestCase):
         self.assertFalse(result.matched)
         self.assertIsNone(result.matched_user_id)
 
+    def test_stored_catacomb_load_precedes_trusted_snapshot(self):
+        blob = bytearray(128)
+        struct.pack_into("<I", blob, 8, self.USER)
+        identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
+        incoming = (self.initialized()
+                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[4], [0, identity])
+                    + envelope(self.IDS[5], [0, protocol.NO_REPLY_UUID.lower()])
+                    + service_event(0xE3FF8002,
+                                    match_result(self.USER, self.UUID), 1)
+                    + envelope("61234567-89AB-4CDE-8FAB-0123456789AB",
+                               [0, protocol.NO_REPLY_UUID.lower()]))
+        ids = iter(self.IDS + ("61234567-89AB-4CDE-8FAB-0123456789AB",))
+        original = probe.coupled.bridge_query.uuid.uuid4
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            result = probe.probe_socket(FakeSocket(incoming), user_id=self.USER,
+                                        catacomb_blob=bytes(blob))
+        finally:
+            probe.coupled.bridge_query.uuid.uuid4 = original
+        self.assertTrue(result.catacomb_loaded)
+        self.assertTrue(result.matched)
+
     def test_unknown_identity_fails_closed_and_still_cancels(self):
         with self.assertRaisesRegex(probe.MatchProbeError, "rejected"):
             self.run_probe(self.incoming(self.USER, b"x" * 16))
 
     def test_timeout_fails_closed(self):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
-        incoming = (envelope(self.IDS[0], [0, identity])
-                    + envelope(self.IDS[1], [0, protocol.NO_REPLY_UUID.lower()]))
+        incoming = (self.initialized()
+                    + envelope(self.IDS[3], [0, identity])
+                    + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()]))
         with self.assertRaisesRegex(probe.MatchProbeError, "timed out"):
             self.run_probe_socket(TimeoutSocket(incoming))
 
     def test_unexpected_event_fails_closed_then_cancels(self):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
-        incoming = (envelope(self.IDS[0], [0, identity])
-                    + envelope(self.IDS[1], [0, protocol.NO_REPLY_UUID.lower()])
+        incoming = (self.initialized()
+                    + envelope(self.IDS[3], [0, identity])
+                    + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
                     + service_event(0xE3FF80FF)
-                    + envelope(self.IDS[2], [0, protocol.NO_REPLY_UUID.lower()]))
+                    + envelope(self.IDS[5], [0, protocol.NO_REPLY_UUID.lower()]))
         with self.assertRaisesRegex(probe.MatchProbeError, "unexpected"):
             self.run_probe(incoming)
 

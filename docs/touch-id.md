@@ -2690,6 +2690,15 @@ and identity count. Together with the save transaction this provides the
 bounded proof needed before treating a Linux enrollment as durable; the suite
 now contains 409 passing tests.
 
+The match state machine now mirrors current per-connection bridge
+initialization before touching biometric state and can load a validated stored
+catacomb before taking its trusted identity snapshot. A default-off command
+line client reads only the root-owned envelope, issues a touch instruction
+only after the sensor's ready event, binds a terminal match to the freshly
+enumerated UID/identity pair, and exits unsuccessfully for a no-match. It logs
+no UUID or template bytes. This supplies the direct post-restart match test
+once enrollment succeeds; 412 offline tests pass.
+
 ## Useful baseline commands
 
 ```bash
