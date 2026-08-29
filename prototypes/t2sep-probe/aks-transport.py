@@ -126,8 +126,14 @@ class VerifySecretReply:
 
 
 @dataclass(frozen=True)
+class SessionKeybagHandle:
+    """Opaque AKS client handle derived from one boot/session namespace."""
+    value: int
+
+
+@dataclass(frozen=True)
 class VerifySecretMetadata:
-    keybag_handle: int
+    keybag_handle: SessionKeybagHandle
     selector: int
 
 
@@ -303,10 +309,28 @@ def _length(value: int, label: str) -> int:
     return value
 
 
-def verify_secret_metadata(keybag_handle: int,
+def derive_session_keybag_handle(namespace_nonce: int,
+                                 client_unique_id: int) -> SessionKeybagHandle:
+    """Mirror AppleKeyStore's per-client handle construction.
+
+    The KDK implementation fills one service-instance qword with ``read_random``
+    and adds ``proc_uniqueid(current_proc())`` for each user client.  The x86-64
+    addition is modulo 2**64.  Linux must source the nonce from its kernel CSPRNG
+    once per driver lifetime and allocate a non-reused client-unique ID; a PID,
+    UID, audit ID, constant, or value recovered from macOS is not equivalent.
+    """
+    namespace_nonce = _uint(namespace_nonce, 64, "keybag namespace nonce")
+    client_unique_id = _uint(client_unique_id, 64, "client unique ID")
+    return SessionKeybagHandle((namespace_nonce + client_unique_id) & ((1 << 64) - 1))
+
+
+def verify_secret_metadata(keybag_handle: SessionKeybagHandle,
                            selector: int) -> VerifySecretMetadata:
     """Validate non-secret, session-derived fields without inventing defaults."""
-    keybag_handle = _uint(keybag_handle, 64, "keybag handle")
+    if not isinstance(keybag_handle, SessionKeybagHandle):
+        raise AKSTransportError(
+            "keybag handle must come from the session-handle derivation")
+    _uint(keybag_handle.value, 64, "keybag handle")
     if (isinstance(selector, bool) or not isinstance(selector, int)
             or not -(1 << 31) <= selector < (1 << 31)):
         raise AKSTransportError("verify-secret selector must be a signed 32-bit integer")
@@ -347,7 +371,7 @@ class AuthorizationPlan:
         return self.header_version
 
     def plan_verify_secret(self, tag: int, password_length: int, *,
-                           keybag_handle: int,
+                           keybag_handle: SessionKeybagHandle,
                            selector: int) -> bytes:
         if self.header_version is None or self.verify_request is not None:
             raise AKSTransportError("verify-secret request is out of order")

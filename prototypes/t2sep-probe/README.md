@@ -29,6 +29,9 @@ variant-1 response. The size planner returns exact field and padding offsets
 for a future locked/scrubbed buffer without accepting either secret blob. Its
 authorization plan requires explicit range-checked keybag-handle and selector
 metadata from the active session and supplies no guessed Linux defaults. It
+models the KDK-proven handle as a per-driver random 64-bit namespace plus a
+non-reused client-unique ID (modulo 2^64), returns an opaque handle type, and
+rejects bare integers so UID/PID constants cannot be substituted accidentally. It
 performs no MMIO, DMA, password handling, Linux identity substitution, or
 secret serialization.
 

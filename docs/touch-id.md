@@ -1162,6 +1162,25 @@ it will plan operation `0x21`. It supplies no zero, root, current-UID, or other
 Linux guess. It still accepts only secret lengths, not password or ACM-context
 bytes.
 
+The session-handle provenance is now recovered too. In the macOS 14.5 KDK,
+`AppleKeyStore` initializes its object field at `0xe0` by passing exactly that
+eight-byte field to `read_random`. `AppleKeyStoreUserClient::start` calls
+`current_proc`, passes the result to `proc_uniqueid`, adds the random service
+field with a native 64-bit `addq`, and stores the sum at user-client offset
+`0xe0`. The same construction is repeated by kernel-facing call paths. Thus
+the handle is a per-driver random namespace plus a non-reused client identity,
+with modulo-2^64 addition; it is not a macOS enrollment artifact and does not
+come from UID, PID, audit session, or the fingerprint database.
+
+The pure model exposes that exact derivation and returns an opaque
+`SessionKeybagHandle`. Metadata validation and `AuthorizationPlan` reject a
+bare integer, so future Linux code cannot silently substitute a convenient
+identity value. The eventual kernel implementation must obtain a fresh
+64-bit nonce from its CSPRNG once per driver lifetime and allocate a stable,
+non-reused 64-bit client ID. The model deliberately does not nominate Linux
+PID as that ID. The selector still has to come from the recovered AKS selector
+policy/session path and remains explicit and signed-32-bit checked.
+
 It also exposes a non-secret layout descriptor for later locked-buffer code.
 For a 12-byte password, the variant, keybag, and selector begin at offsets
 `84`, `88`, and `96`; the password length/data occupy `100`/`104`, the exact
