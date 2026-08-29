@@ -171,7 +171,8 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "version, 0x05, 5",
                 "version, 0x02, 6",
                 "status=-3 absent=yes",
-                "independent absence check still required"):
+                "independent absence check still required",
+                "get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE"):
             self.assertIn(fragment, SOURCE)
         create = SOURCE.index("t2sep_probe_aks_create_device_keybag(",
                               SOURCE.index("static int t2sep_probe_ephemeral"))

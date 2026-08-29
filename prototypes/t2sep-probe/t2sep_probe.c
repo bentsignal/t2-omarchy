@@ -1210,6 +1210,10 @@ out_put:
 		goto out_scrub;
 	}
 	dma_rmb();
+	if (get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
 	ret = t2sep_aks_validate_reply(
 		receive, T2SEP_AKS_CREATE_REPLY_SIZE, version, digest);
 	if (ret)
@@ -1360,6 +1364,10 @@ out_revoke:
 		goto out_scrub;
 	}
 	dma_rmb();
+	if (get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
 	ret = t2sep_aks_validate_reply(
 		receive, T2SEP_AKS_VERIFY_REPLY_SIZE, version, digest);
 	if (ret)
@@ -1459,6 +1467,10 @@ static int t2sep_probe_aks_keybag_control(
 		goto out_scrub;
 	}
 	dma_rmb();
+	if (get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
 	ret = t2sep_aks_validate_reply(
 		receive, T2SEP_AKS_KEYBAG_CONTROL_REPLY_SIZE, version, digest);
 	if (!ret && get_unaligned_le32(
