@@ -84,6 +84,14 @@ returned runtime selector `1`, accepted operation `0x21`, accepted unload, and
 then returned `-3` to the independent copy-after-unload absence check. No
 password, context, or returned device-state bytes were logged.
 
+That run requested selector `-501`, incorrectly conflating the login-session
+lookup selector with keybag creation's internal default. Exact disassembly of
+bridgeOS 23P6068 AppleKeyStore shows public `_aks_create_bag` supplies `-1` to
+its internal seven-argument create routine, while `keybagd` supplies only the
+secret, length, store type zero, and output handle. The live creation gate now
+uses that exact `-1`; the SEP-returned runtime selector remains the only handle
+passed to verify and teardown.
+
 `run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
 experiment. It repeats that proven lifecycle but keeps the authorized ACM
 context and temporary keybag live while one BiometricKit enrollment runs. A

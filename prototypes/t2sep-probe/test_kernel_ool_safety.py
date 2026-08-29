@@ -167,6 +167,7 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "static bool apple_probe_ephemeral_keybag_authorization;",
                 "T2SEP_EPHEMERAL_KEYBAG_CONFIRMATION",
                 "t2sep_probe_aks_create_device_keybag(",
+                "s32 requested_selector = -1;",
                 "store_type=0 secret_bytes=not-logged",
                 "t2sep_probe_aks_verify_password(",
                 "version, 0x05, 5",

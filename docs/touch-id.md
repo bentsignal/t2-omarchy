@@ -1558,6 +1558,23 @@ This proves Linux can create a fresh SEP-backed password namespace and use it
 to authorize an ACM context. It does not prove authentication against the
 pre-existing macOS account keybag.
 
+The first network-complete combined enrollment run then consumed that
+authorized context but BiometricKit returned synchronous status `-3` before
+sensor activation; therefore no touch was requested and no identity changed.
+Teardown again passed unload, independent absence proof, context deletion, CPU
+stop, and scrub. This was not a mistyped-password result: the freshly created
+bag accepted verification of the same secret before enrollment began.
+
+Reviewing the exact bridgeOS 23P6068 AppleKeyStore client exposed one concrete
+difference in that run. Public `_aks_create_bag` supplies signed `-1` to the
+internal create routine; its caller in `keybagd` supplies only secret pointer,
+secret length, store type zero, and the returned-handle pointer. The Linux gate
+had instead requested `-501`, conflating the negative login-session lookup
+selector with this create-time field. It now requests Apple's exact `-1` and
+continues to use only the SEP-returned runtime selector for verification and
+teardown. A new supervised run is required to determine whether that metadata
+difference caused BiometricKit's rejection.
+
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
 runs. Its 16-byte external form is readable once through a root-only sysfs

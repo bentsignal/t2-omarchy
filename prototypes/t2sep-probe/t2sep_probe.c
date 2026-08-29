@@ -1660,7 +1660,8 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 {
 	u8 context[T2SEP_ACM_CONTEXT_SIZE];
 	u64 keybag_handle;
-	s32 requested_selector = -(s32)macos_session_uid;
+	/* Exact bridgeOS keybagd _aks_create_bag default, not the login UID. */
+	s32 requested_selector = -1;
 	s32 runtime_selector = 0;
 	u32 version;
 	bool created = false;
