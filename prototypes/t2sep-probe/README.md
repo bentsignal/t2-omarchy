@@ -102,8 +102,23 @@ the validated secret-free ACM ephemeral context create/delete lifecycle. Its
 independent verifier requires all four non-overlapping DMA registrations,
 strict service ordering, both service state machines, CPU stop before four
 buffer scrubs/releases, MSI activity, PCI restoration/release, unload, and
-unbind. The implementation is built and tested offline but has not yet been
-run against hardware.
+unbind. A live run passed the entire sequence: AKS negotiated version 2 and
+accepted environment setup, ACM initialized and created/deleted its current
+21-byte context, both MSI vectors fired 11 times, and the composite transcript
+verification passed after complete teardown. No password, context bytes, or
+biometric data were logged.
+
+`run-password-authorization-probe.sh` is the first password-bearing gate. It
+prompts once through `systemd-ask-password` and pipes the bytes directly into
+a temporary kernel `user` key; the password is never a shell variable,
+argument, environment value, module parameter, or log field. The module
+accepts only that key type and 1..256 bytes, constructs one bounded
+operation-`0x21` request in coherent memory, revokes the key before sending,
+and erases both AKS buffers immediately after a reply. It always attempts to
+delete the ephemeral ACM context, then stops SEP and scrubs all four buffers.
+The independent verifier accepts only a correlated 96-byte success reply,
+authorization-before-delete ordering, and complete combined teardown. This
+path is built and tested but has not yet consumed a real password.
 
 `run-acm-context-lifecycle-probe.sh` is a different, mutually exclusive
 wrapper. It uses the observed ACM `(1/10, 1/10)` OOL profile, sends exact SCRD

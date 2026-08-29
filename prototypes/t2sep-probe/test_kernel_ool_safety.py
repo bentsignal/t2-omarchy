@@ -37,7 +37,7 @@ class KernelOolSafetyTests(unittest.TestCase):
         )
         self.assertIn("credential OOL capture skipped because NOP did not validate", SOURCE)
         self.assertIn(
-            "SBIO, single/dual credential OOL, AKS capabilities/time/startup, ACM context, and combined startup modes are mutually exclusive",
+            "SBIO, single/dual credential OOL, AKS capabilities/time/startup, ACM context, combined startup, and password verification modes are mutually exclusive",
             SOURCE)
 
     def test_dual_credential_capture_is_separately_gated_and_nonsecret(self):
@@ -75,7 +75,9 @@ class KernelOolSafetyTests(unittest.TestCase):
             "sha256_update(&context, wire + T2SEP_AKS_SERIALIZED_HEADER_SIZE",
             SOURCE)
         self.assertNotIn("ktime_get_mono_fast_ns", SOURCE)
-        self.assertNotIn("password", SOURCE.lower())
+        start = SOURCE.index("static int t2sep_probe_aks_capabilities_at")
+        end = SOURCE.index("static int t2sep_probe_aks_capabilities(", start)
+        self.assertNotIn("password", SOURCE[start:end].lower())
 
     def test_aks_time_sweep_is_bounded_separately_gated_and_nonsecret(self):
         self.assertIn("static bool apple_probe_aks_time_sweep;", SOURCE)
@@ -118,10 +120,14 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn("T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE 21", SOURCE)
         self.assertIn("send[4] = 1", SOURCE)
         self.assertIn("send[4] = 2", SOURCE)
-        self.assertIn("memcpy(send + 8, receive, T2SEP_ACM_CONTEXT_SIZE)", SOURCE)
+        self.assertIn("memcpy(context, receive, T2SEP_ACM_CONTEXT_SIZE)", SOURCE)
+        self.assertIn("memcpy(send + 8, context, T2SEP_ACM_CONTEXT_SIZE)", SOURCE)
+        self.assertIn("memzero_explicit(context, sizeof(context))", SOURCE)
         self.assertIn("context_bytes=not-logged", SOURCE)
         self.assertNotIn("context=%", SOURCE)
-        self.assertNotIn("password", SOURCE.lower())
+        start = SOURCE.index("static int t2sep_probe_acm_context_create")
+        end = SOURCE.index("static void t2sep_revoke_password_key", start)
+        self.assertNotIn("password", SOURCE[start:end].lower())
 
     def test_combined_credential_startup_is_dual_bounded_and_gated(self):
         self.assertIn("static bool apple_probe_credential_startup;", SOURCE)
@@ -130,9 +136,27 @@ class KernelOolSafetyTests(unittest.TestCase):
             "\t\tT2SEP_CREDENTIAL_STARTUP_CONFIRMATION", SOURCE)
         self.assertIn(
             "bool dual_credential_ool = apple_capture_dual_credential_ool_acks ||\n"
-            "\t\t\t\t   apple_probe_credential_startup;", SOURCE)
+            "\t\t\t\t   apple_probe_credential_startup ||\n"
+            "\t\t\t\t   apple_probe_password_verification;", SOURCE)
         self.assertIn(
             "pdev, bar4, second_in_buffer, second_out_buffer", SOURCE)
+
+    def test_password_verification_consumes_one_key_and_scrubs(self):
+        for fragment in (
+                "static bool apple_probe_password_verification;",
+                "password_verification_confirmation !=\n"
+                "\t\tT2SEP_PASSWORD_VERIFICATION_CONFIRMATION",
+                "key->type != &key_type_user", "payload->datalen",
+                "payload->datalen > T2SEP_AKS_MAX_PASSWORD_SIZE",
+                "key_revoke(key)", "memzero_explicit(&keybag_handle",
+                "if (reply_received)",
+                "memzero_explicit(send, T2SEP_CREDENTIAL_OOL_SIZE)",
+                "password_bytes=not-logged", "device_state=not-logged"):
+            self.assertIn(fragment, SOURCE)
+        revoke = SOURCE.index("key_revoke(key)",
+                              SOURCE.index("t2sep_probe_aks_verify_password"))
+        send = SOURCE.index("t2sep_send_intel_message(bar4, request)", revoke)
+        self.assertLess(revoke, send)
 
     def test_stop_precedes_scrub_and_free(self) -> None:
         function = SOURCE.index("static int t2sep_apple_start_cpu_probe")

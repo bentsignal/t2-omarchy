@@ -2257,9 +2257,29 @@ the already validated ACM context lifecycle within one SEP CPU lifetime. It
 registers four distinct AKS/ACM DMA buffers, requires AKS environment success
 before ACM initialization, deletes the ephemeral context, stops the CPU, and
 scrubs all four buffers. A composite verifier proves the dual transport and
-both service state machines independently. This combined path passes offline
-build and regression tests but remains intentionally unexecuted pending a
-user-available hardware run.
+both service state machines independently. The supervised live run succeeded:
+AKS returned remote version 2 and accepted normal environment setup, ACM
+initialization/ping/current-context creation/deletion all returned zero, and
+both MSI vectors recorded 11 interrupts. CPU stop, four-buffer scrub/release,
+PCI restoration/release, unload, and unbind passed the verifier. No password,
+context bytes, or biometric data were logged. This closes simultaneous service
+startup; the next boundary is a scrub-owned operation-`0x21` password
+verification of the live ephemeral ACM context.
+
+The password boundary is now implemented behind a separate one-attempt gate.
+The privileged runner sends hidden prompt output directly to `keyctl padd`
+with no intervening password variable and passes only the non-secret key
+serial and explicit macOS session UID to the module. The kernel requires a
+temporary `user` key, bounds its payload to 1..256 bytes, constructs the
+variant-1 request with a fresh nonzero CSPRNG keybag handle and the recovered
+negative session-UID selector, then revokes the key before issuing operation
+`0x21`. No password, handle, context, or returned device-state value is logged.
+After any received reply the AKS DMA buffers are erased immediately; if no
+reply arrives, CPU stop retains precedence over DMA scrub. Context deletion is
+attempted after the verification exchange, and the ordinary four-buffer
+stop/scrub teardown remains mandatory. This implementation and its strict
+success-transcript verifier pass offline tests; no real password attempt has
+yet been made.
 
 ## Useful baseline commands
 
