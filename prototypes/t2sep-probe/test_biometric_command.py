@@ -152,6 +152,13 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         self.assertEqual(result.uuid, bytes(range(16)))
         self.assertEqual(result.lotl_user_ids, (9, 11))
 
+    def test_trusted_identity_offsets_disclose_only_locations(self):
+        identity = command.BiometricIdentity(7, bytes(range(16)))
+        record = command.IDENTITY.pack(identity.user_id, identity.uuid)
+        self.assertEqual(command.trusted_identity_offsets(
+            b"abc" + record + b"x" + record, (identity,)), ((3, 24),))
+        self.assertEqual(command.trusted_identity_offsets(b"none", (identity,)), ((),))
+
     def test_match_identity_decoder_fails_closed(self):
         base = bytearray(command.CATALINA_MATCH_RESULT_BASE_SIZE)
         for bad in (b"", bytes(base) + b"x"):
@@ -161,6 +168,16 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
                          command.MAX_LOTL_USER_IDS + 1)
         with self.assertRaises(command.BiometricCommandError):
             command.decode_catalina_match_identity(bytes(base))
+
+    def test_exact_current_v2_match_identity_decoder(self):
+        blob = bytearray(command.CURRENT_MATCH_RESULT_V2_SIZE)
+        struct.pack_into("<I16s", blob, 0, 7, bytes(range(16)))
+        result = command.decode_current_match_identity_v2(bytes(blob))
+        self.assertEqual((result.user_id, result.uuid, result.lotl_user_ids),
+                         (7, bytes(range(16)), ()))
+        for bad in (bytes(blob[:-1]), bytes(blob) + b"x"):
+            with self.assertRaises(command.BiometricCommandError):
+                command.decode_current_match_identity_v2(bad)
 
     def test_terminal_service_events_are_bound_to_type_and_version(self):
         identity = command.BiometricIdentity(7, bytes(range(16)))
@@ -173,6 +190,10 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         match[4:20] = identity.uuid
         self.assertEqual(command.decode_catalina_match_result_event(
             status=0xE3FF8002, version=1, data=bytes(match)).user_id, 7)
+        match_v2 = bytearray(command.CURRENT_MATCH_RESULT_V2_SIZE)
+        struct.pack_into("<I16s", match_v2, 0, identity.user_id, identity.uuid)
+        self.assertEqual(command.decode_catalina_match_result_event(
+            status=0xE3FF8002, version=2, data=bytes(match_v2)).user_id, 7)
 
         for status, version, data in (
             (0xE3FF8002, 1, raw_identity),

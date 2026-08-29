@@ -836,11 +836,9 @@ data bytes. The decoder enforces five-object arity, exact channel/method,
 unsigned timestamps, a 64 KiB data cap, and exact `40 + dataSize` length. The
 presence probe reports only types, integer metadata, and data length—never raw
 event bytes—collects at most two records, and always cancels in a `finally`
-block. A first coordinated-touch attempt saw only the initial
-`0xe3ff8001` record during its five-second window, so physical touch-event
-confirmation remains the next manual test.
+block.
 
-The eventual authentication path is now composed offline in
+The authentication path is now proven live in
 `match-authentication-probe.py`, with its live source gate closed. On one
 persistent connection it freshly enumerates identities for exactly one UID,
 arms one `MatchAuthentication`, starts only the ordinary zero-special-mode
@@ -853,6 +851,20 @@ record, unexpected status, timeout, event flood, or transport loss fails the
 operation permanently. Cancellation is attempted on every post-start exit.
 The public result reports only the Boolean decision, UID, identity count,
 status numbers, and cancel status; it never exposes UUID bytes.
+
+On 2026-08-28 a coordinated scan with the macOS-enrolled finger reached a
+bridgeOS 10.6 terminal match event: status `0xe3ff8002`, version 2, and exactly
+`0xc9c` bytes. A privacy-limited layout probe searched only for the freshly
+enumerated trusted 20-byte identity record and reported one occurrence at
+offset zero; it did not print the record, UUID, or opaque result bytes. The
+version-2 decoder consequently requires the exact `0xc9c` size and consumes
+only that stable identity prefix, leaving the changed trailing metadata opaque.
+A second coordinated scan then completed end to end as `matched=true` for UID
+501 against the fresh trusted snapshot and cancelled with status zero. This is
+the first confirmed successful Linux-initiated T2 Touch ID match in this
+investigation. The explicit no-match/rejection path still requires a supervised
+scan with an unenrolled finger before this prototype can be treated as an
+authentication component.
 
 Linux-native enrollment is now composed offline in `enrollment-probe.py`, also
 with a closed live source gate. A checksum-pinned Catalina jump table maps

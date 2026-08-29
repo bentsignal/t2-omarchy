@@ -29,6 +29,15 @@ authentication = _load("match_probe_authentication", "authentication-result.py")
 LIVE_MATCH_ENABLED = False
 MAX_EVENTS = 32
 NONTERMINAL_READY = 0xE3FF8001
+NONTERMINAL_MINIMUMS = {
+    0xE3FF8004: 12,
+    0xE3FF8005: 17,
+    0xE3FF8006: 0,
+    0xE3FF8007: 0,
+    0xE3FF8008: 0,
+    0xE3FF8009: 0,
+    0xE3FF800A: 6,
+}
 
 
 class MatchProbeError(RuntimeError):
@@ -41,6 +50,7 @@ class MatchProbeResult:
     matched_user_id: int | None
     trusted_identity_count: int
     observed_statuses: tuple[int, ...]
+    observed_events: tuple[tuple[int, int, int], ...]
     cancel_status: int
 
 
@@ -74,12 +84,13 @@ def probe_socket(sock, *, user_id: int) -> MatchProbeResult:
     operation = authentication.MatchAuthentication(
         expected_user_id=user_id, trusted_identities=trusted)
     statuses: list[int] = []
+    events: list[tuple[int, int, int]] = []
     cancel_status = -1
     terminal = None
     decision = None
     try:
         start_status, output = _perform(
-            session, biometric.ordinary_match_fields(user_id=user_id))
+            session, biometric.ordinary_match_fields())
         if start_status != 0 or output is not None:
             operation.abort()
             raise MatchProbeError("match command did not start cleanly")
@@ -89,28 +100,43 @@ def probe_socket(sock, *, user_id: int) -> MatchProbeResult:
                 event = biometric.decode_bridge_service_event(envelope.message)
             except (socket.timeout, TimeoutError) as error:
                 operation.abort()
-                raise MatchProbeError("match timed out before a terminal result") from error
+                raise MatchProbeError(
+                    "match timed out before a terminal result; statuses="
+                    + ",".join(f"{status:#x}" for status in statuses)
+                    + " events=" + repr(events)) from error
             except (coupled.bridge_query.QueryError,
                     biometric.BiometricCommandError) as error:
                 operation.abort()
                 raise MatchProbeError("match event transport was invalid") from error
             statuses.append(event.status)
+            events.append((event.status, event.version, len(event.data)))
             if event.status == biometric.SERVICE_EVENT_MATCH_RESULT:
                 try:
                     terminal = operation.accept_terminal(
                         status=event.status, version=event.version, data=event.data)
                 except authentication.AuthenticationResultError as error:
-                    raise MatchProbeError("terminal match result was rejected") from error
+                    offsets = biometric.trusted_identity_offsets(
+                        event.data,
+                        tuple(biometric.BiometricIdentity(i.user_id, i.uuid)
+                              for i in identities))
+                    raise MatchProbeError(
+                        "terminal match result was rejected: "
+                        f"version={event.version} length={len(event.data)} "
+                        f"trusted_identity_offsets={offsets!r} "
+                        f"events={events!r}") from error
                 break
             if event.status == NONTERMINAL_READY:
-                if event.version != 1 or event.data:
-                    operation.abort()
-                    raise MatchProbeError("ready event has an unsupported shape")
                 continue
             if event.status == biometric.SERVICE_EVENT_MATCH_ACTIVITY:
                 if event.version != 1 or len(event.data) < 9:
                     operation.abort()
                     raise MatchProbeError("match activity event has an unsupported shape")
+                continue
+            minimum = NONTERMINAL_MINIMUMS.get(event.status)
+            if minimum is not None:
+                if event.version != 1 or len(event.data) < minimum:
+                    operation.abort()
+                    raise MatchProbeError("match progress event has an unsupported shape")
                 continue
             operation.abort()
             raise MatchProbeError(f"unexpected service status {event.status:#x}")
@@ -129,7 +155,7 @@ def probe_socket(sock, *, user_id: int) -> MatchProbeResult:
     return MatchProbeResult(
         decision.matched,
         decision.identity.user_id if decision.identity is not None else None,
-        len(identities), tuple(statuses), cancel_status)
+        len(identities), tuple(statuses), tuple(events), cancel_status)
 
 
 def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",

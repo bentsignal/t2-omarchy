@@ -72,10 +72,11 @@ class MatchProbeTests(unittest.TestCase):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
         return (envelope(self.IDS[0], [0, identity])
                 + envelope(self.IDS[1], [0, protocol.NO_REPLY_UUID.lower()])
-                + service_event(0xE3FF8001)
-                + service_event(0xE3FF800B, b"123456789", 2)
+                + service_event(0xE3FF8001, b"bounded-touch-metadata")
+                + service_event(0xE3FF8004, b"p" * 12, 2)
+                + service_event(0xE3FF800B, b"123456789", 3)
                 + service_event(0xE3FF8002,
-                                match_result(terminal_user, terminal_uuid), 3)
+                                match_result(terminal_user, terminal_uuid), 4)
                 + envelope(self.IDS[2], [0, protocol.NO_REPLY_UUID.lower()]))
 
     def run_probe(self, incoming):
@@ -102,8 +103,10 @@ class MatchProbeTests(unittest.TestCase):
         self.assertEqual(result.matched_user_id, self.USER)
         self.assertEqual(result.trusted_identity_count, 1)
         self.assertEqual(result.observed_statuses,
-                         (0xE3FF8001, 0xE3FF800B, 0xE3FF8002))
+                         (0xE3FF8001, 0xE3FF8004,
+                          0xE3FF800B, 0xE3FF8002))
         self.assertEqual(result.cancel_status, 0)
+        self.assertEqual(result.observed_events[0][0], 0xE3FF8001)
 
     def test_no_match_is_not_success(self):
         result = self.run_probe(self.incoming(0xFFFFFFFF, bytes(16)))

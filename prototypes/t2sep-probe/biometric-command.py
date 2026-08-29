@@ -31,6 +31,7 @@ ENROLL_PAYLOAD = struct.Struct("<IIII32s")
 CATALINA_MATCH_RESULT_BASE_SIZE = 0xC70
 CATALINA_MATCH_RESULT_LOTL_COUNT_OFFSET = 0xC6C
 CATALINA_MATCH_RESULT_LOTL_OFFSET = 0xC70
+CURRENT_MATCH_RESULT_V2_SIZE = 0xC9C
 MAX_LOTL_USER_IDS = 64
 IDENTITY = struct.Struct("<I16s")
 MAX_IDENTITIES = 64
@@ -38,6 +39,7 @@ SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
 SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
 SERVICE_EVENT_MATCH_ACTIVITY = 0xE3FF800B
 SERVICE_EVENT_VERSION = 1
+MATCH_SERVICE_EVENT_VERSIONS = (1, 2)
 BRIDGE_SERVICE_EVENT_METHOD = 9
 BRIDGE_SERVICE_EVENT_CHANNEL = 0xE3FF8000
 SERVICE_RECORD_HEADER_SIZE = 40
@@ -79,6 +81,35 @@ class ServiceStatusEvent:
     data: bytes
     reference_timestamp: int
     continuous_time_delta: int
+
+
+def trusted_identity_offsets(blob: bytes,
+                             identities: tuple[BiometricIdentity, ...]
+                             ) -> tuple[tuple[int, ...], ...]:
+    """Locate trusted identity records without returning their contents.
+
+    This is a layout-research helper, not an authentication decoder.  Its
+    output is deliberately limited to byte offsets so live diagnostics never
+    print identity UUIDs or opaque biometric result bytes.
+    """
+    if not isinstance(blob, bytes):
+        raise BiometricCommandError("match result must be bytes")
+    if not isinstance(identities, tuple) or any(
+            not isinstance(identity, BiometricIdentity) for identity in identities):
+        raise BiometricCommandError("trusted identities must be a tuple of identities")
+    offsets = []
+    for identity in identities:
+        record = IDENTITY.pack(_u32(identity.user_id, "user ID"), identity.uuid)
+        found = []
+        start = 0
+        while True:
+            offset = blob.find(record, start)
+            if offset < 0:
+                break
+            found.append(offset)
+            start = offset + 1
+        offsets.append(tuple(found))
+    return tuple(offsets)
 
 
 def _u32(value: int, field: str) -> int:
@@ -257,6 +288,22 @@ def decode_catalina_match_identity(blob: bytes) -> CatalinaMatchIdentity:
     return CatalinaMatchIdentity(user_id, uuid, lotl_user_ids)
 
 
+def decode_current_match_identity_v2(blob: bytes) -> CatalinaMatchIdentity:
+    """Decode the identity prefix observed in bridgeOS 10.6 match v2.
+
+    A live, freshly enumerated trusted identity was observed exactly once at
+    offset zero of an exact 0xc9c-byte terminal record.  The remaining bytes
+    are intentionally opaque until their current layout is independently
+    proven; they cannot influence the identity comparison performed by the
+    authentication state machine.
+    """
+    if not isinstance(blob, bytes) or len(blob) != CURRENT_MATCH_RESULT_V2_SIZE:
+        raise BiometricCommandError(
+            "current v2 match result must be exactly 0xc9c bytes")
+    user_id, identity_uuid = IDENTITY.unpack_from(blob, 0)
+    return CatalinaMatchIdentity(user_id, identity_uuid, ())
+
+
 def decode_catalina_enroll_result_event(
         *, status: int, version: int, data: bytes) -> BiometricIdentity:
     """Decode Catalina's terminal identity-created service event.
@@ -275,9 +322,11 @@ def decode_catalina_enroll_result_event(
 def decode_catalina_match_result_event(
         *, status: int, version: int, data: bytes) -> CatalinaMatchIdentity:
     """Bind a raw match result to Catalina's proven service event/version."""
-    if status != SERVICE_EVENT_MATCH_RESULT or version != SERVICE_EVENT_VERSION:
+    if status != SERVICE_EVENT_MATCH_RESULT or version not in MATCH_SERVICE_EVENT_VERSIONS:
         raise BiometricCommandError("not a supported match-result event")
-    return decode_catalina_match_identity(data)
+    if version == 1:
+        return decode_catalina_match_identity(data)
+    return decode_current_match_identity_v2(data)
 
 
 def decode_terminal_biometric_event(
