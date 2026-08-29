@@ -7,7 +7,7 @@ SOURCE = Path(__file__).with_name("run-password-authorization-probe.sh").read_te
 
 class PasswordAuthorizationRunnerSafetyTests(unittest.TestCase):
     def test_password_never_enters_shell_variable_or_argv(self):
-        self.assertIn("systemd-ask-password --echo=no", SOURCE)
+        self.assertIn("systemd-ask-password --no-tty --echo=no", SOURCE)
         self.assertIn("set +x", SOURCE)
         self.assertIn("|\n  keyctl padd user", SOURCE)
         self.assertNotIn("password=$(", SOURCE)

@@ -35,7 +35,7 @@ trap cleanup EXIT
 
 echo "A hidden prompt will ask once for the macOS account password (UID $session_uid)." >&2
 set +x
-serial=$(systemd-ask-password --echo=no --timeout=120 -n \
+serial=$(systemd-ask-password --no-tty --echo=no --timeout=120 -n \
   "Enter the macOS account password for one T2 verification attempt:" |
   keyctl padd user "t2sep-password-$$" @s)
 [[ $serial =~ ^[0-9]+$ ]] || die "temporary password key creation failed"
