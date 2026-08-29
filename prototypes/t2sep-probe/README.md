@@ -8,6 +8,14 @@ By default it does **not** call `pci_enable_device()`, request or map BARs,
 register interrupts, configure DMA, or write PCI/MMIO state. It cannot yet
 communicate with the SEP or authenticate a fingerprint.
 
+`no-catacomb-probe.py` is a default-off, explicitly confirmed live probe for
+the current pristine-database initializer. It sends command `0x31`, version 1,
+with only the selected UID, then reports sanitized shapes from the three
+read-only state queries. It does not access macOS storage or persist a
+catacomb. On the first T2 Linux run the initializer returned status zero while
+all follow-up queries still returned `kIOReturnBadArgument`, showing that
+per-user protected configuration remains a separate prerequisite.
+
 An explicitly enabled second-stage probe maps BAR4 and reads only the
 hypothesized T8012 mailbox send/receive status registers. The offsets come from
 checkra1n/PongoOS's 32-bit SEP mailbox layout. It does not read the receive

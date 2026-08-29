@@ -2597,10 +2597,24 @@ state requests have no input, so this common result is evidence that the
 service has no initialized/loaded catacomb context after a Linux boot—not a
 three-command serialization error. The probe is checked in and deliberately
 reports only status, accepted length, and record counts; opaque records are
-never decoded or printed. The next lifecycle boundary is Apple's `NoCatacomb`
-initialization path for a pristine database, or `LoadCatacomb` for persisted
-state. Neither mutation should be sent until its current command, input,
-authorization, and persistence sequence are recovered exactly.
+never decoded or printed.
+
+Current KDK dispatch proves that Apple's pristine-database `NoCatacomb` path
+is command `0x31`, version 1, with an exact four-byte UID input and no output.
+A separately gated Linux probe sent that exact request for UID 501. It
+succeeded with status zero, but immediate `GetProtectedConfig`,
+`GetCatacombState`, and `GetCatacombGroupState` queries still returned
+`kIOReturnBadArgument`.
+
+This splits the missing startup state into two prerequisites. Linux can now
+initialize an empty in-memory catacomb context, but doing so does not create
+the user's protected-policy object or a persisted biometric database. The
+probe neither reads nor writes macOS's on-disk catacomb, and the state
+disappears when the bridge or machine is restarted. Static analysis identifies
+the next operation as current `SetProtectedConfig` command `0x2f`, version 1,
+with an exact 60-byte input: four-byte UID, four 32-bit policy values, then a
+40-byte authorization record. That setter must not be sent until the initial
+policy values and authorization semantics are evidence-backed.
 
 ## Useful baseline commands
 

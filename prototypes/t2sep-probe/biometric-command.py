@@ -24,6 +24,7 @@ COMMAND_REMOVE_IDENTITY = 0x0D
 COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PRESENCE_DETECT = 0x26
 COMMAND_GET_PROTECTED_CONFIG = 0x2E
+COMMAND_NO_CATACOMB = 0x31
 COMMAND_GET_CATACOMB_STATE = 0x3C
 COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
@@ -147,6 +148,12 @@ def decode_system_protected_config(output: bytes) -> SystemProtectedConfig:
 def protected_config_fields(*, user_id: int):
     return (COMMAND_GET_PROTECTED_CONFIG, 0, 0,
             struct.pack("<I", _u32(user_id, "user ID")), PROTECTED_CONFIG_SIZE)
+
+
+def no_catacomb_fields(*, user_id: int):
+    """Initialize one empty in-memory user catacomb using the current KDK ABI."""
+    return (COMMAND_NO_CATACOMB, COMMAND_VERSION, 0,
+            struct.pack("<I", _u32(user_id, "user ID")), 0)
 
 
 def catacomb_state_fields():
