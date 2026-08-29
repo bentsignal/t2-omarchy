@@ -1088,16 +1088,29 @@ mapping. Successful mappings remain retained until transport stop, explicit
 scrub, and release. This is still a pure plan: it allocates no memory and has
 no route into the kernel probe.
 
-The corresponding kernel capture path is now implemented but remains
-default-off and unexecuted. It requires CPU start, both MSI vectors, a strictly
+The corresponding kernel capture path is default-off and was executed once
+under direct user supervision on this MacBookPro16,1 at 2026-08-28 22:55 EDT.
+It requires CPU start, both MSI vectors, a strictly
 validated control NOP, endpoint exactly `7` or `10`, a credential-specific
 64-bit confirmation value, and mutual exclusion from the older SBIO capture.
 It allocates two zeroed 16 KiB coherent mappings under a 32-bit DMA mask,
 captures only tagged OOL-registration acknowledgements, issues Apple's stop
 before scrubbing/freeing either mapping, and never constructs an ACM or AKS
 service envelope. The wrapper adds an independent cursor-bounded transcript
-verifier and a separate human-readable confirmation. Privileged execution is
-deferred until the user is present.
+verifier and a separate human-readable confirmation.
+
+That bounded endpoint-7 run passed the control NOP, received both registrations,
+stopped the T2, scrubbed and released both buffers, observed three interrupts
+on each MSI vector, restored the original PCI command word, and left neither a
+driver binding nor loaded module. Both opcode-2/tag-2 send registration and
+opcode-3/tag-3 receive registration returned acknowledgement opcode `1`, target
+`7`, their original tag, and zero status. The independent verifier reproduces
+the resulting fixed AKS profile `(send=1/7, receive=1/7)`, now named
+`AKS_REPLY_PROFILE` in the offline bootstrap. Its first pass exposed a verifier
+bug: the normal unsigned out-of-tree-module warning contains `verification
+failed:`. The verifier now ignores loader-wide messages and admits evidence
+only from the PCI-qualified `t2sep_probe 0000:04:00.2:` state machine; a
+regression test preserves that boundary. No AKS service request was sent.
 
 The same offline model computes the exact verify-secret serialized size
 without accepting secret bytes: an `0x54`-byte serialized header, the variant

@@ -36,7 +36,10 @@ has no device-I/O path.
 
 `credential-services-bootstrap.py` composes fixed ACM/AKS OOL registration,
 independently observed acknowledgement profiles, and stop-scrub-release
-ownership. It deliberately has no kernel or DMA-allocation path.
+ownership. The supervised 2026-08-28 endpoint-7 capture established the fixed
+AKS acknowledgement profile `(opcode 1, target 7)` for both mappings; ACM is
+still unobserved. The pure bootstrap deliberately has no kernel or
+DMA-allocation path.
 
 The kernel module now contains a separate, default-off capture gate for the
 two fixed credential endpoints. It registers two 16 KiB zeroed mappings and

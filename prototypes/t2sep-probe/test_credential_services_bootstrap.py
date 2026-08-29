@@ -33,9 +33,9 @@ class CredentialServicesBootstrapTests(unittest.TestCase):
         state = bootstrap.CredentialServiceBootstrap(bootstrap.AKS)
         send, receive = state.registration_requests(
             0x100000, 0x200000, send_tag=4, receive_tag=5)
-        profile = bootstrap.ReplyProfile(0x82, 7, 0x83, 7)
-        state.accept_registration_replies(reply(send, 0x82, 7),
-                                          reply(receive, 0x83, 7), profile)
+        profile = bootstrap.AKS_REPLY_PROFILE
+        state.accept_registration_replies(reply(send, 1, 7),
+                                          reply(receive, 1, 7), profile)
         self.assertTrue(state.ready)
         self.assertEqual(state.stop_and_release(), ("aks-receive", "aks-send"))
 

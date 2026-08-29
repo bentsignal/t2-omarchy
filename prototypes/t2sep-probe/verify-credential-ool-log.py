@@ -32,7 +32,10 @@ def verify(text: str, expected_endpoint: int
     stopped = False
     cleaned = False
     for line in text.splitlines():
-        if "t2sep_probe" not in line:
+        # Ignore kernel-loader diagnostics such as the expected unsigned
+        # out-of-tree-module taint warning. Only the bound PCI probe emits the
+        # state-machine evidence accepted below.
+        if "t2sep_probe 0000:04:00.2:" not in line:
             continue
         if any(marker in line for marker in
                ("transport error", "timed out", "failed:", "result=-")):

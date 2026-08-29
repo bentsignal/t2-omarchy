@@ -46,6 +46,11 @@ class ReplyProfile:
     receive_target: int
 
 
+# Observed on the MacBookPro16,1 T2 at 2026-08-28 22:55 EDT and accepted by
+# verify-credential-ool-log.py from the cursor-bounded kernel transcript.
+AKS_REPLY_PROFILE = ReplyProfile(1, AKS.endpoint, 1, AKS.endpoint)
+
+
 class CredentialServiceBootstrap:
     """Plan registration and ownership without allocating or touching DMA."""
 
