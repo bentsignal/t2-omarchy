@@ -30,8 +30,11 @@ CAPS_ENVELOPE = re.compile(
 CAPS_SUCCESS = re.compile(
     r"AKS capabilities reply passed strict validation: status=(-?\d+) "
     r"remote_header_version=(\d+)")
+CAPS_FALLBACK = re.compile(
+    r"AKS capabilities negotiation unavailable: result=(-?\d+); "
+    r"applying Apple header-version-1 fallback")
 ENV_REQUEST = re.compile(
-    r"AKS startup environment request: endpoint=7 selector=0x2a tag=5 "
+    r"AKS startup environment request: endpoint=7 selector=0x2a tag=2 "
     r"length=1136 header_version=(\d+) no_effaceable_storage=0 mode=4")
 ENV_ENVELOPE = re.compile(
     r"AKS startup environment envelope: raw=([0-9a-fA-F]{8}) "
@@ -44,8 +47,15 @@ ENV_SUCCESS = re.compile(
 def verify(text: str) -> int:
     if not isinstance(text, str):
         raise VerificationError("AKS startup transcript must be text")
+    # The generic OOL verifier correctly rejects negative results.  The one
+    # exception here is Apple's explicitly modelled capabilities fallback,
+    # which this verifier validates in the ordered AKS state machine below.
+    ool_text = "\n".join(
+        line for line in text.splitlines()
+        if not CAPS_FALLBACK.search(line)
+    )
     try:
-        if ool.verify(text, 7) != ((1, 7), (1, 7)):
+        if ool.verify(ool_text, 7) != ((1, 7), (1, 7)):
             raise VerificationError("AKS OOL profile changed")
     except ool.VerificationError as error:
         raise VerificationError(str(error)) from error
@@ -56,7 +66,7 @@ def verify(text: str) -> int:
         if "t2sep_probe 0000:04:00.2:" not in line:
             continue
         if "AKS capabilities request:" in line:
-            required = ("endpoint=7", "selector=0x4d", "tag=4",
+            required = ("endpoint=7", "selector=0x4d", "tag=1",
                         "length=100", "header_version=1")
             if state != 0 or not all(value in line for value in required):
                 raise VerificationError("capabilities request is malformed or reordered")
@@ -65,7 +75,7 @@ def verify(text: str) -> int:
         match = CAPS_ENVELOPE.search(line)
         if match:
             words = tuple(int(value, 16) for value in match.groups())
-            if state != 1 or words[:3] != (0x0004cd07, 0x00640000, 0):
+            if state != 1 or words[:3] != (0x0001cd07, 0x00640000, 0):
                 raise VerificationError("capabilities envelope failed correlation")
             if words[3] & 0xc0000:
                 raise VerificationError("capabilities envelope reports transport error")
@@ -79,6 +89,13 @@ def verify(text: str) -> int:
             negotiated = min(remote, 2)
             state = 3
             continue
+        match = CAPS_FALLBACK.search(line)
+        if match:
+            if state != 1 or int(match[1]) == 0:
+                raise VerificationError("capabilities fallback is malformed or reordered")
+            negotiated = 1
+            state = 3
+            continue
         match = ENV_REQUEST.search(line)
         if match:
             if state != 3 or int(match[1]) != negotiated:
@@ -88,7 +105,7 @@ def verify(text: str) -> int:
         match = ENV_ENVELOPE.search(line)
         if match:
             words = tuple(int(value, 16) for value in match.groups())
-            if state != 4 or words[:3] != (0x0005aa07, 0x00580000, 0):
+            if state != 4 or words[:3] != (0x0002aa07, 0x00580000, 0):
                 raise VerificationError("environment envelope failed correlation")
             if words[3] & 0xc0000:
                 raise VerificationError("environment envelope reports transport error")

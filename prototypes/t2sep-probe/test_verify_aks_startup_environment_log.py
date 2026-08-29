@@ -27,11 +27,11 @@ GOOD = "\n".join((
     line("OOL acknowledgement: request_opcode=2 tag=2 raw=07010200 00000000 00000000 00101200 decoded_endpoint=0 decoded_tag=2 decoded_opcode=1 decoded_target=7"),
     line("OOL registration request: opcode=3 tag=3 words=07030300 00000200 00004000 00000000"),
     line("OOL acknowledgement: request_opcode=3 tag=3 raw=07010300 00000000 00000000 00102300 decoded_endpoint=0 decoded_tag=3 decoded_opcode=1 decoded_target=7"),
-    line("AKS capabilities request: endpoint=7 selector=0x4d tag=4 length=100 header_version=1"),
-    line("AKS capabilities envelope: raw=0004cd07 00640000 00000000 00000000"),
+    line("AKS capabilities request: endpoint=7 selector=0x4d tag=1 length=100 header_version=1"),
+    line("AKS capabilities envelope: raw=0001cd07 00640000 00000000 00000000"),
     line("AKS capabilities reply passed strict validation: status=0 remote_header_version=2"),
-    line("AKS startup environment request: endpoint=7 selector=0x2a tag=5 length=1136 header_version=2 no_effaceable_storage=0 mode=4"),
-    line("AKS startup environment envelope: raw=0005aa07 00580000 00000000 00000000"),
+    line("AKS startup environment request: endpoint=7 selector=0x2a tag=2 length=1136 header_version=2 no_effaceable_storage=0 mode=4"),
+    line("AKS startup environment envelope: raw=0002aa07 00580000 00000000 00000000"),
     line("AKS startup environment reply passed strict validation: status=0 header_version=2"),
     line("issued Apple CPU-stop value 5 at +0x8024; payload FIFOs accessed only by explicit bounded gates"),
     line("OOL buffers scrubbed and released after CPU stop; result=0"),
@@ -56,15 +56,23 @@ class VerifyAksStartupEnvironmentLogTests(unittest.TestCase):
             "header_version=2", "header_version=1")
         self.assertEqual(verify.verify(version_one), 1)
 
+    def test_accepts_apple_version_one_fallback(self):
+        fallback = GOOD.replace(
+            line("AKS capabilities envelope: raw=0001cd07 00640000 00000000 00000000") + "\n" +
+            line("AKS capabilities reply passed strict validation: status=0 remote_header_version=2"),
+            line("AKS capabilities negotiation unavailable: result=-110; applying Apple header-version-1 fallback"),
+        ).replace("header_version=2", "header_version=1")
+        self.assertEqual(verify.verify(fallback), 1)
+
     def test_rejects_changed_reordered_or_failed_environment(self):
         mutations = (
             GOOD.replace("selector=0x2a", "selector=0x2b"),
             GOOD.replace("no_effaceable_storage=0", "no_effaceable_storage=1"),
-            GOOD.replace("raw=0005aa07", "raw=0006aa07"),
-            GOOD.replace("raw=0005aa07 00580000", "raw=0005aa07 00590000"),
+            GOOD.replace("raw=0002aa07", "raw=0006aa07"),
+            GOOD.replace("raw=0002aa07 00580000", "raw=0002aa07 00590000"),
             GOOD.replace("status=0 header_version=2", "status=-1 header_version=2"),
             GOOD.replace("status=0 header_version=2", "status=0 header_version=1"),
-            GOOD.replace(line("AKS startup environment envelope: raw=0005aa07 00580000 00000000 00000000"), ""),
+            GOOD.replace(line("AKS startup environment envelope: raw=0002aa07 00580000 00000000 00000000"), ""),
         )
         for transcript in mutations:
             with self.subTest():

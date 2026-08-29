@@ -1133,21 +1133,34 @@ byte as zero, validates the negotiated header version and digest, and rejects
 nonzero status, extra bytes, and reordered replies. It is not yet connected to
 device I/O.
 
-A second, separately confirmed kernel path is prepared but unexecuted for this
+A second, separately confirmed kernel path implements this
 two-transaction startup prefix. It first performs the existing strictly
 validated operation-`0x4d` exchange and caps the returned version at 2, exactly
-as Apple does. Only then does it construct operation `0x2a` with a fresh
+as Apple does. If negotiation is unavailable, it follows Apple's explicit
+fallback to version 1. Only then does it construct operation `0x2a` with a fresh
 suspend-inclusive boot timestamp, a calendar timestamp for version 2, the
 kernproc identity candidate, the missing-property default
 `no-effaceable-storage=0`, normal mode 4, and zero reserved storage. It sends
-selector `0x2a` at tag 5 and accepts only the correlated selector-`0xaa`, tag-5,
+selector `0x2a` at tag 2 and accepts only the correlated selector-`0xaa`, tag-2,
 length-`0x58` response with the negotiated version, valid digest, zero flags,
 and zero status. The path never sends password bytes, an ACM context, or a
 reference-key request. The wrapper requires the exact confirmation phrase
 `I_UNDERSTAND_NONSECRET_AKS_STARTUP_ENVIRONMENT_PROBE`; an independent
 transcript verifier checks the OOL registration profile, both AKS exchanges,
 version negotiation, CPU stop, DMA scrub/release, PCI restoration, unload, and
-unbind. It will not be run without the user present.
+unbind.
+
+The bounded live run on 2026-08-29 established two additional constraints.
+Using Apple's actual first and second per-service correlation tags (`1` for
+capabilities and `2` for environment), operation `0x4d` still produced no
+mailbox reply. The prototype then applied Apple's version-1 fallback and sent
+operation `0x2a`; that request also produced no mailbox reply. Both attempts
+cleanly stopped the CPU, scrubbed and freed DMA, restored PCI state, and
+unloaded. This rules out the previously incorrect correlation tags and the
+missing capabilities fallback as the cause. Because two different protected
+AKS operations are silently rejected while ACM exchanges succeed over the
+same transport, the remaining mismatch is in the common protected AKS header
+or its host identity, not either operation's body.
 
 The following class-F PRNG contribution is best-effort rather than an
 authorization gate. `init_sep_endpoint` calls both `set_env(false)` and
@@ -1194,6 +1207,9 @@ bytes 4–5; the OOL payload length as a little-endian 16-bit value at bytes
 6–7; and zero at bytes 8–11. Apple masks the request selector to seven bits,
 copies the serialized request into the send OOL buffer, sends this envelope,
 and correlates the response before consuming the receive OOL buffer.
+The correlation byte is independent of the control-plane OOL-registration
+tags: Apple zero-initializes its per-service counter and pre-increments it, so
+the first capabilities transaction uses correlation tag `1`.
 `aks-transport.py` is a pure strict codec for that layer. It caps lengths at
 `0x4000`, rejects reserved data and wrong endpoints, and requires the reply
 bit, selector, and tag to match before exposing a response length. It has no

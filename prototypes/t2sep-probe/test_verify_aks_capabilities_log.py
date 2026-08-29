@@ -27,8 +27,8 @@ GOOD = "\n".join((
     line("OOL acknowledgement: request_opcode=2 tag=2 raw=07010200 00000000 00000000 00101200 decoded_endpoint=0 decoded_tag=2 decoded_opcode=1 decoded_target=7"),
     line("OOL registration request: opcode=3 tag=3 words=07030300 00000200 00004000 00000000"),
     line("OOL acknowledgement: request_opcode=3 tag=3 raw=07010300 00000000 00000000 00102300 decoded_endpoint=0 decoded_tag=3 decoded_opcode=1 decoded_target=7"),
-    line("AKS capabilities request: endpoint=7 selector=0x4d tag=4 length=100 header_version=1"),
-    line("AKS capabilities envelope: raw=0004cd07 00640000 00000000 00000000"),
+    line("AKS capabilities request: endpoint=7 selector=0x4d tag=1 length=100 header_version=1"),
+    line("AKS capabilities envelope: raw=0001cd07 00640000 00000000 00000000"),
     line("AKS capabilities reply passed strict validation: status=0 remote_header_version=2"),
     line("issued Apple CPU-stop value 5 at +0x8024; payload FIFOs accessed only by explicit bounded gates"),
     line("OOL buffers scrubbed and released after CPU stop; result=0"),
@@ -46,16 +46,16 @@ class VerifyAksCapabilitiesLogTests(unittest.TestCase):
     def test_rejects_changed_or_missing_capability_evidence(self):
         mutations = (
             GOOD.replace("selector=0x4d", "selector=0x4c"),
-            GOOD.replace("raw=0004cd07", "raw=0005cd07"),
+            GOOD.replace("raw=0001cd07", "raw=0005cd07"),
             GOOD.replace("status=0", "status=-1"),
             GOOD.replace("remote_header_version=2", "remote_header_version=0"),
-            GOOD.replace(line("AKS capabilities envelope: raw=0004cd07 00640000 00000000 00000000"), ""),
+            GOOD.replace(line("AKS capabilities envelope: raw=0001cd07 00640000 00000000 00000000"), ""),
             GOOD.replace(
-                line("AKS capabilities request: endpoint=7 selector=0x4d tag=4 length=100 header_version=1") + "\n",
+                line("AKS capabilities request: endpoint=7 selector=0x4d tag=1 length=100 header_version=1") + "\n",
                 "").replace(
                     line("issued Apple CPU-stop value 5 at +0x8024; payload FIFOs accessed only by explicit bounded gates"),
                     line("issued Apple CPU-stop value 5 at +0x8024; payload FIFOs accessed only by explicit bounded gates") + "\n" +
-                    line("AKS capabilities request: endpoint=7 selector=0x4d tag=4 length=100 header_version=1")),
+                    line("AKS capabilities request: endpoint=7 selector=0x4d tag=1 length=100 header_version=1")),
         )
         for transcript in mutations:
             with self.subTest():

@@ -558,7 +558,7 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	u8 digest[SHA256_DIGEST_SIZE];
 	u8 *send = send_buffer;
 	u8 *receive = receive_buffer;
-	u32 request[3] = { 0x00044d07, 0x00640000, 0 };
+	u32 request[3] = { 0x00014d07, 0x00640000, 0 };
 	u32 response[4];
 	/* mach_continuous_time includes suspend; Linux boottime is its analogue. */
 	u64 continuous_usec = ktime_get_boottime_ns() / NSEC_PER_USEC;
@@ -586,14 +586,14 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	if (ret)
 		goto out_scrub;
 	dev_info(&pdev->dev,
-		 "AKS capabilities request: endpoint=7 selector=0x4d tag=4 length=100 header_version=1\n");
+		 "AKS capabilities request: endpoint=7 selector=0x4d tag=1 length=100 header_version=1\n");
 	ret = t2sep_wait_intel_message(bar4, response);
 	if (ret)
 		goto out_scrub;
 	dev_info(&pdev->dev,
 		 "AKS capabilities envelope: raw=%08x %08x %08x %08x\n",
 		 response[0], response[1], response[2], response[3]);
-	if (response[0] != 0x0004cd07 || response[1] != 0x00640000 ||
+	if (response[0] != 0x0001cd07 || response[1] != 0x00640000 ||
 	    response[2] != 0 ||
 	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))) {
 		ret = -EPROTO;
@@ -638,15 +638,20 @@ static int t2sep_probe_aks_startup_environment(struct pci_dev *pdev,
 	u8 digest[SHA256_DIGEST_SIZE];
 	u8 *send = send_buffer;
 	u8 *receive = receive_buffer;
-	u32 request[3] = { 0x00052a07, 0x04700000, 0 };
+	u32 request[3] = { 0x00022a07, 0x04700000, 0 };
 	u32 response[4];
 	u32 version;
 	u32 status;
 	int ret;
 
 	ret = t2sep_probe_aks_capabilities(pdev, bar4, send, receive, &version);
-	if (ret)
-		goto out_scrub;
+	if (ret) {
+		/* AppleKeyStore deliberately falls back to v1 on negotiation failure. */
+		dev_info(&pdev->dev,
+			 "AKS capabilities negotiation unavailable: result=%d; applying Apple header-version-1 fallback\n",
+			 ret);
+		version = 1;
+	}
 
 	memset(send, 0, T2SEP_CREDENTIAL_OOL_SIZE);
 	memset(receive, 0, T2SEP_CREDENTIAL_OOL_SIZE);
@@ -673,7 +678,7 @@ static int t2sep_probe_aks_startup_environment(struct pci_dev *pdev,
 	if (ret)
 		goto out_scrub;
 	dev_info(&pdev->dev,
-		 "AKS startup environment request: endpoint=7 selector=0x2a tag=5 length=1136 header_version=%u no_effaceable_storage=0 mode=4\n",
+		 "AKS startup environment request: endpoint=7 selector=0x2a tag=2 length=1136 header_version=%u no_effaceable_storage=0 mode=4\n",
 		 version);
 	ret = t2sep_wait_intel_message(bar4, response);
 	if (ret)
@@ -681,7 +686,7 @@ static int t2sep_probe_aks_startup_environment(struct pci_dev *pdev,
 	dev_info(&pdev->dev,
 		 "AKS startup environment envelope: raw=%08x %08x %08x %08x\n",
 		 response[0], response[1], response[2], response[3]);
-	if (response[0] != 0x0005aa07 || response[1] != 0x00580000 ||
+	if (response[0] != 0x0002aa07 || response[1] != 0x00580000 ||
 	    response[2] != 0 ||
 	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))) {
 		ret = -EPROTO;

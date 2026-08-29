@@ -60,7 +60,9 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn(
             "aks_capabilities_confirmation != T2SEP_AKS_CAPABILITIES_CONFIRMATION",
             SOURCE)
-        self.assertIn("response[0] != 0x0004cd07", SOURCE)
+        self.assertIn("response[0] != 0x0001cd07", SOURCE)
+        self.assertIn("applying Apple header-version-1 fallback", SOURCE)
+        self.assertIn("response[0] != 0x0002aa07", SOURCE)
         self.assertIn("crypto_memneq(received_digest, digest", SOURCE)
         self.assertIn("ktime_get_boottime_ns() / NSEC_PER_USEC", SOURCE)
         self.assertIn(
@@ -80,8 +82,8 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn(
             "aks_startup_environment_confirmation !=\n"
             "\t\tT2SEP_AKS_STARTUP_ENV_CONFIRMATION", SOURCE)
-        self.assertIn("u32 request[3] = { 0x00052a07, 0x04700000, 0 };", SOURCE)
-        self.assertIn("response[0] != 0x0005aa07", SOURCE)
+        self.assertIn("u32 request[3] = { 0x00022a07, 0x04700000, 0 };", SOURCE)
+        self.assertIn("response[0] != 0x0002aa07", SOURCE)
         self.assertIn("response[1] != 0x00580000", SOURCE)
         self.assertIn("min_t(u64, remote_version, 2)", SOURCE)
         self.assertIn("put_unaligned_le64(ktime_get_real_seconds()", SOURCE)
