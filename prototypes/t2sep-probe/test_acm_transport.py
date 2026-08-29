@@ -62,19 +62,17 @@ class ACMTransportTests(unittest.TestCase):
                     acm.validate_reply(request, wire, maximum_reply=17)
 
     def test_exact_scrd_initialization_precedes_commands(self):
-        envelope, payload = acm.scrd_initialization_envelope(3)
-        self.assertEqual(payload, b"DRCS\n\x03\0\0")
+        envelope, payload = acm.scrd_initialization_envelope()
+        self.assertEqual(payload, b"DRCS\n\x28\0\0")
         self.assertEqual(acm.decode_envelope(envelope),
                          acm.ACMEnvelope(1, 8, 0))
-        with self.assertRaises(acm.ACMTransportError):
-            acm.scrd_initialization_payload(256)
 
     def test_context_create_plan_is_exact_and_ordered(self):
         plan = acm.ContextCreatePlan()
         with self.assertRaises(acm.ACMTransportError):
             plan.context_request()
-        init_envelope, init_payload = plan.initialize(3)
-        self.assertEqual(init_payload, b"DRCS\n\x03\0\0")
+        init_envelope, init_payload = plan.initialize()
+        self.assertEqual(init_payload, b"DRCS\n\x28\0\0")
         self.assertEqual(acm.decode_envelope(init_envelope).payload_length, 8)
         self.assertFalse(plan.initialized)
         with self.assertRaises(acm.ACMTransportError):
@@ -95,7 +93,7 @@ class ACMTransportTests(unittest.TestCase):
         plan = acm.ContextCreatePlan()
         with self.assertRaises(acm.ACMTransportError):
             plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
-        plan.initialize(1)
+        plan.initialize()
         with self.assertRaises(acm.ACMTransportError):
             plan.accept_initialization_reply(acm.encode_envelope(1, 0, 7), b"")
         self.assertFalse(plan.initialized)

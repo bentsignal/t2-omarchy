@@ -12,6 +12,7 @@ OOL_CAPACITY = 0x4000
 ENVELOPE_SIZE = 12
 COMMAND_MESSAGE_TYPE = 1
 SCRD_MAGIC = b"DRCS\n"
+SCRD_VERSION = 0x28
 COMMAND_MAGIC = b"DRCS"
 CONTEXT_CREATE_SELECTOR = 1
 COMMAND_VERSION = 1
@@ -83,13 +84,12 @@ def validate_success_reply(request: ACMEnvelope, reply_data: bytes,
         raise ACMTransportError("ACM reply payload length does not match")
 
 
-def scrd_initialization_payload(version: int) -> bytes:
-    version = _integer(version, 0xff, "SCRD version")
-    return SCRD_MAGIC + bytes((version, 0, 0))
+def scrd_initialization_payload() -> bytes:
+    return SCRD_MAGIC + bytes((SCRD_VERSION, 0, 0))
 
 
-def scrd_initialization_envelope(version: int) -> tuple[bytes, bytes]:
-    payload = scrd_initialization_payload(version)
+def scrd_initialization_envelope() -> tuple[bytes, bytes]:
+    payload = scrd_initialization_payload()
     return encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0), payload
 
 
@@ -112,10 +112,10 @@ class ContextCreatePlan:
         self.context_create_request: ACMEnvelope | None = None
         self.context_created = False
 
-    def initialize(self, version: int) -> tuple[bytes, bytes]:
+    def initialize(self) -> tuple[bytes, bytes]:
         if self.initialization_request is not None or self.initialized:
             raise ACMTransportError("SCRD initialization is out of order")
-        envelope, payload = scrd_initialization_envelope(version)
+        envelope, payload = scrd_initialization_envelope()
         self.initialization_request = decode_envelope(envelope)
         return envelope, payload
 

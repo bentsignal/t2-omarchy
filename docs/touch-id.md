@@ -987,8 +987,11 @@ reply; it performs no context creation or device I/O.
 
 ACM also has an exact startup dependency. Before ordinary commands, the Intel
 driver sends the eight-byte SCRD initialization payload `44 52 43 53 0a VV 00
-00`, where `VV` is its one-byte negotiated version, using endpoint message
-type 1, value 0. The token-free context-create command that follows is exactly
+00`, using endpoint message type 1, value 0. In the matching macOS 14.5 KDK,
+`AppleCredentialManager::initImpl` initializes `VV` to the fixed byte `0x28`;
+`performSCRDInitialization` copies that field into payload offset 5. The
+offline codec therefore emits `44 52 43 53 0a 28 00 00` directly and exposes
+no caller-selected version. The token-free context-create command that follows is exactly
 `44 52 43 53 01 00 00 01`: `DRCS`, selector 1, two zero fields, command
 version 1, and no body. Its reply must be exactly 17 bytes (the 16-byte opaque
 handle plus separate tracking metadata). The offline `ContextCreatePlan`
