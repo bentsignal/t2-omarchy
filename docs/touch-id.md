@@ -1634,6 +1634,25 @@ copy reply and endpoint-0 control reply, after which a fresh NOP returned
 module removal then completed normally, proving the transport was resynchronized
 without requiring a power cycle.
 
+The next supervised run provided direct proof that make-system-keybag works.
+It received both exact promotion notifications and then a correlated status-zero
+`0x8d` reply whose low word was `0`; a strict copy of `-501` immediately
+returned a valid 1612-byte bag. Thus the previous low value `1` is transient
+queue state rather than a fixed reply flag, and both observed values are now
+accepted only with the exact operation, tag, and `0x58` body size.
+
+Teardown exposed one more asynchronous edge. Unloading `-501` first emitted an
+endpoint-7 opcode-1/tag-0 notification carrying `-501`, then the tagged unload
+reply. Because the initial waiter did not consume that event, the remaining
+cleanup became displaced and the experiment again failed closed before ACM
+verification or BiometricKit. The queued source copy later showed service
+status `-13`, distinct from ordinary absent status `-3`; this is the observed
+invalidated positive source after promotion moved it into the system selector.
+The corrected cleanup requires the exact unload notification before its reply
+and accepts `-13` as absence only for that source lifecycle. CPU stop, scrub,
+PCI restoration, and module removal completed. A password-free follow-up
+drained the remaining ACM delete reply and strictly validated a fresh NOP.
+
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
 runs. Its 16-byte external form is readable once through a root-only sysfs

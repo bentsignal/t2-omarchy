@@ -175,10 +175,12 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "t2sep_probe_aks_verify_password(",
                 "t2sep_wait_aks_make_system_reply(",
                 "notification_opcodes[] = { 0x00, 0x04 }",
+                "t2sep_wait_aks_system_unload_reply(",
+                "service_status == -13",
                 "t2sep_probe_aks_ensure_keybag_absent(",
                 'keybag_handle, system_selector, "system"',
                 'keybag_handle, runtime_selector, "source"',
-                "status=-3 absent=yes",
+                "status=%d absent=yes",
                 "independent absence check still required",
                 "get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE"):
             self.assertIn(fragment, SOURCE)

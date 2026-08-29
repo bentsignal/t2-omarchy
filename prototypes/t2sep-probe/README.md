@@ -139,6 +139,21 @@ reply, then received the exact fresh NOP response `00010100 00000000
 power cycle after a fail-closed correlation experiment without allowing live
 traffic to be discarded while the SEP is running.
 
+The next live run proved the promotion itself: after both required
+notifications, operation `0x0d` returned status zero and a subsequent copy of
+selector `-501` returned a valid 1612-byte bag. The reply's low word was `0`
+rather than the earlier queued value `1`, proving it is transient queue state;
+the validator now accepts only those two observed values with exact body size.
+Unloading the system selector then emitted one additional exact endpoint-7
+notification (opcode `1`, tag `0`, selector `-501`) before its tagged reply.
+The displaced source copy subsequently returned status `-13`, establishing the
+distinct invalidated-source result after a successful move. The waiter now
+correlates that unload notification, and cleanup accepts `-13` as absence only
+for the positive source lifecycle after promotion; ordinary missing bags still
+require `-3`. The run did not reach ACM verification or BiometricKit, and CPU
+stop/scrub/module removal completed. A password-free resynchronization drained
+the remaining ACM delete reply and revalidated a fresh control NOP.
+
 `run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
 experiment. It repeats that proven lifecycle but keeps the authorized ACM
 context and temporary keybag live while one BiometricKit enrollment runs. A

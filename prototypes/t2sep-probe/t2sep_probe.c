@@ -653,6 +653,27 @@ static int t2sep_wait_aks_make_system_reply(
 	return t2sep_wait_intel_message(bar4, words);
 }
 
+static int t2sep_wait_aks_system_unload_reply(
+	struct pci_dev *pdev, void __iomem *bar4, s32 target_selector,
+	u32 words[4])
+{
+	int ret;
+
+	ret = t2sep_wait_intel_message(bar4, words);
+	if (ret)
+		return ret;
+	if ((words[0] & 0x00ffffff) !=
+	    (T2SEP_AKS_ENDPOINT | 0x01 << 8) ||
+	    (s8)(words[0] >> 24) != 0 ||
+	    (s32)words[1] != target_selector || words[2] != 0 ||
+	    (words[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL)))
+		return -EPROTO;
+	dev_info(&pdev->dev,
+		 "AKS system-unload notification passed strict validation: opcode=0x01 target_selector=%d\n",
+		 target_selector);
+	return t2sep_wait_intel_message(bar4, words);
+}
+
 static int t2sep_capture_one_ool_ack(struct pci_dev *pdev,
 				      void __iomem *bar4, u8 target, u8 opcode,
 				      u8 tag, dma_addr_t dma, size_t size,
@@ -1450,8 +1471,9 @@ out_put:
 		goto out_scrub;
 	}
 	service_status = (s8)(response[0] >> 24);
-	if (service_status || response[1] !=
-	    (T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE << 16 | 1)) {
+	if (service_status ||
+	    (response[1] != T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE << 16 &&
+	     response[1] != (T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE << 16 | 1))) {
 		dev_info(&pdev->dev,
 			 "AKS make-system-keybag rejected: status=%d reply_size=%u\n",
 			 service_status, response[1] >> 16);
@@ -1682,7 +1704,11 @@ static int t2sep_probe_aks_keybag_control(
 	dev_info(&pdev->dev,
 		 "AKS keybag-control request: endpoint=7 selector=%#04x tag=%u length=100 variant=0\n",
 		 operation, tag);
-	ret = t2sep_wait_intel_message(bar4, response);
+	if (operation == 0x05 && !strcmp(lifecycle_role, "system"))
+		ret = t2sep_wait_aks_system_unload_reply(
+			pdev, bar4, selector, response);
+	else
+		ret = t2sep_wait_intel_message(bar4, response);
 	if (ret)
 		goto out_scrub;
 	dev_info(&pdev->dev,
@@ -1699,10 +1725,12 @@ static int t2sep_probe_aks_keybag_control(
 	reply_size = response[1] >> 16;
 	if (operation == 0x02) {
 		/* _ipc_copy_keybag returns -3 when the exact bag is absent. */
-		if (service_status == -3 && reply_size == 0) {
+		if ((service_status == -3 ||
+		     (service_status == -13 &&
+		      !strcmp(lifecycle_role, "source"))) && !reply_size) {
 			dev_info(&pdev->dev,
-				 "AKS copy-keybag confirms teardown: role=%s selector=%d status=-3 absent=yes\n",
-				 lifecycle_role, selector);
+				 "AKS copy-keybag confirms teardown: role=%s selector=%d status=%d absent=yes\n",
+				 lifecycle_role, selector, service_status);
 			ret = 0;
 		} else if (!service_status && !(response[1] & 0xffff) &&
 			   reply_size >= T2SEP_AKS_SERIALIZED_HEADER_SIZE &&
