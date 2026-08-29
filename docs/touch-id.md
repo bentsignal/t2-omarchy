@@ -1247,6 +1247,17 @@ Success is only the verifier's final simultaneous profile
 unbind. Any other result stops this branch; it must not be followed
 automatically by a service request.
 
+The supervised run on 2026-08-29 at 06:47 EDT passed exactly that gate. Four
+distinct contiguous 16 KiB mappings were registered in the planned order;
+AKS tags 2/3 returned `(opcode 1, target 7)` and ACM tags 4/5 returned
+`(opcode 1, target 10)`, all with zero status/reserved words. Both MSI vectors
+were observed five times. CPU stop preceded scrubbing and freeing all four
+mappings, PCI command state was restored and released, the module unloaded,
+and the independent cursor-bounded verifier emitted the exact simultaneous
+profile above. No ACM or AKS service envelope, password, context, fingerprint
+command, or biometric data was sent. Simultaneous endpoint registration is
+therefore proven on this T2 rather than merely modeled offline.
+
 The corresponding kernel capture path is default-off and was executed once
 under direct user supervision on this MacBookPro16,1 at 2026-08-28 22:55 EDT.
 It requires CPU start, both MSI vectors, a strictly
