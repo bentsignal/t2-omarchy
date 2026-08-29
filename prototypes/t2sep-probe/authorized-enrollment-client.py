@@ -28,6 +28,16 @@ enrollment = _load()
 CONFIRMATION = "I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY"
 
 
+def progress_instruction(event: tuple[int, int, int]) -> None:
+    status, version, length = event
+    print(f"enrollment event status={status:#x} version={version} length={length}",
+          flush=True)
+    if status == enrollment.READY_STATUS:
+        print("TOUCH NOW: place the new finger flat on Touch ID.", flush=True)
+    elif status in enrollment.PROGRESS_MINIMUMS:
+        print("LIFT, reposition slightly, then touch again.", flush=True)
+
+
 def consume_stdin_credential() -> bytearray:
     line = bytearray(sys.stdin.buffer.readline(34))
     try:
@@ -62,9 +72,7 @@ def main() -> None:
         result = enrollment.live_probe(
             user_id=args.user_id, interface=args.interface,
             event_timeout=60.0, authorized_request=request,
-            progress=lambda event: print(
-                f"enrollment event status={event[0]:#x} "
-                f"version={event[1]} length={event[2]}", flush=True))
+            progress=progress_instruction)
     finally:
         request.close()
         enrollment.LIVE_ENROLLMENT_ENABLED = False
