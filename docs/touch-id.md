@@ -1302,7 +1302,7 @@ independent verifier therefore establishes `ACM_REPLY_PROFILE` as
 `(send=1/10, receive=1/10)`. No ACM service envelope, credential, or biometric
 command was sent.
 
-That profile now gates a separate, still-unexecuted ACM context-lifecycle
+That profile gated a separate ACM context-lifecycle
 kernel path. It is mutually exclusive with every discovery/capture/AKS mode
 and requires its own 64-bit confirmation. After the two exact `(1/10, 1/10)`
 registrations, it sends only the source-proven SCRD initialization, token-free
@@ -1313,6 +1313,26 @@ and reply envelope is checked for endpoint 10, message type 1, exact phase
 length, zero status/reserved word, and absent transport-error flags. Regardless
 of the phase result, CPU stop precedes explicit scrubbing and freeing of both
 16 KiB DMA mappings.
+
+The first supervised service run on 2026-08-29 refined both prepared paths.
+AKS OOL registration again returned the exact `(1/7, 1/7)` profile, but the
+operation-`0x4d` envelope received no reply within the bounded five seconds;
+the probe stopped the CPU, scrubbed/freed both buffers, restored PCI state, and
+unloaded with timeout `-110`. It did not proceed to operation `0x2a`. The
+request must not be repeated unchanged until activation/envelope assumptions
+are rechecked.
+
+The independent ACM run registered `(1/10, 1/10)` and its SCRD initialization
+received an immediate exact zero-status empty reply, proving live endpoint-10
+service traffic. The following legacy selector-1 create request received an
+immediate correlated empty reply with status `-3`; no context was created and
+delete was not sent. Teardown again completed cleanly, with five observations
+on each MSI vector. Pinned `LibCall_ACMContextCreate` explains this result: when
+its modern-mode argument is set Apple first sends command `0x24`, expects 21
+bytes, and falls back to selector 1 expecting 17 bytes only if command `0x24`
+itself returns `-3`. The Linux probe had skipped that modern-first branch. Its
+next ACM revision must reproduce `0x24` then the exact Apple fallback rather
+than retry selector 1.
 
 `run-acm-context-lifecycle-probe.sh` adds the model/PCI/driver checks, exact
 human confirmation, a fresh journal cursor, unload/unbind checks, and an
