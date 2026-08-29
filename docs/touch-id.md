@@ -1687,6 +1687,18 @@ definitive error name. Before any setter is attempted, the same 36-byte
 structure must be captured on macOS and the exact command `0x3a`
 (`SetSystemProtectedConfig`) ownership and mutation semantics recovered.
 
+Installed macOS 26.6.2 user-space analysis subsequently showed that this
+comparison used stale command numbers. Current x86_64 `biometrickitd` sends
+`0x43` for `GetSystemProtectedConfig` and expects exactly 36 bytes; its setter
+is `0x44`, not `0x3a`. Apple's entitlement-bearing, read-only
+`bioutil --read --system` path reported functionality and unlock enabled,
+unlock-token lifetime 172800 seconds, match lifetime 14400 seconds, and
+passcode-input lifetime 561600 seconds. The current decoder maps those to
+words 3, 4, 0, 7, and 8 respectively; words 1, 2, 5, and 6 are not exposed by
+the CLI and must be read directly with current command `0x43`, not inferred.
+Thus the successful all-zero Linux `0x39` result is legacy compatibility
+evidence, not the current macOS policy. No setter was sent.
+
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
 runs. Its 16-byte external form is readable once through a root-only sysfs
