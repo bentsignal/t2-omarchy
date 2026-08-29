@@ -937,6 +937,36 @@ treated as a design: validity across the macOS-to-Linux boot transition is
 unproven and the context must be presumed boot/session-bound and fail closed.
 No password or context bytes were observed during this analysis.
 
+The Linux-side continuation now has symbol-rich Intel kernel evidence from the
+matching macOS 14.5 KDK (`23F79`). Its AppleCredentialManager and AppleKeyStore
+drivers were extracted read-only from the KDK payload. The universal binaries
+hash respectively to
+`bc205763bc595e5a62c408171668974cbd1ef1aea3602cf31d157105b2eb00f4`
+and
+`9a9370047244b9f14c24f04c9de247e920e882fbc89dc2440d279efff75eaff2`.
+AppleCredentialManager exports `ACMKernContextCreate`,
+`ACMKernContextCreateWithExternalForm`, the credential-add and policy-verification
+entry points, and their `LibCall_*` serializers. AppleKeyStore's symbolized
+`AppleKeyStore::verify_password` extracts the password and context `OSData`
+buffers, calls `ipc_verify_secret_v1`, translates the secure-key-store result,
+and only on success updates device state.
+
+Crucially, AppleKeyStore does not obtain this credential through bridgeOS
+BiometricKit. Its driver initializes an AppleSEPManager endpoint named exactly
+`aks-endpoint`, allocates SEP-visible out-of-line buffers, and submits the
+password-verification IPC to that endpoint. The matching KDK AppleSEPManager
+binary (universal SHA-256
+`cfa557d9afa5adec87ecc13bfd7175483c29c6c694b59e1bbcd401199c9ed72e`)
+contains symbolized Intel implementations of endpoint discovery,
+`AppleSEPIntelIOP::{getMailbox,postMailbox}`, `AppleSEPEndpoint` send/receive,
+control-endpoint OOL setup, and named endpoint advertisement. This establishes
+that producing the 16-byte enrollment credential on Linux requires the native
+T2 SEP mailbox/endpoint transport plus the AKS/ACM serializers; the already
+working Multiverse BiometricKit socket cannot issue it. The next offline task
+is to recover those mailbox, endpoint-discovery, and OOL ABIs from the pinned
+KDK binaries and connect them to the source-disabled PCI prototype before any
+new live MMIO writes.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
