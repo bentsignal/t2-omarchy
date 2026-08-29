@@ -8,6 +8,8 @@ import importlib.util
 from pathlib import Path
 import socket
 import sys
+import math
+from typing import Callable
 
 
 def _load(name: str, filename: str):
@@ -47,6 +49,7 @@ class EnrollmentProbeResult:
     identities_before: int
     identities_after: int
     observed_statuses: tuple[int, ...]
+    observed_events: tuple[tuple[int, int, int], ...]
     cancel_status: int
 
 
@@ -68,11 +71,14 @@ def _identities(session, user_id: int):
     return identities
 
 
-def probe_socket(sock, *, user_id: int) -> EnrollmentProbeResult:
+def probe_socket(sock, *, user_id: int,
+                 progress: Callable[[tuple[int, int, int]], None] | None = None
+                 ) -> EnrollmentProbeResult:
     """Enroll one token-free identity and prove an exact terminal/list delta."""
     session = coupled.bridge_query.BridgeSession(sock)
     before = _identities(session, user_id)
     statuses: list[int] = []
+    events: list[tuple[int, int, int]] = []
     terminal_identity = None
     cancel_status = -1
     after = None
@@ -80,7 +86,10 @@ def probe_socket(sock, *, user_id: int) -> EnrollmentProbeResult:
         start_status, output = _perform(
             session, biometric.ordinary_enroll_fields(user_id=user_id))
         if start_status != 0 or output is not None:
-            raise EnrollmentProbeError("enrollment command did not start cleanly")
+            output_length = len(output) if isinstance(output, bytes) else None
+            raise EnrollmentProbeError(
+                "enrollment command did not start cleanly: "
+                f"status={start_status} output_length={output_length}")
         for _ in range(MAX_EVENTS):
             try:
                 envelope = session.receive_event()
@@ -92,15 +101,22 @@ def probe_socket(sock, *, user_id: int) -> EnrollmentProbeResult:
                     biometric.BiometricCommandError) as error:
                 raise EnrollmentProbeError("enrollment event transport was invalid") from error
             statuses.append(event.status)
+            metadata = (event.status, event.version, len(event.data))
+            events.append(metadata)
+            if progress is not None:
+                progress(metadata)
             if event.status == biometric.SERVICE_EVENT_ENROLL_RESULT:
                 try:
                     terminal_identity = biometric.decode_catalina_enroll_result_event(
                         status=event.status, version=event.version, data=event.data)
                 except biometric.BiometricCommandError as error:
-                    raise EnrollmentProbeError("terminal enrollment result was invalid") from error
+                    raise EnrollmentProbeError(
+                        "terminal enrollment result was invalid: "
+                        f"version={event.version} length={len(event.data)} "
+                        f"events={events!r}") from error
                 break
             if event.status == READY_STATUS:
-                if event.version != 1 or event.data:
+                if event.version not in (1, 2) or len(event.data) > 4096:
                     raise EnrollmentProbeError("ready event has an unsupported shape")
                 continue
             minimum = PROGRESS_MINIMUMS.get(event.status)
@@ -125,18 +141,26 @@ def probe_socket(sock, *, user_id: int) -> EnrollmentProbeResult:
             cancel_status = -1
     assert after is not None
     return EnrollmentProbeResult(user_id, len(before), len(after),
-                                 tuple(statuses), cancel_status)
+                                 tuple(statuses), tuple(events), cancel_status)
 
 
 def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
-               timeout: float = 5.0) -> EnrollmentProbeResult:
+               timeout: float = 5.0, event_timeout: float = 30.0,
+               progress: Callable[[tuple[int, int, int]], None] | None = None
+               ) -> EnrollmentProbeResult:
     if not LIVE_ENROLLMENT_ENABLED:
         raise EnrollmentProbeError("live enrollment is disabled in source")
+    if (isinstance(event_timeout, bool)
+            or not isinstance(event_timeout, (int, float))
+            or not math.isfinite(event_timeout)
+            or not 1.0 <= event_timeout <= 60.0):
+        raise EnrollmentProbeError("event timeout must be finite and in 1..60 seconds")
     result = None
 
     def run(sock):
         nonlocal result
-        result = probe_socket(sock, user_id=user_id)
+        sock.settimeout(event_timeout)
+        result = probe_socket(sock, user_id=user_id, progress=progress)
         return result
 
     original = coupled.bridge_query.query_connected_socket
@@ -151,4 +175,3 @@ def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
     if result is None:
         raise EnrollmentProbeError("enrollment produced no result")
     return result
-

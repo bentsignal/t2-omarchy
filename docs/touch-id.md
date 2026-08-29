@@ -880,6 +880,25 @@ terminal event. Timeout, malformed/unknown progress, event flood, terminal
 mismatch, or any other list delta fails closed; cancellation is attempted on
 every post-start exit. Its result reports counts and statuses but not UUIDs.
 
+The first live Linux enrollment start for UID 1000 was rejected synchronously
+with status `-3`, before the sensor accepted a touch; UID 501 produced the same
+result. Exact macOS initialization (`getBridgeVersion` returning 3, then
+`setBridgeClientVersion:2`, then `getServiceOpened`) did not change it. Read-only
+inspection of the installed macOS 26.6.2 `biometrickitd` (the previously pinned
+x86_64 hash `248d4521...c94ce20`) shows that communication protocol versions
+above 1 send command 3, version 2, with 68 bytes: the Catalina 48-byte enrollment
+request followed by a 20-byte `deviceGroup`. Its Objective-C selector references
+identify the copied fields as `userID`, `authData`, and `deviceGroup`; the
+compiler-emitted type for `authData` remains two 32-bit words plus a 32-byte
+token. A zero device group still returned `-3`. A bounded, immediately cancelled
+probe established that group type 1 with a zero UUID selects the built-in sensor;
+types 2 through 5 return status 257 as nonexistent/unsupported groups. The valid
+built-in group still returns `-3`, isolating the remaining prerequisite to the
+40-byte enrollment authorization data or its associated authenticated state.
+No probe waited for a touch or added an identity. Reproducing Apple's legitimate
+token acquisition path, rather than weakening or guessing it, is the next
+enrollment milestone.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

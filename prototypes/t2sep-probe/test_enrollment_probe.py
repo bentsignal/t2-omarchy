@@ -77,7 +77,26 @@ class EnrollmentProbeTests(unittest.TestCase):
         self.assertEqual((result.identities_before, result.identities_after), (0, 1))
         self.assertEqual(result.observed_statuses,
                          (0xE3FF8001, 0xE3FF8004, 0xE3FF8003))
+        self.assertEqual(result.observed_events,
+                         ((0xE3FF8001, 1, 0),
+                          (0xE3FF8004, 1, 12),
+                          (0xE3FF8003, 1, 20)))
         self.assertEqual(result.cancel_status, 0)
+
+    def test_progress_callback_gets_metadata_only(self):
+        seen = []
+        self.run_probe_with_progress(self.incoming(), seen.append)
+        self.assertEqual(seen[-1], (0xE3FF8003, 1, 20))
+
+    def run_probe_with_progress(self, incoming, progress):
+        ids = iter(self.IDS)
+        original = probe.coupled.bridge_query.uuid.uuid4
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            return probe.probe_socket(FakeSocket(incoming), user_id=self.USER,
+                                      progress=progress)
+        finally:
+            probe.coupled.bridge_query.uuid.uuid4 = original
 
     def test_missing_delta_and_terminal_mismatch_fail_closed(self):
         with self.assertRaisesRegex(probe.EnrollmentProbeError, "delta"):
