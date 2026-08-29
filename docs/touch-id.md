@@ -2588,6 +2588,20 @@ but it makes missing preloaded per-user database state the leading remaining
 difference on Linux. Exact sanitized details and constraints are in
 `docs/macos-user-config-handoff.md`.
 
+The first Linux read-only state-shape probe mirrored bridge generation-3
+initialization and sent exact current commands `0x2e`, `0x3c`, and `0x50`.
+All three returned the identical host status `0xe00002c2`
+(`kIOReturnBadArgument`) with no accepted result shape. The fixed-size
+per-user request exactly matches Apple's four-byte UID input, while the two
+state requests have no input, so this common result is evidence that the
+service has no initialized/loaded catacomb context after a Linux boot—not a
+three-command serialization error. The probe is checked in and deliberately
+reports only status, accepted length, and record counts; opaque records are
+never decoded or printed. The next lifecycle boundary is Apple's `NoCatacomb`
+initialization path for a pristine database, or `LoadCatacomb` for persisted
+state. Neither mutation should be sent until its current command, input,
+authorization, and persistence sequence are recovered exactly.
+
 ## Useful baseline commands
 
 ```bash

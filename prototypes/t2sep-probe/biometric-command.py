@@ -23,9 +23,12 @@ COMMAND_CANCEL = 0x0C
 COMMAND_REMOVE_IDENTITY = 0x0D
 COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PRESENCE_DETECT = 0x26
+COMMAND_GET_PROTECTED_CONFIG = 0x2E
+COMMAND_GET_CATACOMB_STATE = 0x3C
 COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
 COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
+COMMAND_GET_CATACOMB_GROUP_STATE = 0x50
 DEFAULT_USER_ID = 0xFFFFFFFF
 ORDINARY_MATCH_FLAGS = 0
 MATCH_PAYLOAD = struct.Struct("<II60s")
@@ -41,6 +44,11 @@ MAX_LOTL_USER_IDS = 64
 IDENTITY = struct.Struct("<I16s")
 MAX_IDENTITIES = 64
 SYSTEM_PROTECTED_CONFIG = struct.Struct("<9I")
+PROTECTED_CONFIG_SIZE = 32
+CATACOMB_STATE_RECORD_SIZE = 8
+CATACOMB_GROUP_STATE_RECORD_SIZE = 56
+MAX_CATACOMB_STATE_RECORDS = 256
+MAX_CATACOMB_GROUP_STATE_RECORDS = 64
 SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
 SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
 SERVICE_EVENT_MATCH_ACTIVITY = 0xE3FF800B
@@ -134,6 +142,36 @@ def decode_system_protected_config(output: bytes) -> SystemProtectedConfig:
     if not isinstance(output, bytes) or len(output) != SYSTEM_PROTECTED_CONFIG.size:
         raise BiometricCommandError("system protected config must be exactly 36 bytes")
     return SystemProtectedConfig(*SYSTEM_PROTECTED_CONFIG.unpack(output))
+
+
+def protected_config_fields(*, user_id: int):
+    return (COMMAND_GET_PROTECTED_CONFIG, 0, 0,
+            struct.pack("<I", _u32(user_id, "user ID")), PROTECTED_CONFIG_SIZE)
+
+
+def catacomb_state_fields():
+    return (COMMAND_GET_CATACOMB_STATE, 0, 0, b"",
+            CATACOMB_STATE_RECORD_SIZE * MAX_CATACOMB_STATE_RECORDS)
+
+
+def catacomb_group_state_fields():
+    return (COMMAND_GET_CATACOMB_GROUP_STATE, 0, 0, b"",
+            CATACOMB_GROUP_STATE_RECORD_SIZE * MAX_CATACOMB_GROUP_STATE_RECORDS)
+
+
+def validate_opaque_record_array(output: bytes, *, record_size: int,
+                                 maximum_records: int) -> int:
+    """Validate only an opaque array's shape; never decode or expose records."""
+    if (not isinstance(record_size, int) or isinstance(record_size, bool)
+            or record_size <= 0 or not isinstance(maximum_records, int)
+            or isinstance(maximum_records, bool) or maximum_records <= 0):
+        raise BiometricCommandError("opaque record bounds are invalid")
+    if not isinstance(output, bytes) or len(output) % record_size:
+        raise BiometricCommandError("opaque state output has invalid alignment")
+    count = len(output) // record_size
+    if count > maximum_records:
+        raise BiometricCommandError("opaque state output exceeds its record cap")
+    return count
 
 
 @dataclass(frozen=True)
