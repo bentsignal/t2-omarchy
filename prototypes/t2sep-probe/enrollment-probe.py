@@ -74,6 +74,45 @@ def _identities(session, user_id: int):
     return identities
 
 
+def _persist_catacomb(session, *, user_id: int,
+                       catacomb_sink: Callable[[bytes], None],
+                       stage: str) -> None:
+    """Durably sink one service snapshot before acknowledging its save."""
+    prepare_status, prepared_size = _perform(
+        session, biometric.prepare_save_catacomb_fields(user_id=user_id))
+    if prepare_status != 0:
+        raise EnrollmentProbeError(
+            f"{stage} catacomb save preparation failed with status {prepare_status}")
+    try:
+        blob_size = biometric.decode_prepared_catacomb_size(prepared_size or b"")
+    except biometric.BiometricCommandError as error:
+        raise EnrollmentProbeError(
+            f"{stage} catacomb save size was invalid") from error
+    original_body_cap = coupled.bridge_query.BODY_CAP
+    try:
+        # The binary plist adds bounded metadata around the opaque blob.
+        coupled.bridge_query.BODY_CAP = max(
+            original_body_cap, blob_size + 64 * 1024)
+        complete_status, blob = _perform(
+            session, biometric.complete_save_catacomb_fields(
+                user_id=user_id, blob_size=blob_size))
+    finally:
+        coupled.bridge_query.BODY_CAP = original_body_cap
+    if complete_status != 0 or not isinstance(blob, bytes) or len(blob) != blob_size:
+        raise EnrollmentProbeError(
+            f"{stage} catacomb save completion failed with status {complete_status}")
+    try:
+        biometric.load_catacomb_fields(user_id=user_id, blob=blob)
+        catacomb_sink(blob)
+    except Exception as error:
+        raise EnrollmentProbeError(f"{stage} catacomb persistence sink failed") from error
+    confirm_status, confirm_output = _perform(
+        session, biometric.confirm_save_catacomb_fields(user_id=user_id))
+    if confirm_status != 0 or confirm_output is not None:
+        raise EnrollmentProbeError(
+            f"{stage} catacomb save confirmation failed with status {confirm_status}")
+
+
 def _initialize_current_bridge(session) -> None:
     """Mirror biometrickitd's current per-connection initialization exactly."""
     protocol = coupled.bridge_query.protocol
@@ -129,6 +168,13 @@ def probe_socket(sock, *, user_id: int,
         if struct.unpack_from("<4I", read_output) != expected_policy:
             raise EnrollmentProbeError("protected policy readback did not match the requested policy")
         policy_initialized = True
+        if catacomb_sink is not None:
+            # macOS persists and reloads the per-user component before exposing
+            # enrollment.  Checkpoint the pristine policy-bearing database so
+            # command 3 does not run against volatile NoCatacomb-only state.
+            _persist_catacomb(session, user_id=user_id,
+                              catacomb_sink=catacomb_sink,
+                              stage="bootstrap")
     before = _identities(session, user_id)
     statuses: list[int] = []
     events: list[tuple[int, int, int]] = []
@@ -196,38 +242,9 @@ def probe_socket(sock, *, user_id: int,
             raise EnrollmentProbeError(
                 "terminal identity does not equal the newly enumerated identity")
         if catacomb_sink is not None:
-            prepare_status, prepared_size = _perform(
-                session, biometric.prepare_save_catacomb_fields(user_id=user_id))
-            if prepare_status != 0:
-                raise EnrollmentProbeError(
-                    f"catacomb save preparation failed with status {prepare_status}")
-            try:
-                blob_size = biometric.decode_prepared_catacomb_size(prepared_size or b"")
-            except biometric.BiometricCommandError as error:
-                raise EnrollmentProbeError("catacomb save size was invalid") from error
-            original_body_cap = coupled.bridge_query.BODY_CAP
-            try:
-                # The binary plist adds bounded metadata around the opaque blob.
-                coupled.bridge_query.BODY_CAP = max(
-                    original_body_cap, blob_size + 64 * 1024)
-                complete_status, blob = _perform(
-                    session, biometric.complete_save_catacomb_fields(
-                        user_id=user_id, blob_size=blob_size))
-            finally:
-                coupled.bridge_query.BODY_CAP = original_body_cap
-            if complete_status != 0 or not isinstance(blob, bytes) or len(blob) != blob_size:
-                raise EnrollmentProbeError(
-                    f"catacomb save completion failed with status {complete_status}")
-            try:
-                biometric.load_catacomb_fields(user_id=user_id, blob=blob)
-                catacomb_sink(blob)
-            except Exception as error:
-                raise EnrollmentProbeError("catacomb persistence sink failed") from error
-            confirm_status, confirm_output = _perform(
-                session, biometric.confirm_save_catacomb_fields(user_id=user_id))
-            if confirm_status != 0 or confirm_output is not None:
-                raise EnrollmentProbeError(
-                    f"catacomb save confirmation failed with status {confirm_status}")
+            _persist_catacomb(session, user_id=user_id,
+                              catacomb_sink=catacomb_sink,
+                              stage="enrolled")
             catacomb_saved = True
     finally:
         try:

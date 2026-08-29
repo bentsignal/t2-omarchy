@@ -138,6 +138,44 @@ class EnrollmentProbeTests(unittest.TestCase):
         self.assertTrue(policy_request.closed)
         self.assertTrue(enroll_request.closed)
 
+    def test_policy_catacomb_is_persisted_before_enrollment(self):
+        enroll_request = probe.biometric.consume_builtin_enrollment_credential(
+            user_id=self.USER, credential_set=bytearray(range(16)))
+        policy_request = probe.biometric.consume_user_policy_credential(
+            user_id=self.USER,
+            policy=probe.biometric.UserProtectedPolicy(1, 1, 1, 0),
+            credential_set=bytearray(range(16)))
+        policy_reply = struct.pack("<8I", 1, 1, 1, 0, 1, 1, 1, 0)
+        blob = bytearray(128)
+        struct.pack_into("<I", blob, 8, self.USER)
+        incoming = (envelope(self.IDS[0], [0, 3])
+                    + envelope(self.IDS[1], [0])
+                    + envelope(self.IDS[2], [0, True])
+                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[5], [0, policy_reply])
+                    + envelope(self.IDS[6], [0, struct.pack("<I", len(blob))])
+                    + envelope(self.IDS[7], [0, bytes(blob)])
+                    + envelope(self.IDS[8], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[9], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[10], [261, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[11], [0, protocol.NO_REPLY_UUID.lower()]))
+        saved = []
+        ids = iter(self.IDS)
+        original = probe.coupled.bridge_query.uuid.uuid4
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            with self.assertRaisesRegex(probe.EnrollmentProbeError, "status=261"):
+                probe.probe_socket(
+                    FakeSocket(incoming), user_id=self.USER,
+                    authorized_request=enroll_request,
+                    policy_request=policy_request, catacomb_sink=saved.append)
+        finally:
+            probe.coupled.bridge_query.uuid.uuid4 = original
+        self.assertEqual(saved, [bytes(blob)])
+        self.assertTrue(policy_request.closed)
+        self.assertTrue(enroll_request.closed)
+
     def test_successful_enrollment_is_persisted_before_confirmation(self):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
         blob = bytearray(128)

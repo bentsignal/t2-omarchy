@@ -2579,6 +2579,17 @@ including the 16-byte ACM form in its 32-byte credential slot and the group
 type plus UUID record. Further changes to command-3 size or version are not
 supported by current macOS evidence.
 
+A password-authorized Linux transaction subsequently proved the entire
+per-user policy prefix live: current `NoCatacomb` returned zero,
+`SetProtectedConfig` returned zero, and the corrected version-1 getter returned
+the requested `(1, 1, 1, 0)` policy in an exact 32-byte reply. Command 3 still
+returned synchronous status `261` before requesting a touch. The next bounded
+transaction therefore checkpoints the pristine policy-bearing catacomb with
+the recovered prepare/complete/atomic-host-write/confirm protocol before
+enrollment. This directly tests macOS's observed requirement that the per-user
+component is persisted and loaded before clients can enroll, without changing
+the proven enrollment serializer.
+
 Sanitized logs from the current boot establish the pre-client ordering:
 bridge and sensor initialization, accessory caching, general catacomb load,
 successful UID 501 catacomb load with user protected configuration present,
