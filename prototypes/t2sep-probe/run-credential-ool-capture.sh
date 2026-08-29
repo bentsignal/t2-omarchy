@@ -13,6 +13,9 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $confirmation == I_UNDERSTAND_FIXED_CREDENTIAL_OOL_CAPTURE ]] ||
   die "missing exact interactive confirmation"
 [[ -f $module && -d $device ]] || die "module or SEP PCI function is missing"
+[[ $module -nt "$module_dir/t2sep_probe.c" &&
+   $module -nt "$module_dir/Makefile" ]] ||
+  die "kernel module is stale; rebuild it before touching hardware"
 [[ $(cat /sys/class/dmi/id/product_name) == MacBookPro16,1 ]] || die "unsupported model"
 [[ $(cat "$device/vendor") == 0x106b && $(cat "$device/device") == 0x1802 ]] ||
   die "SEP PCI identity mismatch"

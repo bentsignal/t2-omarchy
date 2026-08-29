@@ -10,6 +10,7 @@ class AksCapabilitiesRunnerSafetyTests(unittest.TestCase):
         insmod = SOURCE.index('insmod "$module"')
         for marker in (
             "I_UNDERSTAND_NONMUTATING_AKS_CAPABILITIES_PROBE",
+            "kernel module is stale",
             "MacBookPro16,1",
             "0x106b",
             "0x1802",
