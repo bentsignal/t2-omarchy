@@ -92,6 +92,27 @@ secret, length, store type zero, and output handle. The live creation gate now
 uses that exact `-1`; the SEP-returned runtime selector remains the only handle
 passed to verify and teardown.
 
+A supervised rerun with that correction again created runtime selector `1`,
+authorized the ACM context, and received synchronous BiometricKit status `-3`
+before sensor activation. Full teardown passed. This rules out the create-time
+selector discrepancy as the cause of the biometric rejection; no touch was
+requested and no identity changed.
+
+The next bounded gate now reproduces Apple's post-create system-bag transition
+instead of treating creation as the complete user-session setup. The
+symbol-rich 23F79 AppleKeyStore KDK identifies operation `0x0d` as
+`ipc_make_system_keybag`. Its exact variant-0 request is the protected header,
+client namespace, positive source runtime handle, negative target session
+selector, and length-prefixed passcode. Service-side validation requires a
+positive source, a target below `-2` other than `-5`, and an existing source
+bag; it serializes and reloads the bag under the target before applying the
+passcode. The Linux gate therefore promotes runtime selector `1` to the
+explicit `-UID` selector, verifies the ACM context against that promoted bag,
+then unloads and independently proves absence for both target and source.
+Distinct lifecycle labels and tags make either leaked mapping fail the strict
+transcript verifier. This promotion path is source-disabled until a supervised
+run; it is not yet evidence that BiometricKit accepts the context.
+
 `run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
 experiment. It repeats that proven lifecycle but keeps the authorized ACM
 context and temporary keybag live while one BiometricKit enrollment runs. A

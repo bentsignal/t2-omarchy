@@ -1572,8 +1572,30 @@ secret length, store type zero, and the returned-handle pointer. The Linux gate
 had instead requested `-501`, conflating the negative login-session lookup
 selector with this create-time field. It now requests Apple's exact `-1` and
 continues to use only the SEP-returned runtime selector for verification and
-teardown. A new supervised run is required to determine whether that metadata
-difference caused BiometricKit's rejection.
+teardown. A supervised rerun with that exact correction produced the same
+result: create returned runtime selector `1`, verify-secret authorized the ACM
+context, and BiometricKit synchronously returned `-3` before sensor activation.
+Teardown passed in full. The create-time selector discrepancy is therefore
+ruled out as the cause; the remaining gap is later user/system-bag association
+or another post-create state transition performed by Apple's session path.
+
+The matching KDK closes that next transition at the SEP wire boundary.
+AppleKeyStore names operation `0x0d` `ipc_make_system_keybag`; its generated
+variant-0 codec serializes the client namespace, a positive source runtime
+handle, a negative target handle, and a length-prefixed passcode. The service
+rejects a nonpositive source, targets at or above `-2`, and target `-5`, then
+looks up the source bag, clones its serialized key store, reloads it under the
+target, and applies the supplied passcode. This matches `keybagd`'s later
+`_aks_set_system_with_passcode` call and explains why merely creating runtime
+handle `1` is not equivalent to installing a `-501` user-session bag.
+
+The bounded Linux experiment now inserts that exact operation between create
+and verify. Verification uses the promoted `-UID` selector. Cleanup unloads
+and performs independent status-`-3` absence checks for both the promoted
+target and original runtime source before context deletion and CPU stop. The
+transcript verifier distinguishes the two mappings by lifecycle role and fails
+if either teardown is missing. A supervised live run remains required before
+this promotion can be called hardware-proven.
 
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client

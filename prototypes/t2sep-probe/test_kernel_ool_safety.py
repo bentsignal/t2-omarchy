@@ -169,23 +169,36 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "t2sep_probe_aks_create_device_keybag(",
                 "s32 requested_selector = -1;",
                 "store_type=0 secret_bytes=not-logged",
+                "t2sep_probe_aks_make_system_keybag(",
+                "selector=0x0d tag=4",
+                "s32 system_selector = -(s32)macos_session_uid",
                 "t2sep_probe_aks_verify_password(",
                 "version, 0x05, 5",
                 "version, 0x02, 6",
+                "version, 0x05, 7",
+                "version, 0x02, 8",
+                'keybag_handle, system_selector, "system"',
+                'keybag_handle, runtime_selector, "source"',
                 "status=-3 absent=yes",
                 "independent absence check still required",
                 "get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE"):
             self.assertIn(fragment, SOURCE)
         create = SOURCE.index("t2sep_probe_aks_create_device_keybag(",
                               SOURCE.index("static int t2sep_probe_ephemeral"))
-        verify = SOURCE.index("t2sep_probe_aks_verify_password(", create)
+        promote = SOURCE.index("t2sep_probe_aks_make_system_keybag(", create)
+        verify = SOURCE.index("t2sep_probe_aks_verify_password(", promote)
         unload = SOURCE.index("version, 0x05, 5", verify)
         absence = SOURCE.index("version, 0x02, 6", unload)
-        delete = SOURCE.index("t2sep_probe_acm_context_delete(", absence)
-        self.assertLess(create, verify)
+        source_unload = SOURCE.index("version, 0x05, 7", absence)
+        source_absence = SOURCE.index("version, 0x02, 8", source_unload)
+        delete = SOURCE.index("t2sep_probe_acm_context_delete(", source_absence)
+        self.assertLess(create, promote)
+        self.assertLess(promote, verify)
         self.assertLess(verify, unload)
         self.assertLess(unload, absence)
-        self.assertLess(absence, delete)
+        self.assertLess(absence, source_unload)
+        self.assertLess(source_unload, source_absence)
+        self.assertLess(source_absence, delete)
 
     def test_authorized_enrollment_handoff_is_read_once_and_bounded(self):
         for fragment in (

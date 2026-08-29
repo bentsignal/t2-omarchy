@@ -255,6 +255,7 @@ struct t2sep_irq_probe {
 #define T2SEP_AKS_STARTUP_ENV_BLOB_SIZE 0x40c
 #define T2SEP_AKS_VERIFY_REPLY_SIZE 0x60
 #define T2SEP_AKS_CREATE_REPLY_SIZE 0x5c
+#define T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE 0x58
 #define T2SEP_AKS_KEYBAG_CONTROL_REQUEST_SIZE 0x64
 #define T2SEP_AKS_KEYBAG_CONTROL_REPLY_SIZE 0x58
 #define T2SEP_AKS_MAX_PASSWORD_SIZE 256
@@ -1326,6 +1327,137 @@ out_scrub:
 	return ret;
 }
 
+static int t2sep_probe_aks_make_system_keybag(
+	struct pci_dev *pdev, void __iomem *bar4,
+	void *send_buffer, void *receive_buffer, u32 version,
+	u64 keybag_handle, s32 source_selector, s32 target_selector)
+{
+	struct user_key_payload *payload;
+	struct key *key;
+	u8 digest[SHA256_DIGEST_SIZE];
+	u8 *send = send_buffer;
+	u8 *receive = receive_buffer;
+	u32 request[3];
+	u32 response[4];
+	size_t password_size;
+	size_t request_size;
+	s8 service_status;
+	bool reply_received = false;
+	int ret;
+
+	if (!keybag_handle || source_selector <= 0 || target_selector >= -2 ||
+	    target_selector == -5 || password_key_serial <= 0)
+		return -EINVAL;
+	key = key_lookup(password_key_serial);
+	if (IS_ERR(key))
+		return PTR_ERR(key);
+	if (key->type != &key_type_user || key_validate(key)) {
+		ret = -EKEYREJECTED;
+		goto out_put;
+	}
+	down_read(&key->sem);
+	payload = user_key_payload_locked(key);
+	if (!payload || !payload->datalen ||
+	    payload->datalen > T2SEP_AKS_MAX_PASSWORD_SIZE) {
+		ret = -EMSGSIZE;
+		goto out_unlock;
+	}
+	password_size = payload->datalen;
+	request_size = T2SEP_AKS_SERIALIZED_HEADER_SIZE + 24 +
+		ALIGN(password_size, sizeof(u32));
+	if (request_size > T2SEP_CREDENTIAL_OOL_SIZE) {
+		ret = -E2BIG;
+		goto out_unlock;
+	}
+
+	memset(send, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+	memset(receive, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+	put_unaligned_le32(T2SEP_AKS_HEADER_SIZE, send);
+	put_unaligned_le32(version, send + 4 + 0x10);
+	put_unaligned_le64(ktime_get_boottime_ns() / NSEC_PER_USEC,
+			   send + 4 + 0x14);
+	if (version == 2)
+		put_unaligned_le64(ktime_get_real_seconds(), send + 4 + 0x48);
+	put_unaligned_le32(0, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE);
+	put_unaligned_le64(keybag_handle,
+			   send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
+	put_unaligned_le32((u32)source_selector,
+			   send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 12);
+	put_unaligned_le32((u32)target_selector,
+			   send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 16);
+	put_unaligned_le32(password_size,
+			   send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 20);
+	memcpy(send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 24,
+	       payload->data, password_size);
+	ret = t2sep_aks_protect(send, request_size, version, digest);
+
+out_unlock:
+	up_read(&key->sem);
+out_put:
+	key_put(key);
+	if (ret)
+		goto out_scrub;
+
+	dma_wmb();
+	request[0] = T2SEP_AKS_ENDPOINT | 0x0d << 8 | 4 << 16;
+	request[1] = request_size << 16;
+	request[2] = 0;
+	ret = t2sep_send_intel_message(bar4, request);
+	if (ret)
+		goto out_scrub;
+	dev_info(&pdev->dev,
+		 "AKS make-system-keybag request: endpoint=7 selector=0x0d tag=4 length=%zu variant=0 source_selector=%d target_selector=%d secret_bytes=not-logged\n",
+		 request_size, source_selector, target_selector);
+	ret = t2sep_wait_intel_message(bar4, response);
+	if (ret)
+		goto out_scrub;
+	reply_received = true;
+	dev_info(&pdev->dev,
+		 "AKS make-system-keybag envelope: raw=%08x %08x %08x %08x\n",
+		 response[0], response[1], response[2], response[3]);
+	if ((response[0] & 0x00ffffff) != 0x00048d07 ||
+	    response[2] != 0 ||
+	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL))) {
+		ret = -EREMOTEIO;
+		goto out_scrub;
+	}
+	service_status = (s8)(response[0] >> 24);
+	if (service_status ||
+	    response[1] != T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE << 16) {
+		dev_info(&pdev->dev,
+			 "AKS make-system-keybag rejected: status=%d reply_size=%u\n",
+			 service_status, response[1] >> 16);
+		ret = service_status ? -ENOKEY : -EPROTO;
+		goto out_scrub;
+	}
+	dma_rmb();
+	if (get_unaligned_le32(receive) != T2SEP_AKS_HEADER_SIZE) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
+	ret = t2sep_aks_validate_reply(
+		receive, T2SEP_AKS_MAKE_SYSTEM_REPLY_SIZE, version, digest);
+	if (ret)
+		goto out_scrub;
+	if (get_unaligned_le32(
+		    receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE) != 0) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
+	dev_info(&pdev->dev,
+		 "AKS make-system-keybag reply passed strict validation: promoted=yes target_selector=%d\n",
+		 target_selector);
+	ret = 0;
+
+out_scrub:
+	if (reply_received) {
+		memzero_explicit(send, T2SEP_CREDENTIAL_OOL_SIZE);
+		memzero_explicit(receive, T2SEP_CREDENTIAL_OOL_SIZE);
+	}
+	memzero_explicit(digest, sizeof(digest));
+	return ret;
+}
+
 static int t2sep_probe_aks_verify_password(
 	struct pci_dev *pdev, void __iomem *bar4,
 	void *send_buffer, void *receive_buffer, u32 version,
@@ -1481,7 +1613,8 @@ out_scrub:
 static int t2sep_probe_aks_keybag_control(
 	struct pci_dev *pdev, void __iomem *bar4,
 	void *send_buffer, void *receive_buffer, u32 version,
-	u8 operation, u8 tag, u64 keybag_handle, s32 selector)
+	u8 operation, u8 tag, u64 keybag_handle, s32 selector,
+	const char *lifecycle_role)
 {
 	u8 digest[SHA256_DIGEST_SIZE];
 	u8 *send = send_buffer;
@@ -1492,7 +1625,7 @@ static int t2sep_probe_aks_keybag_control(
 	size_t reply_size;
 	int ret;
 
-	if (operation != 0x02 && operation != 0x05)
+	if ((operation != 0x02 && operation != 0x05) || !lifecycle_role)
 		return -EINVAL;
 	memset(send, 0, T2SEP_CREDENTIAL_OOL_SIZE);
 	memset(receive, 0, T2SEP_CREDENTIAL_OOL_SIZE);
@@ -1540,7 +1673,8 @@ static int t2sep_probe_aks_keybag_control(
 		/* _ipc_copy_keybag returns -3 when the exact bag is absent. */
 		if (service_status == -3 && reply_size == 0) {
 			dev_info(&pdev->dev,
-				 "AKS copy-keybag confirms teardown: status=-3 absent=yes\n");
+				 "AKS copy-keybag confirms teardown: role=%s selector=%d status=-3 absent=yes\n",
+				 lifecycle_role, selector);
 			ret = 0;
 		} else {
 			dev_err(&pdev->dev,
@@ -1566,7 +1700,8 @@ static int t2sep_probe_aks_keybag_control(
 		ret = -EPROTO;
 	if (!ret)
 		dev_info(&pdev->dev,
-			 "AKS unload-keybag reply passed strict validation; independent absence check still required\n");
+			 "AKS unload-keybag reply passed strict validation: role=%s selector=%d; independent absence check still required\n",
+			 lifecycle_role, selector);
 
 out_scrub:
 	memzero_explicit(send, T2SEP_CREDENTIAL_OOL_SIZE);
@@ -1662,10 +1797,15 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 	u64 keybag_handle;
 	/* Exact bridgeOS keybagd _aks_create_bag default, not the login UID. */
 	s32 requested_selector = -1;
+	s32 system_selector = -(s32)macos_session_uid;
 	s32 runtime_selector = 0;
 	u32 version;
 	bool created = false;
+	bool promoted = false;
+	int promote_ret = -ECANCELED;
 	int verify_ret = -ECANCELED;
+	int system_unload_ret = -ECANCELED;
+	int system_absent_ret = -ECANCELED;
 	int unload_ret = -ECANCELED;
 	int absent_ret = -ECANCELED;
 	int handoff_ret = 0;
@@ -1691,17 +1831,33 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 		goto out_delete;
 	}
 	created = true;
+	promote_ret = t2sep_probe_aks_make_system_keybag(
+		pdev, bar4, aks_send, aks_receive, version, keybag_handle,
+		runtime_selector, system_selector);
+	if (promote_ret) {
+		t2sep_revoke_password_key();
+		goto out_unload;
+	}
+	promoted = true;
 	verify_ret = t2sep_probe_aks_verify_password(
 		pdev, bar4, aks_send, aks_receive, version, context,
-		keybag_handle, runtime_selector);
+		keybag_handle, system_selector);
 	if (!verify_ret && enrollment_handoff)
 		handoff_ret = t2sep_probe_authorized_enrollment_wait(pdev, context);
-	unload_ret = t2sep_probe_aks_keybag_control(
+	system_unload_ret = t2sep_probe_aks_keybag_control(
 		pdev, bar4, aks_send, aks_receive, version, 0x05, 5,
-		keybag_handle, runtime_selector);
-	absent_ret = t2sep_probe_aks_keybag_control(
+		keybag_handle, system_selector, "system");
+	system_absent_ret = t2sep_probe_aks_keybag_control(
 		pdev, bar4, aks_send, aks_receive, version, 0x02, 6,
-		keybag_handle, runtime_selector);
+		keybag_handle, system_selector, "system");
+
+out_unload:
+	unload_ret = t2sep_probe_aks_keybag_control(
+		pdev, bar4, aks_send, aks_receive, version, 0x05, 7,
+		keybag_handle, runtime_selector, "source");
+	absent_ret = t2sep_probe_aks_keybag_control(
+		pdev, bar4, aks_send, aks_receive, version, 0x02, 8,
+		keybag_handle, runtime_selector, "source");
 
 out_delete:
 	delete_ret = t2sep_probe_acm_context_delete(
@@ -1709,13 +1865,20 @@ out_delete:
 	memzero_explicit(context, sizeof(context));
 	memzero_explicit(&keybag_handle, sizeof(keybag_handle));
 	dev_info(&pdev->dev,
-		 "ephemeral keybag authorization completed: created=%s authorized=%s unload=%d absent_proof=%d context_delete=%d secret_bytes=not-logged\n",
-		 created ? "yes" : "no", verify_ret ? "no" : "yes",
-		 unload_ret, absent_ret, delete_ret);
+		 "ephemeral keybag authorization completed: created=%s promoted=%s promote=%d authorized=%s system_unload=%d system_absent_proof=%d source_unload=%d source_absent_proof=%d context_delete=%d secret_bytes=not-logged\n",
+		 created ? "yes" : "no", promoted ? "yes" : "no", promote_ret,
+		 verify_ret ? "no" : "yes", system_unload_ret,
+		 system_absent_ret, unload_ret, absent_ret, delete_ret);
 	if (delete_ret)
 		return delete_ret;
 	if (ret)
 		return ret;
+	if (promote_ret)
+		return promote_ret;
+	if (system_unload_ret)
+		return system_unload_ret;
+	if (system_absent_ret)
+		return system_absent_ret;
 	if (unload_ret)
 		return unload_ret;
 	if (absent_ret)
