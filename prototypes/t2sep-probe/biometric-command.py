@@ -16,6 +16,7 @@ class BiometricCommandError(ValueError):
 
 
 COMMAND_VERSION = 1
+CURRENT_COMMAND_VERSION = 2
 COMMAND_ENROLL = 0x03
 COMMAND_MATCH = 0x04
 COMMAND_CANCEL = 0x0C
@@ -28,6 +29,9 @@ DEFAULT_USER_ID = 0xFFFFFFFF
 ORDINARY_MATCH_FLAGS = 0
 MATCH_PAYLOAD = struct.Struct("<II60s")
 ENROLL_PAYLOAD = struct.Struct("<IIII32s")
+CURRENT_ENROLL_PAYLOAD = struct.Struct("<IIII32sI16s")
+ACM_EXTERNAL_FORM_SIZE = 16
+BUILTIN_DEVICE_GROUP = 1
 CATALINA_MATCH_RESULT_BASE_SIZE = 0xC70
 CATALINA_MATCH_RESULT_LOTL_COUNT_OFFSET = 0xC6C
 CATALINA_MATCH_RESULT_LOTL_OFFSET = 0xC70
@@ -58,6 +62,38 @@ class OrdinaryEnrollPayload:
     user_id: int
     using_auth_token: int
     token_length: int
+
+
+class AuthorizedEnrollRequest:
+    """One mutable current-format enrollment request with explicit scrubbing."""
+
+    def __init__(self, payload: bytearray) -> None:
+        if not isinstance(payload, bytearray) or len(payload) != CURRENT_ENROLL_PAYLOAD.size:
+            raise BiometricCommandError("authorized enrollment payload is invalid")
+        self._payload = payload
+        self.closed = False
+
+    def __repr__(self) -> str:
+        return f"AuthorizedEnrollRequest(length={len(self._payload)}, closed={self.closed})"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    def view(self) -> memoryview:
+        if self.closed:
+            raise BiometricCommandError("authorized enrollment request is closed")
+        return memoryview(self._payload).toreadonly()
+
+    def close(self) -> None:
+        if not getattr(self, "closed", True):
+            self._payload[:] = bytes(len(self._payload))
+            self.closed = True
 
 
 @dataclass(frozen=True)
@@ -135,6 +171,31 @@ def encode_ordinary_enroll_payload(*, user_id: int) -> bytes:
     """Encode only Catalina's token-free 48-byte enrollment input."""
     user_id = _u32(user_id, "user ID")
     return ENROLL_PAYLOAD.pack(0, user_id, 0, 0, bytes(32))
+
+
+def consume_builtin_enrollment_credential(
+        *, user_id: int, credential_set: bytearray) -> AuthorizedEnrollRequest:
+    """Consume a verified 16-byte ACM external form into current command 3.
+
+    The input is zeroed on every outcome. The returned mutable request must be
+    closed after serialization/send; its representation never exposes bytes.
+    Only the statically and live-proven built-in device group is expressible.
+    """
+    try:
+        user_id = _u32(user_id, "user ID")
+        if not isinstance(credential_set, bytearray):
+            raise BiometricCommandError("credential set must be a mutable bytearray")
+        if len(credential_set) != ACM_EXTERNAL_FORM_SIZE:
+            raise BiometricCommandError("credential set must be exactly 16 bytes")
+        payload = bytearray(CURRENT_ENROLL_PAYLOAD.size)
+        struct.pack_into("<IIII", payload, 0, 0, user_id, 0,
+                         ACM_EXTERNAL_FORM_SIZE)
+        payload[16:32] = credential_set
+        struct.pack_into("<I", payload, 48, BUILTIN_DEVICE_GROUP)
+        return AuthorizedEnrollRequest(payload)
+    finally:
+        if isinstance(credential_set, bytearray):
+            credential_set[:] = bytes(len(credential_set))
 
 
 def decode_ordinary_enroll_payload(payload: bytes) -> OrdinaryEnrollPayload:

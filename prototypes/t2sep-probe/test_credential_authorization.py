@@ -72,7 +72,19 @@ class CredentialAuthorizationTests(unittest.TestCase):
         self.assertEqual(bytes(request_view), bytes(len(request_view)))
         self.assertEqual(response, bytearray(range(17)))
 
+        enroll = plan.build_builtin_enrollment_request(501)
+        enroll_view = enroll.view()
+        self.assertEqual(enroll_view[16:32], bytes(range(16)))
+        self.assertEqual(enroll_view[32:48], bytes(16))
+        self.assertEqual(response, bytearray(range(17)))
+        plan.finish_builtin_enrollment_request(enroll)
+        self.assertEqual(bytes(enroll_view), bytes(68))
+
+        pending_enroll = plan.build_builtin_enrollment_request(501)
+        pending_enroll_view = pending_enroll.view()
+
         delete_envelope, delete_view = plan.prepare_context_delete()
+        self.assertEqual(bytes(pending_enroll_view), bytes(68))
         self.assertEqual(acm.decode_envelope(delete_envelope),
                          acm.ACMEnvelope(1, 24, 0))
         self.assertEqual(delete_view[:8], b"DRCS\x02\0\x10\x01")
@@ -130,6 +142,14 @@ class CredentialAuthorizationTests(unittest.TestCase):
         plan.scrub_after_transport_stop()
         with self.assertRaises(authorization.CredentialAuthorizationError):
             plan.initialize_acm()
+
+    def test_enrollment_request_requires_authorized_context(self):
+        plan = authorization.CredentialAuthorizationPlan()
+        initialize_context(plan)
+        with self.assertRaises(authorization.CredentialAuthorizationError):
+            plan.build_builtin_enrollment_request(501)
+        self.assertTrue(plan.failed)
+        self.assertFalse(plan.authorized)
 
     def test_rejected_context_payload_is_scrubbed_before_failure(self):
         plan = authorization.CredentialAuthorizationPlan()

@@ -24,6 +24,7 @@ def _load(name: str, filename: str):
 
 acm = _load("credential_authorization_acm", "acm-transport.py")
 aks = _load("credential_authorization_aks", "aks-transport.py")
+biometric = _load("credential_authorization_biometric", "biometric-command.py")
 
 
 class CredentialAuthorizationError(RuntimeError):
@@ -38,6 +39,7 @@ class CredentialAuthorizationPlan:
         self.aks = aks.AuthorizationPlan()
         self._context_response: bytearray | None = None
         self._verify_request: aks.VerifySecretRequest | None = None
+        self._enrollment_request: biometric.AuthorizedEnrollRequest | None = None
         self._delete_command: bytearray | None = None
         self.authorized = False
         self.failed = False
@@ -65,6 +67,8 @@ class CredentialAuthorizationPlan:
         self.failed = True
         if self._verify_request is not None:
             self._verify_request.close()
+        if self._enrollment_request is not None:
+            self._enrollment_request.close()
         raise CredentialAuthorizationError("authorization lifecycle rejected input") from error
 
     def initialize_acm(self) -> tuple[bytes, bytes]:
@@ -177,6 +181,36 @@ class CredentialAuthorizationPlan:
         self.authorized = True
         return reply
 
+    def build_builtin_enrollment_request(
+            self, user_id: int) -> biometric.AuthorizedEnrollRequest:
+        """Copy the authorized context directly into a scrub-owned request."""
+        self._active()
+        if not self.authorized or self._context_response is None:
+            self._fail(CredentialAuthorizationError(
+                "ACM context is not authorized for enrollment"))
+        if self._enrollment_request is not None:
+            self._fail(CredentialAuthorizationError(
+                "enrollment credential ownership is duplicated"))
+        context_copy = acm.context_external_form_for_authorization(
+            self._context_response)
+        try:
+            request = biometric.consume_builtin_enrollment_credential(
+                user_id=user_id, credential_set=context_copy)
+        except biometric.BiometricCommandError as error:
+            context_copy[:] = bytes(len(context_copy))
+            self._fail(error)
+        self._enrollment_request = request
+        return request
+
+    def finish_builtin_enrollment_request(
+            self, request: biometric.AuthorizedEnrollRequest) -> None:
+        self._active()
+        if request is not self._enrollment_request:
+            raise CredentialAuthorizationError(
+                "enrollment credential is not owned by this lifecycle")
+        request.close()
+        self._enrollment_request = None
+
     def abort(self) -> None:
         """Fail authorization while preserving enough context for deletion."""
         if self.closed:
@@ -184,6 +218,8 @@ class CredentialAuthorizationPlan:
         self.failed = True
         if self._verify_request is not None:
             self._verify_request.close()
+        if self._enrollment_request is not None:
+            self._enrollment_request.close()
 
     def prepare_context_delete(self) -> tuple[bytes, memoryview]:
         """Build deletion even after failure; caller must attempt the exchange."""
@@ -195,6 +231,9 @@ class CredentialAuthorizationPlan:
             self.failed = True
             if self._verify_request is not None:
                 self._verify_request.close()
+        if self._enrollment_request is not None:
+            self._enrollment_request.close()
+            self._enrollment_request = None
         command = bytearray(acm.CONTEXT_DELETE_COMMAND_SIZE)
         try:
             envelope = self.acm.delete_request(self._context_response, command)
@@ -225,6 +264,8 @@ class CredentialAuthorizationPlan:
     def _scrub_and_close(self) -> None:
         if self._verify_request is not None:
             self._verify_request.close()
+        if self._enrollment_request is not None:
+            self._enrollment_request.close()
         if self._context_response is not None:
             self._context_response[:] = bytes(len(self._context_response))
         if self._delete_command is not None:

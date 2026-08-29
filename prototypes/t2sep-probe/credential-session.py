@@ -156,6 +156,14 @@ class CredentialSession:
         self._finish("aks", "verify")
         return self._authorization.accept_verification(envelope, payload)
 
+    def build_builtin_enrollment_request(self, user_id: int):
+        self._require_available()
+        return self._authorization.build_builtin_enrollment_request(user_id)
+
+    def finish_builtin_enrollment_request(self, request) -> None:
+        self._require_available()
+        self._authorization.finish_builtin_enrollment_request(request)
+
     def prepare_context_delete(self):
         self._require_available()
         request = self._authorization.prepare_context_delete()

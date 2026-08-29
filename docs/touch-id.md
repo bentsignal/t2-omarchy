@@ -937,6 +937,16 @@ treated as a design: validity across the macOS-to-Linux boot transition is
 unproven and the context must be presumed boot/session-bound and fail closed.
 No password or context bytes were observed during this analysis.
 
+That final handoff is now encoded offline rather than left as a prose-only
+boundary. `consume_builtin_enrollment_credential` accepts only a mutable,
+exactly 16-byte ACM external form and consumes it into the current 68-byte
+command-3/version-2 layout: zero flags, requested UID, `usingAuthToken=0`,
+length 16, the context, 16 zero padding bytes, built-in group type 1, and a
+zero group UUID. The input is wiped on every outcome. The returned request is
+mutable, hides its contents in representations, and wipes all 68 bytes on
+explicit close, context-manager exit, or best-effort destruction. No caller
+can select another group, token mode, padding, or flag through this API.
+
 The Linux-side continuation now has symbol-rich Intel kernel evidence from the
 matching macOS 14.5 KDK (`23F79`). Its AppleCredentialManager and AppleKeyStore
 drivers were extracted read-only from the KDK payload. The universal binaries
@@ -1385,6 +1395,11 @@ AKS environment exist. The coordinator copies only the context's first 16
 bytes into the consuming AKS serializer, retains the original 17-byte owner,
 closes the complete verify request before accepting its reply, and marks the
 existing context authorized only after the exact correlated success response.
+Only then may it create the scrub-owned built-in enrollment request described
+above. It copies the first 16 bytes directly from the retained context, never
+the 17th tracking byte; rejects duplicate outstanding enrollment credentials;
+and retains ownership so abort, context deletion, or transport-loss cleanup
+wipes a request even if its caller forgot to close it.
 
 Any malformed or reordered input permanently closes the authorization branch,
 while preserving the original context solely so deletion can still be

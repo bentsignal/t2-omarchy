@@ -44,6 +44,36 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
                 with self.assertRaises(command.BiometricCommandError):
                     command.decode_ordinary_enroll_payload(bad)
 
+    def test_authorized_current_enrollment_consumes_and_scrubs_credential(self):
+        credential = bytearray(range(16))
+        request = command.consume_builtin_enrollment_credential(
+            user_id=501, credential_set=credential)
+        view = request.view()
+        self.assertEqual(credential, bytearray(16))
+        self.assertEqual(len(view), 68)
+        self.assertEqual(struct.unpack_from("<IIII", view, 0),
+                         (0, 501, 0, 16))
+        self.assertEqual(view[16:32], bytes(range(16)))
+        self.assertEqual(view[32:48], bytes(16))
+        self.assertEqual(struct.unpack_from("<I", view, 48)[0], 1)
+        self.assertEqual(view[52:68], bytes(16))
+        self.assertNotIn("bytearray", repr(request))
+        request.close()
+        self.assertEqual(bytes(view), bytes(68))
+        with self.assertRaises(command.BiometricCommandError):
+            request.view()
+
+    def test_authorized_enrollment_rejects_and_scrubs_bad_inputs(self):
+        for user_id, credential in ((-1, bytearray(range(16))),
+                                    (501, bytearray(15)),
+                                    (501, b"not mutable")):
+            with self.subTest(user_id=user_id, length=len(credential)):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.consume_builtin_enrollment_credential(
+                        user_id=user_id, credential_set=credential)
+                if isinstance(credential, bytearray):
+                    self.assertEqual(credential, bytearray(len(credential)))
+
     def test_exact_default_payload(self):
         payload = command.encode_ordinary_match_payload()
         self.assertEqual(len(payload), 68)

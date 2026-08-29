@@ -96,6 +96,13 @@ class CredentialSessionTests(unittest.TestCase):
         self.assertTrue(state.authorized)
         self.assertEqual(bytes(request_view), bytes(len(request_view)))
 
+        enroll = state.build_builtin_enrollment_request(501)
+        enroll_view = enroll.view()
+        self.assertEqual(len(enroll_view), 68)
+        self.assertEqual(enroll_view[16:32], bytes(range(16)))
+        state.finish_builtin_enrollment_request(enroll)
+        self.assertEqual(bytes(enroll_view), bytes(68))
+
         state.prepare_context_delete()
         state.accept_context_delete(acm.encode_envelope(1, 0, 0), b"")
         tokens = state.shutdown()

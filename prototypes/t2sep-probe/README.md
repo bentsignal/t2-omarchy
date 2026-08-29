@@ -286,6 +286,12 @@ lockout-bypass requests cannot be represented. The default user ID is Apple's
 initialized value `0xffffffff`. Presence detection (`0x26`) and cancellation
 (`0x0c`) are retained as offline field tuples. None of these commands is wired
 into `bridge-query.py` or any live runner.
+The separately named current-format enrollment constructor accepts only a
+mutable 16-byte ACM external form from the successful credential lifecycle,
+consumes and zeros that input, and produces only command 3/version 2 for the
+live-proven built-in device group. Its 68-byte mutable request owns the sole
+remaining credential copy and must be explicitly closed to scrub it; ordinary
+token-free APIs remain unable to express privileged variants.
 The same module has a deliberately partial Catalina async-result decoder for
 the proven user ID, 16-byte UUID, and bounded lockout-list IDs. It requires an
 exact self-consistent length and explicitly does not treat parsing as proof of
