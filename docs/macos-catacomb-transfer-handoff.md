@@ -120,3 +120,32 @@ Linux may now follow the bounded one-shot procedure in commit `fecaba1`:
 decrypt directly into its mode-0600 root-only temporary input, require exactly
 the expected 104-byte decoded payload, issue command `0x40` once, report only
 status/policy length/identity count, and remove both temporary artifacts.
+
+## Linux return result and two-component follow-up
+
+Linux decrypted the CMS envelope to the exact reported 104-byte payload and
+issued one current command `0x40`. The host accepted the envelope, but the
+biometric service returned status 257. Linux then removed the plaintext,
+ciphertext, certificate, private key, and certificate copy as promised. No
+transferred material remains.
+
+The leading untested difference is the already observed macOS startup order:
+macOS loads its non-user/general catacomb component before UID 501, whereas the
+first comparison transferred only UID 501. The Linux probe now supports exactly
+two decoded secure-data inputs and sends the general component first, then the
+UID-501 component on one Bridge connection.
+
+For the next macOS pass, generate a new transfer from the active archives:
+
+1. Identify the exact non-user/general component loaded immediately before UID
+   501 by current `biometrickitd`. Record only its decoded `CatacombUserID` (if
+   present) and archive/secure-data lengths. Do not output archive filenames,
+   UUIDs, hashes, or data.
+2. Decode the general and UID-501 `CatacombSecureData` objects independently.
+   Require each to be nonempty and at most 307200 bytes.
+3. Encrypt them directly with the new EFI certificate to
+   `t2-touchid-transfer-global.cms` and `t2-touchid-transfer-user.cms`.
+   Never create plaintext temporary files. Validate only CMS structure and
+   ciphertext lengths.
+4. Leave all source archives and the enrolled fingerprint untouched. Commit
+   and push only a sanitized report; never commit either CMS file.

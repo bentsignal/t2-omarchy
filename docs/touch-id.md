@@ -2643,6 +2643,15 @@ for local transfer and Linux extract its opaque secure-data field without
 printing, hashing, or retaining unrelated archive contents. Exact constraints
 and the return handoff are in `docs/macos-catacomb-transfer-handoff.md`.
 
+The narrower current-format comparison later transferred only the decoded
+104-byte UID-501 `CatacombSecureData` under CMS encryption. Linux decrypted it
+into a root-only file and sent current command `0x40`; the service returned
+status 257. All five temporary transfer/key artifacts were then removed. This
+is a service-side semantic rejection, not a Bridge envelope error. Because
+macOS always loads a non-user/general component before UID 501, the next
+bounded comparison loads both decoded components in that exact order on one
+connection before reading only policy length and identity count.
+
 Linux subsequently added a distinct bounded loader for decoded current-macOS
 `CatacombSecureData`, without weakening the separate KDK save-blob validator.
 The authorized macOS follow-up revalidated the root-owned 708-byte UID-501

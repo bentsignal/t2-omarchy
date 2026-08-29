@@ -37,7 +37,7 @@ class FakeSocket:
 
 
 class ExternalCatacombLoadTests(unittest.TestCase):
-    IDS = tuple(f"{index}7654321-89AB-4CDE-8FAB-0123456789AB" for index in range(6))
+    IDS = tuple(f"{index}7654321-89AB-4CDE-8FAB-0123456789AB" for index in range(7))
 
     def test_one_shot_load_reports_only_policy_length_and_count(self):
         identity = struct.pack("<I16s", 501, bytes(16))
@@ -55,7 +55,28 @@ class ExternalCatacombLoadTests(unittest.TestCase):
                                         secure_data=b"opaque-current-data")
         finally:
             probe.state.coupled.bridge_query.uuid.uuid4 = original
-        self.assertEqual(result, probe.ExternalCatacombLoadResult(0, 32, 1))
+        self.assertEqual(result, probe.ExternalCatacombLoadResult(None, 0, 32, 1))
+
+    def test_global_component_is_loaded_before_user_component(self):
+        identity = struct.pack("<I16s", 501, bytes(16))
+        incoming = (envelope(self.IDS[0], [0, 3])
+                    + envelope(self.IDS[1], [0])
+                    + envelope(self.IDS[2], [0, True])
+                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[5], [0, bytes(32)])
+                    + envelope(self.IDS[6], [0, identity]))
+        ids = iter(self.IDS)
+        original = probe.state.coupled.bridge_query.uuid.uuid4
+        probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            result = probe.probe_socket(
+                FakeSocket(incoming), user_id=501,
+                global_secure_data=b"opaque-global-data",
+                secure_data=b"opaque-user-data")
+        finally:
+            probe.state.coupled.bridge_query.uuid.uuid4 = original
+        self.assertEqual(result, probe.ExternalCatacombLoadResult(0, 0, 32, 1))
 
     def test_input_file_must_be_private_and_bounded(self):
         with tempfile.TemporaryDirectory() as directory:

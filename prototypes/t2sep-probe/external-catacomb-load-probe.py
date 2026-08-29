@@ -30,6 +30,7 @@ class ExternalCatacombLoadError(RuntimeError):
 
 @dataclass(frozen=True)
 class ExternalCatacombLoadResult:
+    global_load_status: int | None
     load_status: int
     protected_length: int
     identity_count: int
@@ -49,9 +50,18 @@ def read_secure_data(path: Path) -> bytes:
     return data
 
 
-def probe_socket(sock, *, user_id: int, secure_data: bytes) -> ExternalCatacombLoadResult:
+def probe_socket(sock, *, user_id: int, secure_data: bytes,
+                 global_secure_data: bytes | None = None) -> ExternalCatacombLoadResult:
     session = state.coupled.bridge_query.BridgeSession(sock)
     state._initialize(session)
+    global_status = None
+    if global_secure_data is not None:
+        global_status, global_output = state._perform(
+            session, state.biometric.current_catacomb_secure_data_fields(
+                global_secure_data))
+        if global_status != 0 or global_output is not None:
+            raise ExternalCatacombLoadError(
+                f"global catacomb load failed with status {global_status}")
     load_status, output = state._perform(
         session, state.biometric.current_catacomb_secure_data_fields(secure_data))
     if load_status != 0 or output is not None:
@@ -68,19 +78,24 @@ def probe_socket(sock, *, user_id: int, secure_data: bytes) -> ExternalCatacombL
     decoded = state.biometric.decode_identity_list(identities or b"")
     if any(identity.user_id != user_id for identity in decoded):
         raise ExternalCatacombLoadError("loaded catacomb returned a foreign user identity")
-    return ExternalCatacombLoadResult(load_status, len(protected), len(decoded))
+    return ExternalCatacombLoadResult(
+        global_status, load_status, len(protected), len(decoded))
 
 
-def live_probe(*, user_id: int, path: Path, interface: str = "enp4s0f1u1",
+def live_probe(*, user_id: int, path: Path, global_path: Path | None = None,
+               interface: str = "enp4s0f1u1",
                timeout: float = 5.0) -> ExternalCatacombLoadResult:
     if not LIVE_LOAD_ENABLED:
         raise ExternalCatacombLoadError("live external catacomb load is disabled")
     secure_data = read_secure_data(path)
+    global_secure_data = (read_secure_data(global_path)
+                          if global_path is not None else None)
     result = None
 
     def run(sock):
         nonlocal result
-        result = probe_socket(sock, user_id=user_id, secure_data=secure_data)
+        result = probe_socket(sock, user_id=user_id, secure_data=secure_data,
+                              global_secure_data=global_secure_data)
         return result
 
     original = state.coupled.bridge_query.query_connected_socket
@@ -102,6 +117,7 @@ def main() -> None:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--user-id", type=int, required=True)
     parser.add_argument("--path", type=Path, required=True)
+    parser.add_argument("--global-path", type=Path)
     parser.add_argument("--interface", default="enp4s0f1u1")
     parser.add_argument("--confirm", default="")
     args = parser.parse_args()
@@ -114,10 +130,12 @@ def main() -> None:
     LIVE_LOAD_ENABLED = True
     try:
         result = live_probe(user_id=args.user_id, path=args.path,
+                            global_path=args.global_path,
                             interface=args.interface)
     finally:
         LIVE_LOAD_ENABLED = False
     print("external catacomb loaded: "
+          f"global_status={result.global_load_status} "
           f"status={result.load_status} protected_length={result.protected_length} "
           f"identity_count={result.identity_count}")
 
