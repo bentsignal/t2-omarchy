@@ -967,6 +967,44 @@ is to recover those mailbox, endpoint-discovery, and OOL ABIs from the pinned
 KDK binaries and connect them to the source-disabled PCI prototype before any
 new live MMIO writes.
 
+Further x86_64 analysis narrows that statement to two coordinated SEP
+services. `AppleCredentialManager::getSEPEndpoint()` creates its endpoint at
+fixed index `0x0a` and allocates separate `0x4000`-byte, page-aligned send and
+receive OOL buffers. `LibCall_ACMContextCreate` submits ACM command `1`, expects
+an exact 17-byte response, and copies its first 16 bytes into the opaque
+context handle; the final byte is separate tracking metadata. Creating a
+context therefore does not require inventing or persisting a token.
+
+`AppleKeyStore::verify_password`, in contrast, uses the service named
+`aks-endpoint`, instantiated at fixed SEP endpoint `0x07`, with separate
+`0x4000`-byte, page-aligned OOL buffers in each direction.
+It calls `ipc_verify_secret_v1`, whose generated request is exactly `0x98`
+bytes before pointer-to-blob serialization and is dispatched as operation
+`0x21`. After the versioned IPC header, offset `0x50` is request variant `1`,
+offset `0x58` is the keybag handle, offset `0x60` its 32-bit selector, offsets
+`0x68`/`0x70` describe the password blob, offsets `0x78`/`0x80` describe the
+ACM-context blob, offset `0x88` is the boolean option promoted to a qword, and
+offset `0x90` is the returned 64-bit device state. The codec walks both blobs
+with explicit lengths rather than transmitting kernel pointers. The caller
+maps the secure-key-store result to an AKS result and updates device state only
+after success. This explains how password verification authorizes the already
+created ACM context without exposing password material to BiometricKit.
+
+These offsets are structural evidence, not an invitation to capture secrets.
+Any Linux implementation must accept the password through a locked,
+short-lived buffer, apply the recovered AKS pointer-to-blob codec, scrub all
+copies on every outcome, and keep the returned ACM handle in memory only for
+the current SEP transport lifetime. No live AKS password request is enabled in
+the prototype yet; header negotiation, exact endpoint OOL limits, reply
+validation, and teardown must be recovered first.
+
+Endpoint initialization first issues `ipc_get_capabilities`. If that fails,
+AppleKeyStore falls back to IPC header version 1. Otherwise it negotiates
+`min(remote_version, 2)`. Only after fixing that global negotiated version does
+it continue with environment and entropy initialization. A Linux client must
+therefore not hard-code the richer version-2 header or send verify-secret as
+its first AKS transaction.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this
