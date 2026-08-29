@@ -2682,6 +2682,14 @@ the prepared size plus bounded binary-plist overhead, then restored. The root
 record path is `/var/lib/t2-touchid/<uid>.catacomb`. This end-to-end path has
 407 passing offline tests but still awaits its first supervised hardware run.
 
+A separate default-off restart verifier now reads that root-only envelope,
+checks its UID and integrity before opening the Bridge, sends the exact current
+Load command, and requires both a 32-byte protected-policy reply and an
+identity list containing no foreign UID. It prints only status, policy length,
+and identity count. Together with the save transaction this provides the
+bounded proof needed before treating a Linux enrollment as durable; the suite
+now contains 409 passing tests.
+
 ## Useful baseline commands
 
 ```bash
