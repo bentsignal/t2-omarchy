@@ -29,6 +29,14 @@ class AKSTransportTests(unittest.TestCase):
         self.assertEqual(wire[0x54:], struct.pack("<IQI", 0, 1, 0))
         aks.validate_protected_header(wire[4:0x54], wire[0x54:])
 
+    def test_capabilities_request_fixed_kernproc_vector(self):
+        identity = aks.build_identity_header(
+            1, continuous_usec=0x0102030405060708,
+            process_unique_id=0, audit_session_id=0, cdhash=bytes(20))
+        self.assertEqual(
+            aks.encode_capabilities_request(identity).hex(),
+            "50000000c109beea6de62551b0f38ca9865a2aa80100000008070605040302010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000")
+
     def test_capabilities_reply_validation(self):
         payload = struct.pack("<iQI", 0, 2, 0)
         header = aks.protect_header(self._identity(2), payload)

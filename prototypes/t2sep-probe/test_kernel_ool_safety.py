@@ -51,6 +51,11 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertIn(
             "put_unaligned_le64(1, send + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4)",
             SOURCE)
+        self.assertIn("memcpy(hash_input, send + 4 + 0x10, 0x38)", SOURCE)
+        self.assertIn(
+            "memcpy(hash_input + 0x38, send + "
+            "T2SEP_AKS_SERIALIZED_HEADER_SIZE, 0x10)",
+            SOURCE)
         self.assertNotIn("ktime_get_mono_fast_ns", SOURCE)
         self.assertNotIn("password", SOURCE.lower())
 
