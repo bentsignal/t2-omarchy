@@ -1398,6 +1398,23 @@ substitute for SEP deletion or CPU stop. Tests cover success, bad correlation,
 reordering, abort, delete-after-failure, and stop-driven cleanup. This proves
 offline composition; it does not enable operation `0x21` on hardware.
 
+`credential-session.py` now closes the offline ownership gap between this
+authorization lifecycle and the dual ACM/AKS OOL bootstrap. Authorization
+traffic cannot start until all four independently profiled registration ACKs
+have committed. The coordinator owns at most one ACM or AKS exchange at a
+time, records it in the corresponding endpoint lifecycle, and drains that
+operation before handing a reply to the strict decoder. Consequently a
+malformed reply fails authorization without leaving teardown falsely blocked,
+while an actually outstanding exchange prevents either endpoint from being
+stopped. Normal shutdown refuses an undeleted SEP context; explicit abnormal
+shutdown stops both endpoints and releases all four mappings before locally
+scrubbing the retained context and secret buffers. Tests cover pre-readiness
+rejection without state mutation, cross-endpoint serialization, full
+authorization/delete/shutdown, undeleted-context refusal, abnormal cleanup,
+and malformed-reply draining. The session has no allocator, I/O, prompt, PAM,
+or live-send API and is not evidence that simultaneous registration works on
+hardware.
+
 Unit tests use a fragmented fake
 socket to cover HELO, no-op, early EOF, malformed replies, and frame flooding.
 Because `52032` is currently proven from Catalina 19H15 rather than this

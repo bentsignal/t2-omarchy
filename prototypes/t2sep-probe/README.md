@@ -57,6 +57,14 @@ distinct control tags and four non-overlapping mappings, validates every ACK
 before committing either endpoint, and stops both idle endpoints before any
 mapping can be scrubbed or released.
 
+`credential-session.py` is the socket- and device-free boundary that joins
+that dual transport lifetime to `credential-authorization.py`. No ACM or AKS
+request can be built until all four registrations are accepted. It permits one
+tracked exchange at a time, drains the matching operation before validating a
+reply, refuses global teardown while either endpoint is active, and requires a
+live ACM context to be deleted or explicitly abandoned via stop-before-scrub.
+It contains no live-send method and does not expose password contents.
+
 `run-aks-capabilities-probe.sh` is the separately confirmed next-stage wrapper.
 Its default-off kernel gate sends only the non-mutating empty operation `0x4d`
 after the proven AKS registrations and strictly validates its protected
