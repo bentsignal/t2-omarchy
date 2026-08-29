@@ -83,6 +83,24 @@ class EnrollmentProbeTests(unittest.TestCase):
                           (0xE3FF8003, 1, 20)))
         self.assertEqual(result.cancel_status, 0)
 
+    def test_authorized_current_request_is_sent_and_closed(self):
+        credential = bytearray(range(16))
+        request = probe.biometric.consume_builtin_enrollment_credential(
+            user_id=self.USER, credential_set=credential)
+        view = request.view()
+        ids = iter(self.IDS)
+        original = probe.coupled.bridge_query.uuid.uuid4
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            result = probe.probe_socket(
+                FakeSocket(self.incoming()), user_id=self.USER,
+                authorized_request=request)
+        finally:
+            probe.coupled.bridge_query.uuid.uuid4 = original
+        self.assertEqual(result.identities_after, 1)
+        self.assertTrue(request.closed)
+        self.assertEqual(bytes(view), bytes(68))
+
     def test_progress_callback_gets_metadata_only(self):
         seen = []
         self.run_probe_with_progress(self.incoming(), seen.append)

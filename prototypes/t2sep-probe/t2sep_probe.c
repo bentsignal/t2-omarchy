@@ -11,12 +11,14 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
+#include <linux/completion.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 #include <linux/ktime.h>
 #include <linux/key.h>
 #include <linux/random.h>
 #include <linux/slab.h>
+#include <linux/mutex.h>
 #include <linux/unaligned.h>
 #include <keys/user-type.h>
 #include <crypto/algapi.h>
@@ -202,6 +204,16 @@ module_param(ephemeral_keybag_confirmation, ulong, 0400);
 MODULE_PARM_DESC(ephemeral_keybag_confirmation,
 	"Required explicit confirmation value 0x4550484b42414731 for ephemeral keybag authorization");
 
+static bool apple_probe_authorized_enrollment_handoff;
+module_param(apple_probe_authorized_enrollment_handoff, bool, 0400);
+MODULE_PARM_DESC(apple_probe_authorized_enrollment_handoff,
+	"Authorize an ephemeral context and expose its enrollment form once through root-only sysfs");
+
+static ulong authorized_enrollment_confirmation;
+module_param(authorized_enrollment_confirmation, ulong, 0400);
+MODULE_PARM_DESC(authorized_enrollment_confirmation,
+	"Required explicit confirmation value 0x41555448454e5231 for authorized enrollment handoff");
+
 static int password_key_serial;
 module_param(password_key_serial, int, 0400);
 MODULE_PARM_DESC(password_key_serial,
@@ -232,6 +244,7 @@ struct t2sep_irq_probe {
 #define T2SEP_CREDENTIAL_STARTUP_CONFIRMATION 0x414b5341434d5354UL
 #define T2SEP_PASSWORD_VERIFICATION_CONFIRMATION 0x5041535356455249UL
 #define T2SEP_EPHEMERAL_KEYBAG_CONFIRMATION 0x4550484b42414731UL
+#define T2SEP_AUTHORIZED_ENROLLMENT_CONFIRMATION 0x41555448454e5231UL
 #define T2SEP_AKS_ENDPOINT 0x07
 #define T2SEP_ACM_ENDPOINT 0x0a
 #define T2SEP_CREDENTIAL_OOL_SIZE (4 * PAGE_SIZE)
@@ -250,8 +263,83 @@ struct t2sep_irq_probe {
 #define T2SEP_ACM_CONTEXT_RESPONSE_SIZE 17
 #define T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE 21
 #define T2SEP_ACM_CONTEXT_SIZE 16
+#define T2SEP_ENROLLMENT_HANDOFF_TIMEOUT (5 * 60 * HZ)
 #define T2SEP_SBIO_IN_SIZE (T2SEP_SBIO_IN_PAGES * PAGE_SIZE)
 #define T2SEP_SBIO_OUT_SIZE (T2SEP_SBIO_OUT_PAGES * PAGE_SIZE)
+
+static DEFINE_MUTEX(t2sep_enrollment_lock);
+static DECLARE_COMPLETION(t2sep_enrollment_credential_read);
+static DECLARE_COMPLETION(t2sep_enrollment_finished);
+static u8 t2sep_enrollment_credential[T2SEP_ACM_CONTEXT_SIZE];
+static bool t2sep_enrollment_ready;
+static bool t2sep_enrollment_consumed;
+static bool t2sep_enrollment_done;
+
+static int t2sep_enrollment_credential_get(char *buffer,
+					   const struct kernel_param *kp)
+{
+	int i;
+	int length = 0;
+
+	mutex_lock(&t2sep_enrollment_lock);
+	if (!t2sep_enrollment_ready) {
+		mutex_unlock(&t2sep_enrollment_lock);
+		return -EAGAIN;
+	}
+	if (t2sep_enrollment_consumed) {
+		mutex_unlock(&t2sep_enrollment_lock);
+		return -EACCES;
+	}
+	for (i = 0; i < T2SEP_ACM_CONTEXT_SIZE; i++)
+		length += scnprintf(buffer + length, PAGE_SIZE - length,
+				    "%02x", t2sep_enrollment_credential[i]);
+	length += scnprintf(buffer + length, PAGE_SIZE - length, "\n");
+	memzero_explicit(t2sep_enrollment_credential,
+			 sizeof(t2sep_enrollment_credential));
+	t2sep_enrollment_consumed = true;
+	complete(&t2sep_enrollment_credential_read);
+	mutex_unlock(&t2sep_enrollment_lock);
+	return length;
+}
+
+static int t2sep_enrollment_done_set(const char *value,
+				     const struct kernel_param *kp)
+{
+	bool done;
+	int ret;
+
+	ret = kstrtobool(value, &done);
+	if (ret)
+		return ret;
+	if (!done)
+		return -EINVAL;
+	mutex_lock(&t2sep_enrollment_lock);
+	if (!t2sep_enrollment_ready || !t2sep_enrollment_consumed ||
+	    t2sep_enrollment_done) {
+		mutex_unlock(&t2sep_enrollment_lock);
+		return -EPERM;
+	}
+	t2sep_enrollment_done = true;
+	complete(&t2sep_enrollment_finished);
+	mutex_unlock(&t2sep_enrollment_lock);
+	return 0;
+}
+
+static const struct kernel_param_ops t2sep_enrollment_credential_ops = {
+	.get = t2sep_enrollment_credential_get,
+};
+
+static const struct kernel_param_ops t2sep_enrollment_done_ops = {
+	.set = t2sep_enrollment_done_set,
+};
+
+module_param_cb(enrollment_credential, &t2sep_enrollment_credential_ops,
+		NULL, 0400);
+MODULE_PARM_DESC(enrollment_credential,
+	"Read-once opaque ACM enrollment form; available only during the bounded handoff");
+module_param_cb(enrollment_done, &t2sep_enrollment_done_ops, NULL, 0200);
+MODULE_PARM_DESC(enrollment_done,
+	"Write 1 after the bounded enrollment transaction has ended");
 
 struct t2sep_discovery_entry {
 	bool identity;
@@ -1525,10 +1613,50 @@ out_revoke:
 	return ret;
 }
 
+static int t2sep_probe_authorized_enrollment_wait(
+	struct pci_dev *pdev, const u8 context[T2SEP_ACM_CONTEXT_SIZE])
+{
+	int ret = 0;
+
+	mutex_lock(&t2sep_enrollment_lock);
+	reinit_completion(&t2sep_enrollment_credential_read);
+	reinit_completion(&t2sep_enrollment_finished);
+	memcpy(t2sep_enrollment_credential, context,
+	       sizeof(t2sep_enrollment_credential));
+	t2sep_enrollment_consumed = false;
+	t2sep_enrollment_done = false;
+	t2sep_enrollment_ready = true;
+	mutex_unlock(&t2sep_enrollment_lock);
+	dev_info(&pdev->dev,
+		 "authorized enrollment handoff ready: credential_bytes=not-logged timeout_seconds=300\n");
+
+	if (!wait_for_completion_timeout(&t2sep_enrollment_credential_read,
+					 T2SEP_ENROLLMENT_HANDOFF_TIMEOUT)) {
+		dev_err(&pdev->dev,
+			"authorized enrollment handoff timed out before credential consumption\n");
+		ret = -ETIMEDOUT;
+	} else if (!wait_for_completion_timeout(&t2sep_enrollment_finished,
+						T2SEP_ENROLLMENT_HANDOFF_TIMEOUT)) {
+		dev_err(&pdev->dev,
+			"authorized enrollment handoff timed out before completion acknowledgement\n");
+		ret = -ETIMEDOUT;
+	} else {
+		dev_info(&pdev->dev,
+			 "authorized enrollment handoff completed without logging credential bytes\n");
+	}
+
+	mutex_lock(&t2sep_enrollment_lock);
+	t2sep_enrollment_ready = false;
+	memzero_explicit(t2sep_enrollment_credential,
+			 sizeof(t2sep_enrollment_credential));
+	mutex_unlock(&t2sep_enrollment_lock);
+	return ret;
+}
+
 static int t2sep_probe_ephemeral_keybag_authorization_run(
 	struct pci_dev *pdev, void __iomem *bar4,
 	void *aks_send, void *aks_receive,
-	void *acm_send, void *acm_receive)
+	void *acm_send, void *acm_receive, bool enrollment_handoff)
 {
 	u8 context[T2SEP_ACM_CONTEXT_SIZE];
 	u64 keybag_handle;
@@ -1539,6 +1667,7 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 	int verify_ret = -ECANCELED;
 	int unload_ret = -ECANCELED;
 	int absent_ret = -ECANCELED;
+	int handoff_ret = 0;
 	int delete_ret;
 	int ret;
 
@@ -1564,6 +1693,8 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 	verify_ret = t2sep_probe_aks_verify_password(
 		pdev, bar4, aks_send, aks_receive, version, context,
 		keybag_handle, runtime_selector);
+	if (!verify_ret && enrollment_handoff)
+		handoff_ret = t2sep_probe_authorized_enrollment_wait(pdev, context);
 	unload_ret = t2sep_probe_aks_keybag_control(
 		pdev, bar4, aks_send, aks_receive, version, 0x05, 5,
 		keybag_handle, runtime_selector);
@@ -1588,6 +1719,8 @@ out_delete:
 		return unload_ret;
 	if (absent_ret)
 		return absent_ret;
+	if (handoff_ret)
+		return handoff_ret;
 	return verify_ret;
 
 out_revoke:
@@ -1607,7 +1740,8 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 	bool dual_credential_ool = apple_capture_dual_credential_ool_acks ||
 				   apple_probe_credential_startup ||
 				   apple_probe_password_verification ||
-				   apple_probe_ephemeral_keybag_authorization;
+				   apple_probe_ephemeral_keybag_authorization ||
+				   apple_probe_authorized_enrollment_handoff;
 	void *in_buffer = NULL;
 	void *out_buffer = NULL;
 	void *second_in_buffer = NULL;
@@ -1627,7 +1761,8 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			      apple_probe_acm_context_lifecycle ||
 			      apple_probe_credential_startup ||
 			      apple_probe_password_verification ||
-			      apple_probe_ephemeral_keybag_authorization;
+			      apple_probe_ephemeral_keybag_authorization ||
+			      apple_probe_authorized_enrollment_handoff;
 	int ret = 0;
 	int i;
 
@@ -1830,15 +1965,18 @@ static int t2sep_apple_start_cpu_probe(struct pci_dev *pdev, void __iomem *bar4)
 			ret = t2sep_probe_password_authorization(
 				pdev, bar4, in_buffer, out_buffer,
 				second_in_buffer, second_out_buffer);
-		if (!ret && apple_probe_ephemeral_keybag_authorization)
+		if (!ret && (apple_probe_ephemeral_keybag_authorization ||
+			     apple_probe_authorized_enrollment_handoff))
 			ret = t2sep_probe_ephemeral_keybag_authorization_run(
 				pdev, bar4, in_buffer, out_buffer,
-				second_in_buffer, second_out_buffer);
+				second_in_buffer, second_out_buffer,
+				apple_probe_authorized_enrollment_handoff);
 	}
 
 out_stop:
 	if (apple_probe_password_verification ||
-	    apple_probe_ephemeral_keybag_authorization)
+	    apple_probe_ephemeral_keybag_authorization ||
+	    apple_probe_authorized_enrollment_handoff)
 		t2sep_revoke_password_key();
 	/* Exact CPU-stop write from AppleSEPIntelIOP::_stopCPUGated(). */
 	iowrite32(5, bar4 + T2SEP_INTEL_CPU_STOP);
@@ -2030,13 +2168,26 @@ static int t2sep_probe(struct pci_dev *pdev,
 		t2sep_revoke_password_key();
 		return -EINVAL;
 	}
+	if (apple_probe_authorized_enrollment_handoff &&
+	    (!apple_start_cpu_probe || !apple_start_with_msi ||
+	     !apple_send_control_nop || password_key_serial <= 0 ||
+	     macos_session_uid < 10 || macos_session_uid >= INT_MAX ||
+	     authorized_enrollment_confirmation !=
+		T2SEP_AUTHORIZED_ENROLLMENT_CONFIRMATION)) {
+		dev_err(&pdev->dev,
+			"authorized enrollment handoff requires start/MSI/NOP, a temporary key, macOS UID, and confirmation 0x%lx\n",
+			T2SEP_AUTHORIZED_ENROLLMENT_CONFIRMATION);
+		t2sep_revoke_password_key();
+		return -EINVAL;
+	}
 	if (apple_capture_ool_acks + apple_capture_credential_ool_acks +
 	    apple_capture_dual_credential_ool_acks +
 	    apple_probe_aks_capabilities + apple_probe_aks_time_sweep +
 	    apple_probe_aks_startup_environment +
 	    apple_probe_acm_context_lifecycle + apple_probe_credential_startup +
 	    apple_probe_password_verification +
-	    apple_probe_ephemeral_keybag_authorization > 1) {
+	    apple_probe_ephemeral_keybag_authorization +
+	    apple_probe_authorized_enrollment_handoff > 1) {
 		dev_err(&pdev->dev,
 			"SBIO, single/dual credential OOL, AKS capabilities/time/startup, ACM context, combined startup, password verification, and ephemeral keybag modes are mutually exclusive\n");
 		return -EINVAL;

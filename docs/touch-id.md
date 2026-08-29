@@ -1549,6 +1549,26 @@ must retain the original 17-byte context-create result until eventual delete,
 use only a mutable copy of its first 16 bytes for AKS serialization, and never
 confuse the 17th tracking byte with the external form.
 
+On 2026-08-29 the bounded ephemeral-keybag experiment succeeded on the live
+MacBookPro16,1. AKS created a fresh store-type-0 bag and returned signed runtime
+selector `1`; operation `0x21` authorized the existing current-format ACM
+context; unload succeeded; a subsequent exact copy returned `-3`; context
+delete, CPU stop, and DMA scrub all passed the independent transcript verifier.
+This proves Linux can create a fresh SEP-backed password namespace and use it
+to authorize an ACM context. It does not prove authentication against the
+pre-existing macOS account keybag.
+
+The next-stage implementation retains that freshly authorized context only
+inside the bounded kernel probe while a Linux BiometricKit enrollment client
+runs. Its 16-byte external form is readable once through a root-only sysfs
+parameter and is piped on standard input, never placed in an argument or log.
+A separate write-only completion acknowledgement lets the probe retain the SEP
+context through the transaction; two five-minute deadlines ensure eventual
+teardown. The client uses the exact current 68-byte version-2 built-in-device
+enrollment payload, and both the mutable request owner and kernel handoff buffer
+are explicitly scrubbed. Build and offline lifecycle tests pass; the combined
+hardware path remains unproven until its supervised enrollment run.
+
 `credential-authorization.py` now composes these boundaries into one offline
 lifecycle without importing any device, socket, PAM, or prompt implementation.
 ACM initialization/context creation and AKS capabilities/environment setup may

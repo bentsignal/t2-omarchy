@@ -138,7 +138,8 @@ class KernelOolSafetyTests(unittest.TestCase):
             "bool dual_credential_ool = apple_capture_dual_credential_ool_acks ||\n"
             "\t\t\t\t   apple_probe_credential_startup ||\n"
             "\t\t\t\t   apple_probe_password_verification ||\n"
-            "\t\t\t\t   apple_probe_ephemeral_keybag_authorization;", SOURCE)
+            "\t\t\t\t   apple_probe_ephemeral_keybag_authorization ||\n"
+            "\t\t\t\t   apple_probe_authorized_enrollment_handoff;", SOURCE)
         self.assertIn(
             "pdev, bar4, second_in_buffer, second_out_buffer", SOURCE)
 
@@ -184,6 +185,25 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertLess(verify, unload)
         self.assertLess(unload, absence)
         self.assertLess(absence, delete)
+
+    def test_authorized_enrollment_handoff_is_read_once_and_bounded(self):
+        for fragment in (
+                "static bool apple_probe_authorized_enrollment_handoff;",
+                "T2SEP_AUTHORIZED_ENROLLMENT_CONFIRMATION",
+                "module_param_cb(enrollment_credential",
+                "module_param_cb(enrollment_done",
+                "NULL, 0400", "NULL, 0200",
+                "t2sep_enrollment_consumed = true",
+                "memzero_explicit(t2sep_enrollment_credential",
+                "wait_for_completion_timeout(&t2sep_enrollment_credential_read",
+                "wait_for_completion_timeout(&t2sep_enrollment_finished",
+                "credential_bytes=not-logged"):
+            self.assertIn(fragment, SOURCE)
+        publish = SOURCE.index("memcpy(t2sep_enrollment_credential, context")
+        wait = SOURCE.index("wait_for_completion_timeout", publish)
+        unload = SOURCE.index("version, 0x05, 5", wait)
+        self.assertLess(publish, wait)
+        self.assertLess(wait, unload)
 
     def test_stop_precedes_scrub_and_free(self) -> None:
         function = SOURCE.index("static int t2sep_apple_start_cpu_probe")

@@ -50,6 +50,7 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
             user_id=501, credential_set=credential)
         view = request.view()
         self.assertEqual(credential, bytearray(16))
+
         self.assertEqual(len(view), 68)
         self.assertEqual(struct.unpack_from("<IIII", view, 0),
                          (0, 501, 0, 16))
@@ -58,10 +59,17 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from("<I", view, 48)[0], 1)
         self.assertEqual(view[52:68], bytes(16))
         self.assertNotIn("bytearray", repr(request))
+        fields = command.authorized_enroll_fields(request)
+        self.assertEqual(fields[:3], (3, 2, 0))
+        self.assertEqual(len(fields[3]), 68)
+        self.assertEqual(fields[3][16:32], bytes(range(16)))
+        self.assertEqual(fields[4], 0)
         request.close()
         self.assertEqual(bytes(view), bytes(68))
         with self.assertRaises(command.BiometricCommandError):
             request.view()
+        with self.assertRaises(command.BiometricCommandError):
+            command.authorized_enroll_fields(request)
 
     def test_authorized_enrollment_rejects_and_scrubs_bad_inputs(self):
         for user_id, credential in ((-1, bytearray(range(16))),

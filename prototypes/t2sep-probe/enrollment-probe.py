@@ -72,6 +72,7 @@ def _identities(session, user_id: int):
 
 
 def probe_socket(sock, *, user_id: int,
+                 authorized_request=None,
                  progress: Callable[[tuple[int, int, int]], None] | None = None
                  ) -> EnrollmentProbeResult:
     """Enroll one token-free identity and prove an exact terminal/list delta."""
@@ -83,8 +84,15 @@ def probe_socket(sock, *, user_id: int,
     cancel_status = -1
     after = None
     try:
-        start_status, output = _perform(
-            session, biometric.ordinary_enroll_fields(user_id=user_id))
+        if authorized_request is None:
+            fields = biometric.ordinary_enroll_fields(user_id=user_id)
+        else:
+            fields = biometric.authorized_enroll_fields(authorized_request)
+        try:
+            start_status, output = _perform(session, fields)
+        finally:
+            if authorized_request is not None:
+                authorized_request.close()
         if start_status != 0 or output is not None:
             output_length = len(output) if isinstance(output, bytes) else None
             raise EnrollmentProbeError(
@@ -146,6 +154,7 @@ def probe_socket(sock, *, user_id: int,
 
 def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
                timeout: float = 5.0, event_timeout: float = 30.0,
+               authorized_request=None,
                progress: Callable[[tuple[int, int, int]], None] | None = None
                ) -> EnrollmentProbeResult:
     if not LIVE_ENROLLMENT_ENABLED:
@@ -160,7 +169,9 @@ def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
     def run(sock):
         nonlocal result
         sock.settimeout(event_timeout)
-        result = probe_socket(sock, user_id=user_id, progress=progress)
+        result = probe_socket(sock, user_id=user_id,
+                              authorized_request=authorized_request,
+                              progress=progress)
         return result
 
     original = coupled.bridge_query.query_connected_socket

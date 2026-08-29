@@ -79,6 +79,30 @@ making the temporary AKS state auditable and bounded.
   I_UNDERSTAND_EPHEMERAL_KEYBAG_ATTEMPT 501
 ```
 
+The first supervised run on 2026-08-29 passed the complete verifier: SEP
+returned runtime selector `1`, accepted operation `0x21`, accepted unload, and
+then returned `-3` to the independent copy-after-unload absence check. No
+password, context, or returned device-state bytes were logged.
+
+`run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
+experiment. It repeats that proven lifecycle but keeps the authorized ACM
+context and temporary keybag live while one BiometricKit enrollment runs. A
+root-only module parameter exposes the context's 16-byte external form exactly
+once; the runner pipes it directly to the enrollment client on standard input,
+never an argument or log. The client consumes it into Apple's exact 68-byte
+version-2 built-in enrollment request and scrubs its owner after the synchronous
+send. A distinct write-only acknowledgement ends the handoff. Both waits are
+capped at five minutes, and timeout, client failure, or shell exit still leads
+to unload, copy-after-unload proof, context deletion, CPU stop, and DMA scrub.
+An independent verifier requires the handoff markers to occur strictly between
+authorization and unload. This path has passed build and offline tests but must
+not be described as live-proven until its first supervised run succeeds.
+
+```bash
+./run-authorized-enrollment-probe.sh \
+  I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY 501
+```
+
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
 envelope, OOL length bound, reply message-type correlation, zero-status SCRD
 initialization with Apple's fixed KDK-derived version `0x28`, and zero-status

@@ -234,6 +234,28 @@ def ordinary_enroll_fields(*, user_id: int) -> tuple[int, int, int, bytes, int]:
             encode_ordinary_enroll_payload(user_id=user_id), 0)
 
 
+def authorized_enroll_fields(
+        request: AuthorizedEnrollRequest) -> tuple[int, int, int, bytes, int]:
+    """Serialize one owned ACM-authorized request for BridgeXPC method 3.
+
+    The caller must close ``request`` immediately after the synchronous socket
+    send.  Returning ``bytes`` is required by the binary-plist serializer; its
+    short-lived serialization copies are owned and discarded by that layer.
+    """
+    if not isinstance(request, AuthorizedEnrollRequest) or request.closed:
+        raise BiometricCommandError("authorized enrollment request is unavailable")
+    payload = bytes(request.view())
+    if len(payload) != CURRENT_ENROLL_PAYLOAD.size:
+        raise BiometricCommandError("authorized enrollment request size changed")
+    flags, user_id, using_token, token_length = struct.unpack_from("<IIII", payload)
+    device_group = struct.unpack_from("<I", payload, 48)[0]
+    if (flags != 0 or using_token != 0 or
+            token_length != ACM_EXTERNAL_FORM_SIZE or
+            device_group != BUILTIN_DEVICE_GROUP or payload[52:] != bytes(16)):
+        raise BiometricCommandError("authorized enrollment request shape changed")
+    return COMMAND_ENROLL, CURRENT_COMMAND_VERSION, 0, payload, 0
+
+
 def presence_detect_fields() -> tuple[int, int, int, bytes, int]:
     """Return Catalina's no-input presence-detect command fields."""
     return COMMAND_PRESENCE_DETECT, COMMAND_VERSION, 0, b"", 0
