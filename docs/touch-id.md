@@ -975,6 +975,16 @@ an exact 17-byte response, and copies its first 16 bytes into the opaque
 context handle; the final byte is separate tracking metadata. Creating a
 context therefore does not require inventing or persisting a token.
 
+ACM's mailbox envelope is also exactly 12 bytes, but it is not the AKS format:
+endpoint `0x0a`, an 8-bit message type, a little-endian 16-bit OOL payload
+length, a 32-bit request value or response status, and a final reserved zero
+word. The Intel endpoint layer inserts byte 0 and transmits the following
+qword plus the zero third word. The receive callback rejects other endpoints,
+bounds the announced length by the waiting caller's output buffer, and copies
+only that many bytes from the receive OOL mapping. `acm-transport.py` models
+this framing and adds strict message-type correlation before accepting a
+reply; it performs no context creation or device I/O.
+
 `AppleKeyStore::verify_password`, in contrast, uses the service named
 `aks-endpoint`, instantiated at fixed SEP endpoint `0x07`, with separate
 `0x4000`-byte, page-aligned OOL buffers in each direction.

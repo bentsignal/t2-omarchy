@@ -24,6 +24,10 @@ or reproduce Apple's startup writes.
 mailbox envelope and reply correlation. It performs no MMIO, DMA, password
 handling, or AKS IPC serialization.
 
+`acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
+envelope, OOL length bound, and reply message-type correlation. It likewise
+has no device-I/O path.
+
 Build against the running kernel:
 
 ```bash
