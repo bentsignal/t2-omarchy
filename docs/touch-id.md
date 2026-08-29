@@ -2560,8 +2560,10 @@ enrollment remain separate supervised steps.
 ### Current macOS per-user state and enrollment serializer (2026-08-29)
 
 Static analysis of the installed macOS 26.6.2 `biometrickitd` closes another
-wire-format ambiguity. Current `GetProtectedConfig` is command `0x2e`, version
-0, with a four-byte UID input and exact 32-byte reply. `GetCatacombState` is
+wire-format ambiguity. Current `GetProtectedConfig` is command `0x2e`, with a
+four-byte UID input and exact 32-byte reply. Its current Bridge command version
+was subsequently proven live to be 1; the earlier version-0 interpretation
+confused Apple's zero `inValue` argument with the Bridge version. `GetCatacombState` is
 command `0x3c`, version 0, with no input and a variable reply whose length must
 be divisible by 8. `GetCatacombUUID` is command `0x38`, version 0, with a
 four-byte UID input and exact 16-byte reply. On protocol generation 2 or newer,
@@ -2589,26 +2591,27 @@ difference on Linux. Exact sanitized details and constraints are in
 `docs/macos-user-config-handoff.md`.
 
 The first Linux read-only state-shape probe mirrored bridge generation-3
-initialization and sent exact current commands `0x2e`, `0x3c`, and `0x50`.
-All three returned the identical host status `0xe00002c2`
-(`kIOReturnBadArgument`) with no accepted result shape. The fixed-size
-per-user request exactly matches Apple's four-byte UID input, while the two
-state requests have no input, so this common result is evidence that the
-service has no initialized/loaded catacomb context after a Linux boot—not a
-three-command serialization error. The probe is checked in and deliberately
+initialization and sent commands `0x2e`, `0x3c`, and `0x50`. Its then-version-0
+`0x2e` envelope and the two state commands returned the identical host status `0xe00002c2`
+(`kIOReturnBadArgument`) with no accepted result shape. The two no-input state
+commands remain evidence that the service lacked initialized/loaded catacomb
+state after Linux boot. The per-user result is not such evidence because its
+Bridge version was wrong; later live version discrimination corrected it. The
+probe is checked in and deliberately
 reports only status, accepted length, and record counts; opaque records are
 never decoded or printed.
 
 Current KDK dispatch proves that Apple's pristine-database `NoCatacomb` path
 is command `0x31`, version 1, with an exact four-byte UID input and no output.
 A separately gated Linux probe sent that exact request for UID 501. It
-succeeded with status zero, but immediate `GetProtectedConfig`,
-`GetCatacombState`, and `GetCatacombGroupState` queries still returned
-`kIOReturnBadArgument`.
+succeeded with status zero. The two catacomb-state queries still returned
+`kIOReturnBadArgument`; the accompanying per-user getter used the subsequently
+disproved version-0 envelope and therefore cannot establish whether
+`NoCatacomb` alone created a policy.
 
-This splits the missing startup state into two prerequisites. Linux can now
-initialize an empty in-memory catacomb context, but doing so does not create
-the user's protected-policy object or a persisted biometric database. The
+Linux can now initialize an empty in-memory catacomb context, but doing so does
+not create a persisted biometric database. Whether it independently creates a
+default protected-policy object was not established by that run. The
 probe neither reads nor writes macOS's on-disk catacomb, and the state
 disappears when the bridge or machine is restarted. Static analysis identifies
 the next operation as current `SetProtectedConfig` command `0x2f`, version 1,

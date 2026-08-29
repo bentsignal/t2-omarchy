@@ -190,7 +190,7 @@ def decode_system_protected_config(output: bytes) -> SystemProtectedConfig:
 
 
 def protected_config_fields(*, user_id: int):
-    return (COMMAND_GET_PROTECTED_CONFIG, 0, 0,
+    return (COMMAND_GET_PROTECTED_CONFIG, COMMAND_VERSION, 0,
             struct.pack("<I", _u32(user_id, "user ID")), PROTECTED_CONFIG_SIZE)
 
 

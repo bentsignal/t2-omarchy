@@ -21,6 +21,10 @@ BRIDGE_SPEC.loader.exec_module(bridge)
 
 
 class OrdinaryMatchPayloadTests(unittest.TestCase):
+    def test_current_user_protected_config_getter_envelope(self):
+        self.assertEqual(command.protected_config_fields(user_id=501),
+                         (0x2e, 1, 0, b"\xf5\x01\0\0", 32))
+
     def test_current_catacomb_save_and_load_codecs(self):
         context = struct.pack("<II16s", 501, 1, bytes(16))
         self.assertEqual(command.builtin_catacomb_save_context(user_id=501), context)
