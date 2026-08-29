@@ -61,6 +61,39 @@ class AKSTransportTests(unittest.TestCase):
         with self.assertRaises(aks.AKSTransportError):
             aks.decode_capabilities_reply(struct.pack("<I", 0x50) + header + payload)
 
+    def test_startup_environment_request_exact_nonsecret_layout(self):
+        blob = aks.startup_environment_blob(0x11223344)
+        self.assertEqual(len(blob), 0x40c)
+        self.assertEqual(struct.unpack_from("<IIIQ", blob),
+                         (1, 0x11223344, 4, 0))
+        self.assertEqual(blob[20:], bytes(0x3f8))
+        wire = aks.encode_startup_environment_request(
+            self._identity(2), 0x11223344)
+        self.assertEqual(len(wire), 0x470)
+        self.assertEqual(struct.unpack_from("<I", wire)[0], 0x50)
+        self.assertEqual(struct.unpack_from("<IQI", wire, 0x54),
+                         (0, 1, 0x40c))
+        self.assertEqual(wire[0x64:], blob)
+        aks.validate_protected_header(wire[4:0x54], wire[0x54:])
+        for value in (-1, 1 << 32, True, b"0"):
+            with self.subTest(value=value):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.startup_environment_blob(value)
+
+    def test_set_environment_reply_is_exact_protected_zero_status(self):
+        body = struct.pack("<i", 0)
+        header = aks.protect_header(self._identity(2), body)
+        wire = struct.pack("<I", 0x50) + header + body
+        self.assertIsNone(aks.decode_set_environment_reply(wire, 2))
+        bad = (wire[:-1], wire + b"\0",
+               wire[:0x54] + struct.pack("<i", -1))
+        for value in bad:
+            with self.subTest(length=len(value)):
+                with self.assertRaises(aks.AKSTransportError):
+                    aks.decode_set_environment_reply(value, 2)
+        with self.assertRaises(aks.AKSTransportError):
+            aks.decode_set_environment_reply(wire, 1)
+
     def test_verify_secret_success_reply(self):
         body = struct.pack("<IQ", 1, 0x1122334455667788)
         header = aks.protect_header(self._identity(2), body)
@@ -92,6 +125,7 @@ class AKSTransportTests(unittest.TestCase):
         plan = aks.AuthorizationPlan()
         plan.capabilities_request = aks.AKSEnvelope(0x4d, 1, 100, False)
         plan.header_version = 1
+        plan.environment_initialized = True
         plan.plan_verify_secret(
             2, 12, keybag_handle=aks.SessionKeybagHandle(7),
             selector=aks.SessionKeybagSelector(-2))
@@ -311,12 +345,26 @@ class AKSTransportTests(unittest.TestCase):
         reply_wire = bytes.fromhex("07cd01000000640000000000")
         self.assertEqual(plan.accept_capabilities_transport(
             reply_wire, payload), 2)
+        with self.assertRaises(aks.AKSTransportError):
+            plan.plan_verify_secret(
+                2, 12, keybag_handle=aks.SessionKeybagHandle(7),
+                selector=aks.SessionKeybagSelector(-10))
+        environment_wire = plan.request_startup_environment(2)
+        self.assertEqual(aks.decode_envelope(environment_wire),
+                         aks.AKSEnvelope(0x2a, 2, 0x470, False))
+        environment_body = struct.pack("<i", 0)
+        environment_header = aks.protect_header(
+            self._identity(2), environment_body)
+        environment_payload = (struct.pack("<I", 0x50) +
+                               environment_header + environment_body)
+        plan.accept_startup_environment(
+            bytes.fromhex("07aa02000000580000000000"), environment_payload)
         verify_wire = plan.plan_verify_secret(
-            2, 12, keybag_handle=aks.derive_session_keybag_handle(
+            3, 12, keybag_handle=aks.derive_session_keybag_handle(
                 0x1122334455667780, 8),
             selector=aks.derive_session_keybag_selector(10))
         self.assertEqual(aks.decode_envelope(verify_wire),
-                         aks.AKSEnvelope(0x21, 2, 144, False))
+                         aks.AKSEnvelope(0x21, 3, 144, False))
         self.assertEqual(plan.verify_metadata,
                          aks.VerifySecretMetadata(
                              aks.SessionKeybagHandle(0x1122334455667788),
@@ -332,6 +380,27 @@ class AKSTransportTests(unittest.TestCase):
         with self.assertRaises(aks.AKSTransportError):
             plan.accept_capabilities_transport(
                 bytes.fromhex("07cd02000000640000000000"), bytes(100))
+
+    def test_authorization_plan_rejects_bad_environment_sequence(self):
+        plan = aks.AuthorizationPlan()
+        with self.assertRaises(aks.AKSTransportError):
+            plan.request_startup_environment(2)
+        plan.header_version = 2
+        request = plan.request_startup_environment(2)
+        self.assertEqual(aks.decode_envelope(request).payload_length, 0x470)
+        with self.assertRaises(aks.AKSTransportError):
+            plan.request_startup_environment(3)
+        body = struct.pack("<i", 0)
+        payload = (struct.pack("<I", 0x50) +
+                   aks.protect_header(self._identity(2), body) + body)
+        with self.assertRaises(aks.AKSTransportError):
+            plan.accept_startup_environment(
+                bytes.fromhex("07aa03000000580000000000"), payload)
+        plan.accept_startup_environment(
+            bytes.fromhex("07aa02000000580000000000"), payload)
+        with self.assertRaises(aks.AKSTransportError):
+            plan.accept_startup_environment(
+                bytes.fromhex("07aa02000000580000000000"), payload)
 
 
 if __name__ == "__main__":

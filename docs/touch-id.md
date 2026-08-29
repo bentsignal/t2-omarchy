@@ -1046,20 +1046,23 @@ Endpoint initialization first issues `ipc_get_capabilities` as AKS operation
 `0x4d`. If that fails,
 AppleKeyStore falls back to IPC header version 1. Otherwise it negotiates
 `min(remote_version, 2)`. Only after fixing that global negotiated version does
-it continue with environment and entropy initialization. A Linux client must
+it call `set_env(false)`, then derive class-F public-key material through AKS
+and mix the returned public bytes into the host kernel PRNG. The latter is not
+an entropy upload to SEP. A Linux client must
 therefore not hard-code the richer version-2 header or send verify-secret as
 its first AKS transaction. The offline transport model includes this exact
-fallback/cap decision and names verify-secret operation `0x21`, but does not
-encode either IPC payload.
+fallback/cap decision, the intervening environment operation, and
+verify-secret operation `0x21`.
 
 The capabilities request's serialized size is exactly 100 bytes: the
 `0x54`-byte IPC header, variant word, one qword, and an empty length-prefixed
-blob. `AuthorizationPlan` now enforces correlated operation-`0x4d`
-capabilities transport and successful version selection before it will even
-plan an operation-`0x21` verify-secret envelope. It accepts only the password
-length, not password bytes, and uses the bounded size calculation above. This
-closes the ordering layer while deliberately leaving live process-identity
-sourcing and secret-buffer serialization unwired.
+blob. `AuthorizationPlan` enforces correlated operation-`0x4d` capabilities
+transport and successful version selection before permitting environment
+setup, and requires successful environment setup before it will even plan an
+operation-`0x21` verify-secret envelope. It accepts only the password length,
+not password bytes, and uses the bounded size calculation above. This closes
+the ordering layer while deliberately leaving live process-identity sourcing
+and secret-buffer serialization unwired.
 
 The operation-`0x4d` body is now byte-exact as well. Both its empty-input
 request and normal empty-blob reply are 100 bytes: a little-endian header
@@ -1071,6 +1074,19 @@ header length, zero flags, a valid truncated-SHA-256 digest, and an empty blob
 before exposing status or remote version. This gives a mechanical validator
 for the first eventual AKS service response; it is not connected to device
 I/O.
+
+The mandatory normal-boot environment transaction is now byte-exact from the
+pinned macOS 14.5 AppleKeyStore binary. It is AKS operation `0x2a`: a
+`0x470`-byte request and an `0x58`-byte response. After the protected header,
+the request contains a zero variant word, qword `1`, blob length `0x40c`, and
+the environment blob. That blob begins with u32 values `1`, the explicit
+`IODeviceTree:/defaults` property `no-effaceable-storage` (zero if absent),
+and normal-mode value `4`, followed by a zero qword and `0x3f8` zero bytes.
+The response contains only the protected header and a zero signed status. The
+offline codec range-checks the device-tree property, constructs every reserved
+byte as zero, validates the negotiated header version and digest, and rejects
+nonzero status, extra bytes, and reordered replies. It is not yet connected to
+device I/O.
 
 The IPC integrity primitive is now recovered exactly from AppleKeyStore's
 `_payload_hash`. The external relocation at x86_64 call site `0x81cad`

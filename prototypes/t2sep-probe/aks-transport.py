@@ -14,6 +14,7 @@ OOL_CAPACITY = 0x4000
 ENVELOPE_SIZE = 12
 REPLY_BIT = 0x80
 GET_CAPABILITIES = 0x4D
+SET_ENVIRONMENT = 0x2A
 VERIFY_SECRET_V1 = 0x21
 MAX_HEADER_VERSION = 2
 SERIALIZED_HEADER_SIZE = 0x54
@@ -22,6 +23,10 @@ IPC_DIGEST_SIZE = 16
 CDHASH_SIZE = 20
 ACM_CONTEXT_SIZE = 16
 CAPABILITIES_SERIALIZED_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
+STARTUP_ENVIRONMENT_BLOB_SIZE = 0x40C
+STARTUP_ENVIRONMENT_REQUEST_SIZE = (
+    SERIALIZED_HEADER_SIZE + 4 + 8 + 4 + STARTUP_ENVIRONMENT_BLOB_SIZE)
+SET_ENVIRONMENT_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4
 VERIFY_SECRET_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8
 
 
@@ -114,6 +119,28 @@ def encode_capabilities_request(identity_header: bytes) -> bytes:
     return wire
 
 
+def startup_environment_blob(no_effaceable_storage: int) -> bytes:
+    """Build AppleKeyStore's normal-boot, non-secret ``set_env`` blob."""
+    no_effaceable_storage = _uint(
+        no_effaceable_storage, 32, "no-effaceable-storage property")
+    blob = bytearray(STARTUP_ENVIRONMENT_BLOB_SIZE)
+    struct.pack_into("<IIIQ", blob, 0, 1, no_effaceable_storage, 4, 0)
+    return bytes(blob)
+
+
+def encode_startup_environment_request(identity_header: bytes,
+                                       no_effaceable_storage: int) -> bytes:
+    """Encode operation 0x2a after header negotiation for normal boot."""
+    _require_plain_identity_header(identity_header)
+    blob = startup_environment_blob(no_effaceable_storage)
+    payload = struct.pack("<IQI", 0, 1, len(blob)) + blob
+    protected = protect_header(identity_header, payload)
+    wire = struct.pack("<I", IPC_HEADER_SIZE) + protected + payload
+    if len(wire) != STARTUP_ENVIRONMENT_REQUEST_SIZE:
+        raise AssertionError("startup environment request size invariant failed")
+    return wire
+
+
 @dataclass(frozen=True)
 class CapabilitiesReply:
     status: int
@@ -173,6 +200,26 @@ def decode_capabilities_reply(wire: bytes) -> CapabilitiesReply:
     if blob_length != 0:
         raise AKSTransportError("AKS capabilities reply blob must be empty")
     return CapabilitiesReply(status, remote_version)
+
+
+def decode_set_environment_reply(wire: bytes,
+                                 expected_header_version: int) -> None:
+    """Accept only operation 0x2a's exact protected zero-status response."""
+    if expected_header_version not in (1, 2):
+        raise AKSTransportError("expected AKS IPC header version must be 1 or 2")
+    if not isinstance(wire, bytes) or len(wire) != SET_ENVIRONMENT_REPLY_SIZE:
+        raise AKSTransportError("AKS set-environment reply must be exactly 88 bytes")
+    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS set-environment reply has the wrong header length")
+    header = wire[4:SERIALIZED_HEADER_SIZE]
+    payload = wire[SERIALIZED_HEADER_SIZE:]
+    if struct.unpack_from("<I", header, 0x10)[0] != expected_header_version:
+        raise AKSTransportError("AKS set-environment reply changed header version")
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("AKS set-environment reply has unsupported header flags")
+    validate_protected_header(header, payload)
+    if struct.unpack("<i", payload)[0] != 0:
+        raise AKSTransportError("AKS set-environment reply reports failure")
 
 
 def decode_verify_secret_reply(wire: bytes, expected_header_version: int) -> VerifySecretReply:
@@ -367,11 +414,13 @@ def _align4(value: int) -> int:
 
 
 class AuthorizationPlan:
-    """Order capability negotiation and verify-secret without secret bytes."""
+    """Order capabilities, environment, and verify-secret without secret bytes."""
 
     def __init__(self) -> None:
         self.capabilities_request: AKSEnvelope | None = None
         self.header_version: int | None = None
+        self.environment_request: AKSEnvelope | None = None
+        self.environment_initialized = False
         self.verify_metadata: VerifySecretMetadata | None = None
         self.verify_request: AKSEnvelope | None = None
         self.verify_reply: VerifySecretReply | None = None
@@ -395,10 +444,34 @@ class AuthorizationPlan:
         self.header_version = negotiated_header_version(reply.status, remote)
         return self.header_version
 
+    def request_startup_environment(self, tag: int) -> bytes:
+        if (self.header_version not in (1, 2) or
+                self.environment_request is not None or
+                self.environment_initialized):
+            raise AKSTransportError("set-environment request is out of order")
+        wire = encode_request(SET_ENVIRONMENT, tag,
+                              STARTUP_ENVIRONMENT_REQUEST_SIZE)
+        self.environment_request = decode_envelope(wire)
+        return wire
+
+    def accept_startup_environment(self, reply_data: bytes,
+                                   payload: bytes) -> None:
+        if (self.environment_request is None or
+                self.header_version not in (1, 2) or
+                self.environment_initialized):
+            raise AKSTransportError("set-environment reply is out of order")
+        envelope = validate_reply(self.environment_request, reply_data)
+        if envelope.payload_length != len(payload):
+            raise AKSTransportError(
+                "set-environment envelope length does not match payload")
+        decode_set_environment_reply(payload, self.header_version)
+        self.environment_initialized = True
+
     def plan_verify_secret(self, tag: int, password_length: int, *,
                            keybag_handle: SessionKeybagHandle,
                            selector: SessionKeybagSelector) -> bytes:
-        if self.header_version is None or self.verify_request is not None:
+        if (not self.environment_initialized or self.header_version is None or
+                self.verify_request is not None):
             raise AKSTransportError("verify-secret request is out of order")
         metadata = verify_secret_metadata(keybag_handle, selector)
         size = verify_secret_serialized_size(password_length)
