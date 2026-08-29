@@ -542,7 +542,7 @@ static int t2sep_probe_aks_capabilities(struct pci_dev *pdev,
 	}
 	status = get_unaligned_le32(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE);
 	remote_version = get_unaligned_le64(receive + T2SEP_AKS_SERIALIZED_HEADER_SIZE + 4);
-	if (status || remote_version < 1 || remote_version > 2) {
+	if (status || remote_version < 1) {
 		ret = status ? -EREMOTEIO : -EPROTONOSUPPORT;
 		goto out_scrub;
 	}

@@ -1130,7 +1130,8 @@ semantics of `mach_continuous_time`). It uses the kernel's exported SHA-256 impl
 one endpoint-7 selector-`0x4d` envelope, and accepts only a correlated
 selector-`0xcd`, tag-4, length-100 reply. The receive path requires header
 length 80, version 1, zero flags, empty blob, constant-time digest equality,
-zero status, and a supported remote version before teardown. A separate
+zero status, and a nonzero remote version before teardown; later code follows
+Apple by negotiating `min(remote, 2)`. A separate
 wrapper and transcript verifier enforce model/PCI/driver checks, human
 confirmation, cursor-bounded evidence, stop-before-scrub, unload, and unbind.
 It will not be run without the user present.

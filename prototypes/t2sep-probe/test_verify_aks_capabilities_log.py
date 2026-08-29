@@ -41,13 +41,18 @@ class VerifyAksCapabilitiesLogTests(unittest.TestCase):
             GOOD.replace("selector=0x4d", "selector=0x4c"),
             GOOD.replace("raw=0004cd07", "raw=0005cd07"),
             GOOD.replace("status=0", "status=-1"),
-            GOOD.replace("remote_header_version=2", "remote_header_version=3"),
+            GOOD.replace("remote_header_version=2", "remote_header_version=0"),
             GOOD.replace(line("AKS capabilities envelope: raw=0004cd07 00640000 00000000 00000000"), ""),
         )
         for transcript in mutations:
             with self.subTest():
                 with self.assertRaises(verify.VerificationError):
                     verify.verify(transcript)
+
+    def test_caps_newer_remote_version_like_apple(self):
+        self.assertEqual(
+            verify.verify(GOOD.replace("remote_header_version=2",
+                                       "remote_header_version=99")), 99)
 
 
 if __name__ == "__main__":

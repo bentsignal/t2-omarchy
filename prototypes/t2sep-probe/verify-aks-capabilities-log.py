@@ -67,7 +67,7 @@ def verify(text: str) -> int:
             if state != 2 or int(match[1]) != 0:
                 raise VerificationError("AKS capabilities result is reordered or unsuccessful")
             remote_version = int(match[2])
-            if remote_version not in (1, 2):
+            if remote_version < 1:
                 raise VerificationError("AKS capabilities version is unsupported")
             state = 3
     if state != 3 or remote_version is None:
