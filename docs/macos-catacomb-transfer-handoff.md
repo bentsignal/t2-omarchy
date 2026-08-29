@@ -37,3 +37,39 @@ the same magic/UID/size constraints, wrap it in the existing integrity envelope,
 remove the short-lived EFI ciphertext, and issue the already bounded
 `LoadCatacomb` comparison. This is reverse-engineering evidence, not the final
 Linux-native enrollment dependency.
+
+## macOS return result: transfer stopped on format mismatch
+
+The requested validation failed closed before mounting EFI or creating any
+transfer artifact. The active UID-501 source exists and is 708 bytes, within
+the requested size bound, but it is an Apple binary keyed archive rather than
+a raw `CAT1` transport blob. Its first four bytes are not `CAT1`, and offset 8
+is not a little-endian UID. A metadata-only traversal confirmed that none of
+the three current `.cat` archives, nor any data object embedded in them, begins
+with `CAT1`. No source was changed, copied, hashed, uploaded, or committed, and
+no plaintext or ciphertext temporary file was created.
+
+The installed macOS 26.6.2 daemon explains the mismatch. Its archive layer
+stores separate keyed fields including `CatacombSecureData`,
+`CatacombIdentityList`, `CatacombUserID`, and version/UUID metadata. During
+load, the superclass archive path reconstructs a component object. Current
+Mesa `loadCatacombForComponent:` then obtains that component's decoded secure
+data and passes the opaque data object's bytes and length directly to
+`performLoadCatacombCommand:inData:`. That method issues outer command `0x40`
+with those bytes; it does not pass the on-disk keyed archive as the command
+payload and does not construct or validate a host-side `CAT1` header.
+
+This disproves the proposed direct-file transfer and the current Linux rule
+that command-`0x40` input must be a `CAT1` blob with UID at offset 8. Do not
+relax that rule and send arbitrary archived bytes. Linux must first implement
+and test a bounded parser for the macOS keyed archive or otherwise recover the
+exact `CatacombSecureData` extraction semantics, while treating all extracted
+bytes as opaque biometric material. It must also reconcile its KDK-derived
+header interpretation with this checksum-pinned current-daemon call path.
+
+After that correction, a new handoff may authorize streaming the entire
+validated keyed archive through CMS to EFI. Linux can decrypt it only into a
+root-only temporary input, extract exactly the secure-data object without
+logging values, then send only that object to command `0x40`. This pass did not
+perform that broader transfer because it was outside the original validation
+gate and would have produced an artifact the current Linux loader rejects.

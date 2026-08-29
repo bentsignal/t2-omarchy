@@ -2625,6 +2625,24 @@ local-only load of the existing macOS catacomb the next controlled comparison.
 The opaque file must never be committed or printed because it contains
 biometric database material.
 
+The first macOS transfer pass stopped before mounting EFI because its required
+format assumption was false. The active UID-501 `.cat` file is a 708-byte Apple
+binary keyed archive, not a raw `CAT1` blob; neither it nor any data object in
+the three current archives has `CAT1` magic. Current `biometrickitd` separates
+archive metadata from `CatacombSecureData`. Its Mesa load path obtains the
+decoded secure-data object's bytes and length and supplies those bytes directly
+to outer command `0x40`; it does not send the keyed archive or synthesize a
+host-side `CAT1` header. No transfer artifact was created.
+
+The Linux `LoadCatacomb` codec's `CAT1` and UID-at-offset-8 requirements
+therefore do not describe the current macOS persisted-file path. They must not
+simply be removed: Linux first needs a fail-closed keyed-archive extractor and
+must reconcile the earlier KDK handler interpretation with the installed
+daemon's exact call path. Only then should a new macOS pass encrypt the archive
+for local transfer and Linux extract its opaque secure-data field without
+printing, hashing, or retaining unrelated archive contents. Exact constraints
+and the return handoff are in `docs/macos-catacomb-transfer-handoff.md`.
+
 That static comparison is now complete. In the checksum-pinned current
 Settings extension, `ACMContextGetExternalForm` invokes a callback that calls
 the local `_aks_verify_password` wrapper with caller-facing keybag handle `-3`,
