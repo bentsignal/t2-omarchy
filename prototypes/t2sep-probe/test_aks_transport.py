@@ -70,6 +70,30 @@ class AKSTransportTests(unittest.TestCase):
         with self.assertRaises(aks.AKSTransportError):
             aks.verify_secret_serialized_size(b"password")
 
+    def test_authorization_plan_requires_capabilities_before_verify(self):
+        plan = aks.AuthorizationPlan()
+        with self.assertRaises(aks.AKSTransportError):
+            plan.plan_verify_secret(2, 12)
+        request_wire = plan.request_capabilities(1)
+        self.assertEqual(aks.decode_envelope(request_wire),
+                         aks.AKSEnvelope(0x4d, 1, 100, False))
+        reply_wire = bytes.fromhex("07cd010000000c0000000000")
+        self.assertEqual(plan.accept_capabilities_transport(
+            reply_wire, status=0, remote_version=4), 2)
+        verify_wire = plan.plan_verify_secret(2, 12)
+        self.assertEqual(aks.decode_envelope(verify_wire),
+                         aks.AKSEnvelope(0x21, 2, 144, False))
+        with self.assertRaises(aks.AKSTransportError):
+            plan.plan_verify_secret(3, 12)
+
+    def test_authorization_plan_rejects_uncorrelated_capabilities_reply(self):
+        plan = aks.AuthorizationPlan()
+        plan.request_capabilities(1)
+        with self.assertRaises(aks.AKSTransportError):
+            plan.accept_capabilities_transport(
+                bytes.fromhex("07cd020000000c0000000000"),
+                status=0, remote_version=2)
+
 
 if __name__ == "__main__":
     unittest.main()

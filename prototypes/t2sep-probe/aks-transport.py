@@ -16,6 +16,7 @@ VERIFY_SECRET_V1 = 0x21
 MAX_HEADER_VERSION = 2
 SERIALIZED_HEADER_SIZE = 0x54
 ACM_CONTEXT_SIZE = 16
+CAPABILITIES_SERIALIZED_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
 
 
 class AKSTransportError(ValueError):
@@ -115,3 +116,36 @@ def _length(value: int, label: str) -> int:
 
 def _align4(value: int) -> int:
     return (value + 3) & ~3
+
+
+class AuthorizationPlan:
+    """Order capability negotiation and verify-secret without secret bytes."""
+
+    def __init__(self) -> None:
+        self.capabilities_request: AKSEnvelope | None = None
+        self.header_version: int | None = None
+        self.verify_request: AKSEnvelope | None = None
+
+    def request_capabilities(self, tag: int) -> bytes:
+        if self.capabilities_request is not None or self.header_version is not None:
+            raise AKSTransportError("capabilities request is out of order")
+        wire = encode_request(GET_CAPABILITIES, tag, CAPABILITIES_SERIALIZED_SIZE)
+        self.capabilities_request = decode_envelope(wire)
+        return wire
+
+    def accept_capabilities_transport(self, reply_data: bytes,
+                                      *, status: int,
+                                      remote_version: int | None) -> int:
+        if self.capabilities_request is None or self.header_version is not None:
+            raise AKSTransportError("capabilities reply is out of order")
+        validate_reply(self.capabilities_request, reply_data)
+        self.header_version = negotiated_header_version(status, remote_version)
+        return self.header_version
+
+    def plan_verify_secret(self, tag: int, password_length: int) -> bytes:
+        if self.header_version is None or self.verify_request is not None:
+            raise AKSTransportError("verify-secret request is out of order")
+        size = verify_secret_serialized_size(password_length)
+        wire = encode_request(VERIFY_SECRET_V1, tag, size)
+        self.verify_request = decode_envelope(wire)
+        return wire

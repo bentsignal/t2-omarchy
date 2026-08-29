@@ -1030,6 +1030,15 @@ its first AKS transaction. The offline transport model includes this exact
 fallback/cap decision and names verify-secret operation `0x21`, but does not
 encode either IPC payload.
 
+The capabilities request's serialized size is exactly 100 bytes: the
+`0x54`-byte IPC header, variant word, one qword, and an empty length-prefixed
+blob. `AuthorizationPlan` now enforces correlated operation-`0x4d`
+capabilities transport and successful version selection before it will even
+plan an operation-`0x21` verify-secret envelope. It accepts only the password
+length, not password bytes, and uses the bounded size calculation above. This
+closes the ordering layer while deliberately leaving header generation,
+payload hashing, and secret-buffer serialization unwired.
+
 AKS does not use the SBIO generic-transfer notification. Its Intel mailbox
 envelope is exactly 12 bytes: endpoint `0x07`; a 7-bit selector in byte 1 with
 bit 7 set only on replies; a wrapping correlation byte; zero at byte 3 and
