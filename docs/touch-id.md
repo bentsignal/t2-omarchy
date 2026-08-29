@@ -1035,9 +1035,10 @@ driver sends the eight-byte SCRD initialization payload `44 52 43 53 0a VV 00
 `AppleCredentialManager::initImpl` initializes `VV` to the fixed byte `0x28`;
 `performSCRDInitialization` copies that field into payload offset 5. The
 offline codec therefore emits `44 52 43 53 0a 28 00 00` directly and exposes
-no caller-selected version. The token-free context-create command that follows is exactly
-`44 52 43 53 01 00 00 01`: `DRCS`, selector 1, two zero fields, command
-version 1, and no body. Its reply must be exactly 17 bytes (the 16-byte opaque
+no caller-selected version. The verified token-free legacy context-create
+command is `44 52 43 53 01 00 04 01 00 00 00 00`: `DRCS`, selector 1, zero
+flags, a four-byte body, command version 1, and domain zero. Its reply must be
+exactly 17 bytes (the 16-byte opaque
 handle plus separate tracking metadata). The offline `ContextCreatePlan`
 enforces SCRD-init request → correlated zero-status empty reply → context-create
 request → correlated zero-status exact 17-byte reply. It never stores or
@@ -1357,15 +1358,29 @@ requests already match Apple (`DRCS`, selector, zero flags/length, version 1).
 This rules out the selector choice and eight-byte serializer as the
 explanation; unchanged context retries are therefore prohibited.
 
-The next bounded discriminator follows Apple's own non-secret
+The next bounded discriminator followed Apple's own non-secret
 `ACMKernPrivPing` path. `LibCall_ACMPing` admits selector `0x1d`, supplies no
 body or output buffer, and the shared builder emits `DRCS 1d 00 00 01`. The
-gated lifecycle now performs this zero-length ping after successful SCRD
+gated lifecycle performs this zero-length ping after successful SCRD
 initialization and requires a correlated zero-status, zero-length response
 before attempting either context-create selector. A ping failure stops
 immediately, distinguishing general ACM command readiness from a
 context-specific prerequisite without creating a credential or handling a
 secret.
+
+The supervised ping returned an immediate correlated zero-status empty reply,
+proving general ACM command readiness. Static dispatch-table analysis then
+found the precise `-3`: both create selectors enter `CreateCredentialSet`,
+whose first validation requires a four-byte body and reads it as a 32-bit
+domain. Supplying domain zero changes the command to
+`DRCS 24 00 04 01 00 00 00 00` and its envelope length to 12. On the next
+supervised run the T2 returned the exact 21-byte current context with status
+zero. Linux then sent selector 2 with only the opaque 16-byte external form;
+deletion returned zero, and the independent verifier passed the complete
+lifecycle. Seven interrupts arrived on each MSI vector and CPU stop preceded
+scrub/release and clean unload. The pure model now includes the verified
+domain field for both current and legacy creation. No context bytes were
+logged or persisted.
 
 `run-acm-context-lifecycle-probe.sh` adds the model/PCI/driver checks, exact
 human confirmation, a fresh journal cursor, unload/unbind checks, and an

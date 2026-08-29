@@ -42,12 +42,12 @@ MARKERS = {
         ("ping-success", ("status=0", "length=0")),
     "ACM context-create request:":
         ("current-request", ("endpoint=10", "message_type=1", "selector=36",
-                             "length=8", "expected_reply=21")),
+                             "length=12", "domain=0", "expected_reply=21")),
     "ACM current context-create returned -3; applying Apple legacy fallback":
         ("fallback", ()),
     "ACM context-create fallback request:":
         ("legacy-request", ("endpoint=10", "message_type=1", "selector=1",
-                            "length=8", "expected_reply=17")),
+                            "length=12", "domain=0", "expected_reply=17")),
     "ACM context-create reply passed strict validation:":
         ("create-success", ("status=0", "context_bytes=not-logged")),
     "ACM context-delete request:":
@@ -73,7 +73,7 @@ INIT_PREFIX = (
     envelope_event("ping-1d", "reply", (0x0000010A, 0, 0, 0)),
     ("marker", "ping-success"),
     ("marker", "current-request"),
-    envelope_event("context-create-24", "request", (0x0008010A, 0, 0, 0)),
+    envelope_event("context-create-24", "request", (0x000C010A, 0, 0, 0)),
 )
 DELETE_SUFFIX = (
     ("marker", "delete-request"),
@@ -89,7 +89,7 @@ FALLBACK_EVENTS = INIT_PREFIX + (
     envelope_event("context-create-24", "reply", (0x0000010A, 0xFFFFFFFD, 0, 0)),
     ("marker", "fallback"),
     ("marker", "legacy-request"),
-    envelope_event("context-create-01", "request", (0x0008010A, 0, 0, 0)),
+    envelope_event("context-create-01", "request", (0x000C010A, 0, 0, 0)),
     envelope_event("context-create-01", "reply", (0x0011010A, 0, 0, 0)),
     ("marker", "create-success"),
 ) + DELETE_SUFFIX

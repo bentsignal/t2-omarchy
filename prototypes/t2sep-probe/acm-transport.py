@@ -22,6 +22,7 @@ CONTEXT_RESPONSE_SIZE = 17
 CURRENT_CONTEXT_RESPONSE_SIZE = 21
 CONTEXT_RESPONSE_SIZES = (CONTEXT_RESPONSE_SIZE, CURRENT_CONTEXT_RESPONSE_SIZE)
 CONTEXT_EXTERNAL_FORM_SIZE = 16
+CONTEXT_DOMAIN_SIZE = 4
 CONTEXT_DELETE_COMMAND_SIZE = 8 + CONTEXT_EXTERNAL_FORM_SIZE
 
 
@@ -101,12 +102,15 @@ def scrd_initialization_envelope() -> tuple[bytes, bytes]:
 
 
 def context_create_command() -> bytes:
-    return COMMAND_MAGIC + bytes((CONTEXT_CREATE_SELECTOR, 0, 0, COMMAND_VERSION))
+    return (COMMAND_MAGIC +
+            bytes((CONTEXT_CREATE_SELECTOR, 0, CONTEXT_DOMAIN_SIZE,
+                   COMMAND_VERSION)) + struct.pack("<I", 0))
 
 
 def current_context_create_command() -> bytes:
-    return COMMAND_MAGIC + bytes((CURRENT_CONTEXT_CREATE_SELECTOR, 0, 0,
-                                  COMMAND_VERSION))
+    return (COMMAND_MAGIC +
+            bytes((CURRENT_CONTEXT_CREATE_SELECTOR, 0, CONTEXT_DOMAIN_SIZE,
+                   COMMAND_VERSION)) + struct.pack("<I", 0))
 
 
 def context_delete_command_into(context_response: bytearray,

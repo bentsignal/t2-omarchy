@@ -35,8 +35,8 @@ GOOD = "\n".join((
     line("ACM ping-1d envelope request: raw=0008010a 00000000 00000000 00000000"),
     line("ACM ping-1d envelope reply: raw=0000010a 00000000 00000000 00103400"),
     line("ACM ping reply passed strict validation: status=0 length=0"),
-    line("ACM context-create request: endpoint=10 message_type=1 selector=36 length=8 expected_reply=21"),
-    line("ACM context-create-24 envelope request: raw=0008010a 00000000 00000000 00000000"),
+    line("ACM context-create request: endpoint=10 message_type=1 selector=36 length=12 domain=0 expected_reply=21"),
+    line("ACM context-create-24 envelope request: raw=000c010a 00000000 00000000 00000000"),
     line("ACM context-create-24 envelope reply: raw=0015010a 00000000 00000000 00104500"),
     line("ACM context-create reply passed strict validation: status=0 length=21 context_bytes=not-logged"),
     line("ACM context-delete request: endpoint=10 message_type=1 selector=2 length=24 context_length=16 context_bytes=not-logged"),
@@ -62,8 +62,8 @@ class VerifyAcmContextLifecycleLogTests(unittest.TestCase):
             line("ACM context-create reply passed strict validation: status=0 length=21 context_bytes=not-logged"),
             line("ACM context-create-24 envelope reply: raw=0000010a fffffffd 00000000 00104500") + "\n" +
             line("ACM current context-create returned -3; applying Apple legacy fallback") + "\n" +
-            line("ACM context-create fallback request: endpoint=10 message_type=1 selector=1 length=8 expected_reply=17") + "\n" +
-            line("ACM context-create-01 envelope request: raw=0008010a 00000000 00000000 00000000") + "\n" +
+            line("ACM context-create fallback request: endpoint=10 message_type=1 selector=1 length=12 domain=0 expected_reply=17") + "\n" +
+            line("ACM context-create-01 envelope request: raw=000c010a 00000000 00000000 00000000") + "\n" +
             line("ACM context-create-01 envelope reply: raw=0011010a 00000000 00000000 00104500") + "\n" +
             line("ACM context-create reply passed strict validation: status=0 length=17 context_bytes=not-logged"))
         self.assertIsNone(verify.verify(fallback))
@@ -79,8 +79,8 @@ class VerifyAcmContextLifecycleLogTests(unittest.TestCase):
             GOOD.replace(
                 line("ACM context-delete request: endpoint=10 message_type=1 selector=2 length=24 context_length=16 context_bytes=not-logged") + "\n",
                 "").replace(
-                    line("ACM context-create request: endpoint=10 message_type=1 selector=36 length=8 expected_reply=21"),
-                    line("ACM context-create request: endpoint=10 message_type=1 selector=36 length=8 expected_reply=21") + "\n" +
+                    line("ACM context-create request: endpoint=10 message_type=1 selector=36 length=12 domain=0 expected_reply=21"),
+                    line("ACM context-create request: endpoint=10 message_type=1 selector=36 length=12 domain=0 expected_reply=21") + "\n" +
                     line("ACM context-delete request: endpoint=10 message_type=1 selector=2 length=24 context_length=16 context_bytes=not-logged")),
         )
         for transcript in mutations:

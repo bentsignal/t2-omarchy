@@ -98,6 +98,13 @@ verifier additionally proves exact phase ordering, secret-free log markers,
 MSI activity, PCI restoration/release, unload, and unbind. The code is built
 and tested but must not be run unattended.
 
+The live T2 requires a zero 32-bit domain body on both create selectors, even
+though the inspected client-side wrapper passes no body to its transport.
+This matches the pinned service-side `CreateCredentialSet` validation exactly:
+body sizes below four return `-3`. The verified current request is therefore
+12 bytes (`DRCS 24 00 04 01` plus domain zero), returns 21 bytes, and has been
+successfully deleted with selector 2 in a complete verified live lifecycle.
+
 The kernel module now contains a separate, default-off capture gate for the
 two fixed credential endpoints. It registers two 16 KiB zeroed mappings and
 captures only their control acknowledgements; it sends no ACM or AKS service

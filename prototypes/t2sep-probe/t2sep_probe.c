@@ -744,11 +744,12 @@ static int t2sep_acm_exchange(struct pci_dev *pdev, void __iomem *bar4,
 }
 
 static int t2sep_acm_create_exchange(struct pci_dev *pdev, void __iomem *bar4,
-				     u8 selector, u16 expected_reply_length,
+				     u8 selector, u16 request_length,
+				     u16 expected_reply_length,
 				     bool allow_minus_three_fallback)
 {
 	u32 request[3] = {
-		T2SEP_ACM_ENDPOINT | 1 << 8 | 8 << 16,
+		T2SEP_ACM_ENDPOINT | 1 << 8 | request_length << 16,
 		0,
 		0,
 	};
@@ -823,13 +824,15 @@ static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
 	memcpy(send, "DRCS", 4);
 	send[4] = 0x24;
 	send[5] = 0;
-	send[6] = 0;
+	send[6] = sizeof(u32);
 	send[7] = 1;
+	memset(send + 8, 0, sizeof(u32));
 	dma_wmb();
 	dev_info(&pdev->dev,
-		 "ACM context-create request: endpoint=10 message_type=1 selector=36 length=8 expected_reply=21\n");
+		 "ACM context-create request: endpoint=10 message_type=1 selector=36 length=12 domain=0 expected_reply=21\n");
 	ret = t2sep_acm_create_exchange(
-		pdev, bar4, 0x24, T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE, true);
+		pdev, bar4, 0x24, 12,
+		T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE, true);
 	if (ret < 0)
 		return ret;
 	if (ret == 1) {
@@ -839,9 +842,10 @@ static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
 		send[4] = 1;
 		dma_wmb();
 		dev_info(&pdev->dev,
-			 "ACM context-create fallback request: endpoint=10 message_type=1 selector=1 length=8 expected_reply=17\n");
+			 "ACM context-create fallback request: endpoint=10 message_type=1 selector=1 length=12 domain=0 expected_reply=17\n");
 		ret = t2sep_acm_create_exchange(
-			pdev, bar4, 1, T2SEP_ACM_CONTEXT_RESPONSE_SIZE, false);
+			pdev, bar4, 1, 12,
+			T2SEP_ACM_CONTEXT_RESPONSE_SIZE, false);
 		if (ret)
 			return ret;
 		context_response_size = T2SEP_ACM_CONTEXT_RESPONSE_SIZE;

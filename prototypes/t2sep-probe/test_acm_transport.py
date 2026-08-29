@@ -80,8 +80,8 @@ class ACMTransportTests(unittest.TestCase):
         plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
         self.assertTrue(plan.initialized)
         envelope, payload = plan.context_request()
-        self.assertEqual(payload, b"DRCS\x01\0\0\x01")
-        self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 8, 0))
+        self.assertEqual(payload, b"DRCS\x01\0\x04\x01\0\0\0\0")
+        self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 12, 0))
         with self.assertRaises(acm.ACMTransportError):
             plan.accept_context_response(acm.encode_envelope(1, 16, 0), bytes(16))
         response = bytearray(range(17))
@@ -175,8 +175,8 @@ class ACMTransportTests(unittest.TestCase):
         plan.initialize()
         plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
         envelope, payload = plan.context_request()
-        self.assertEqual(payload, b"DRCS\x24\0\0\x01")
-        self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 8, 0))
+        self.assertEqual(payload, b"DRCS\x24\0\x04\x01\0\0\0\0")
+        self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 12, 0))
         response = bytearray(range(21))
         self.assertTrue(plan.accept_context_response(
             acm.encode_envelope(1, 21, 0), response))
@@ -197,7 +197,7 @@ class ACMTransportTests(unittest.TestCase):
         self.assertFalse(plan.accept_context_response(
             acm.encode_envelope(1, 0, 0xFFFFFFFD), bytearray()))
         _, payload = plan.context_request()
-        self.assertEqual(payload, b"DRCS\x01\0\0\x01")
+        self.assertEqual(payload, b"DRCS\x01\0\x04\x01\0\0\0\0")
         self.assertTrue(plan.accept_context_response(
             acm.encode_envelope(1, 17, 0), bytearray(range(17))))
 
