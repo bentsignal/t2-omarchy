@@ -138,6 +138,16 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         self.assertEqual(command.remove_identity_fields(first),
                          (0x0D, 1, 0, raw[:20], 0))
 
+    def test_current_system_protected_config_codec(self):
+        self.assertEqual(command.system_protected_config_fields(),
+                         (0x43, 2, 0, b"", 36))
+        words = (172800, 5, 5, 1, 1, 1, 1, 14400, 561600)
+        decoded = command.decode_system_protected_config(struct.pack("<9I", *words))
+        self.assertEqual(tuple(decoded.__dict__.values()), words)
+        for bad in (b"", bytes(28), bytes(40)):
+            with self.assertRaises(command.BiometricCommandError):
+                command.decode_system_protected_config(bad)
+
     def test_identity_codecs_fail_closed(self):
         for maximum in (0, 65, True):
             with self.assertRaises(command.BiometricCommandError):

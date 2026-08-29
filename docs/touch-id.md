@@ -1699,6 +1699,18 @@ the CLI and must be read directly with current command `0x43`, not inferred.
 Thus the successful all-zero Linux `0x39` result is legacy compatibility
 evidence, not the current macOS policy. No setter was sent.
 
+A Linux return query then mirrored the current connection setup (method `0`,
+client-version method `10` with value `2`, and opened-state method `1`) and
+sent read-only command `0x43`. Command version `2` returned status zero and
+the exact nine words `(172800, 5, 5, 1, 1, 1, 1, 14400, 561600)`. Versions
+`1` and `3` respectively produced the expected legacy 28-byte form and a
+nonzero status. The current policy is therefore present and agrees with every
+value exposed by macOS; sending setter `0x44` is neither necessary nor safe.
+The numerical overlap between enrollment status `0x105` and the KDK cache
+failure is not the live cause. The enrollment client now performs that same
+strict per-connection initialization before identity enumeration and command
+`3`, closing the next bounded protocol-state mismatch without changing policy.
+
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
 runs. Its 16-byte external form is readable once through a root-only sysfs

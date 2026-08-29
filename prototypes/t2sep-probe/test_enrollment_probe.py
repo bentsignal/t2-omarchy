@@ -49,19 +49,22 @@ class EnrollmentProbeTests(unittest.TestCase):
     USER = 1000
     UUID = bytes(range(16))
     IDS = tuple(f"{index}1234567-89AB-4CDE-8FAB-0123456789AB"
-                for index in range(4))
+                for index in range(7))
 
     def incoming(self, *, after_record=True, terminal_uuid=UUID):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
         terminal = probe.biometric.IDENTITY.pack(self.USER, terminal_uuid)
         after = identity if after_record else b""
-        return (envelope(self.IDS[0], [0, protocol.NO_REPLY_UUID.lower()])
-                + envelope(self.IDS[1], [0, protocol.NO_REPLY_UUID.lower()])
+        return (envelope(self.IDS[0], [0, 3])
+                + envelope(self.IDS[1], [0])
+                + envelope(self.IDS[2], [0, True])
+                + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
+                + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
                 + service_event(0xE3FF8001)
                 + service_event(0xE3FF8004, b"x" * 12, 2)
                 + service_event(0xE3FF8003, terminal, 3)
-                + envelope(self.IDS[2], [0, after])
-                + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()]))
+                + envelope(self.IDS[5], [0, after])
+                + envelope(self.IDS[6], [0, protocol.NO_REPLY_UUID.lower()]))
 
     def run_probe(self, incoming):
         ids = iter(self.IDS)

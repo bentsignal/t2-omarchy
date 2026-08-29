@@ -25,6 +25,7 @@ COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PRESENCE_DETECT = 0x26
 COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
+COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
 DEFAULT_USER_ID = 0xFFFFFFFF
 ORDINARY_MATCH_FLAGS = 0
 MATCH_PAYLOAD = struct.Struct("<II60s")
@@ -39,6 +40,7 @@ CURRENT_MATCH_RESULT_V2_SIZE = 0xC9C
 MAX_LOTL_USER_IDS = 64
 IDENTITY = struct.Struct("<I16s")
 MAX_IDENTITIES = 64
+SYSTEM_PROTECTED_CONFIG = struct.Struct("<9I")
 SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
 SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
 SERVICE_EVENT_MATCH_ACTIVITY = 0xE3FF800B
@@ -107,6 +109,31 @@ class CatalinaMatchIdentity:
 class BiometricIdentity:
     user_id: int
     uuid: bytes
+
+
+@dataclass(frozen=True)
+class SystemProtectedConfig:
+    unlock_token_max_lifetime: int
+    reserved_1: int
+    reserved_2: int
+    biometry_enabled: int
+    unlock_enabled: int
+    identification_enabled: int
+    login_enabled: int
+    bio_match_lifespan: int
+    passcode_input_lifespan: int
+
+
+def system_protected_config_fields():
+    """Encode the current read-only generation-3 protected-config query."""
+    return (COMMAND_GET_SYSTEM_PROTECTED_CONFIG, CURRENT_COMMAND_VERSION, 0,
+            b"", SYSTEM_PROTECTED_CONFIG.size)
+
+
+def decode_system_protected_config(output: bytes) -> SystemProtectedConfig:
+    if not isinstance(output, bytes) or len(output) != SYSTEM_PROTECTED_CONFIG.size:
+        raise BiometricCommandError("system protected config must be exactly 36 bytes")
+    return SystemProtectedConfig(*SYSTEM_PROTECTED_CONFIG.unpack(output))
 
 
 @dataclass(frozen=True)

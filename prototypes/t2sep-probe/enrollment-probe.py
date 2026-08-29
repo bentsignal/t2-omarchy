@@ -71,12 +71,31 @@ def _identities(session, user_id: int):
     return identities
 
 
+def _initialize_current_bridge(session) -> None:
+    """Mirror biometrickitd's current per-connection initialization exactly."""
+    protocol = coupled.bridge_query.protocol
+    version_reply = session.call([protocol.GET_BRIDGE_VERSION])
+    if (len(version_reply) != 2 or version_reply[0] != 0
+            or isinstance(version_reply[1], bool)
+            or not isinstance(version_reply[1], int)
+            or version_reply[1] < 1):
+        raise EnrollmentProbeError("bridge version reply was invalid")
+    if version_reply[1] > 1:
+        client_reply = session.call([protocol.SET_BRIDGE_CLIENT_VERSION, 2])
+        if client_reply != [0]:
+            raise EnrollmentProbeError("bridge client-version negotiation failed")
+    opened_reply = session.call([protocol.GET_SERVICE_OPENED])
+    if opened_reply != [0, True]:
+        raise EnrollmentProbeError("biometric service did not report opened")
+
+
 def probe_socket(sock, *, user_id: int,
                  authorized_request=None,
                  progress: Callable[[tuple[int, int, int]], None] | None = None
                  ) -> EnrollmentProbeResult:
     """Enroll one token-free identity and prove an exact terminal/list delta."""
     session = coupled.bridge_query.BridgeSession(sock)
+    _initialize_current_bridge(session)
     before = _identities(session, user_id)
     statuses: list[int] = []
     events: list[tuple[int, int, int]] = []
