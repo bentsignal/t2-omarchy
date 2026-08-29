@@ -805,6 +805,20 @@ static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
 	dev_info(&pdev->dev,
 		 "ACM SCRD initialization reply passed strict validation: status=0 length=0\n");
 
+	/* Apple calls this selector through LibCall_ACMPing before privileged work. */
+	memset(send, 0, 8);
+	memcpy(send, "DRCS", 4);
+	send[4] = 0x1d;
+	send[7] = 1;
+	dma_wmb();
+	dev_info(&pdev->dev,
+		 "ACM ping request: endpoint=10 message_type=1 selector=29 length=8 expected_reply=0\n");
+	ret = t2sep_acm_exchange(pdev, bar4, "ping-1d", 8, 0);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "ACM ping reply passed strict validation: status=0 length=0\n");
+
 	memset(receive, 0, T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE);
 	memcpy(send, "DRCS", 4);
 	send[4] = 0x24;

@@ -1012,10 +1012,12 @@ new live MMIO writes.
 Further x86_64 analysis narrows that statement to two coordinated SEP
 services. `AppleCredentialManager::getSEPEndpoint()` creates its endpoint at
 fixed index `0x0a` and allocates separate `0x4000`-byte, page-aligned send and
-receive OOL buffers. `LibCall_ACMContextCreate` submits ACM command `1`, expects
-an exact 17-byte response, and copies its first 16 bytes into the opaque
-context handle; the final byte is separate tracking metadata. Creating a
-context therefore does not require inventing or persisting a token.
+receive OOL buffers. `LibCall_ACMContextCreate` submits command `0x24` in
+current mode and expects an exact 21-byte response. Only an immediate `-3`
+selects Apple's legacy command-1 fallback with its exact 17-byte response.
+Both forms copy their first 16 bytes into the opaque context handle; the
+remaining bytes are tracking metadata. Creating a context therefore does not
+require inventing or persisting a token.
 
 ACM's mailbox envelope is also exactly 12 bytes, but it is not the AKS format:
 endpoint `0x0a`, an 8-bit message type, a little-endian 16-bit OOL payload
@@ -1343,6 +1345,27 @@ only their first 16 bytes for external-form authorization and deletion, while
 all 17 or 21 returned bytes remain mutable and are scrubbed at teardown. The
 live verifier independently accepts exactly the modern lifecycle or that one
 fallback sequence; no other branch is representable.
+
+A revised supervised run then reproduced that full branch exactly. SCRD
+initialization again succeeded, but current selector `0x24` returned an empty
+correlated `-3` response and Apple's selector-1 fallback also returned an
+empty correlated `-3` response. No context existed to delete. Teardown was
+clean, with six observations on each MSI vector, CPU stop before DMA scrub and
+release, PCI restoration, module unload, and driver rebind. The shared command
+builder was subsequently checked byte-for-byte and confirms both Linux
+requests already match Apple (`DRCS`, selector, zero flags/length, version 1).
+This rules out the selector choice and eight-byte serializer as the
+explanation; unchanged context retries are therefore prohibited.
+
+The next bounded discriminator follows Apple's own non-secret
+`ACMKernPrivPing` path. `LibCall_ACMPing` admits selector `0x1d`, supplies no
+body or output buffer, and the shared builder emits `DRCS 1d 00 00 01`. The
+gated lifecycle now performs this zero-length ping after successful SCRD
+initialization and requires a correlated zero-status, zero-length response
+before attempting either context-create selector. A ping failure stops
+immediately, distinguishing general ACM command readiness from a
+context-specific prerequisite without creating a credential or handling a
+secret.
 
 `run-acm-context-lifecycle-probe.sh` adds the model/PCI/driver checks, exact
 human confirmation, a fresh journal cursor, unload/unbind checks, and an

@@ -85,11 +85,13 @@ the kernproc execution-context identity remains source-grounded inference
 until a supervised run confirms or rejects it. Its wrapper also requires a
 fresh journal cursor and has no stale recent-log fallback.
 
-`run-acm-context-lifecycle-probe.sh` is a different, mutually exclusive and
-still-unexecuted wrapper. It uses the now-observed ACM `(1/10, 1/10)` OOL
-profile, sends exact SCRD initialization, creates one token-free ephemeral
-context, and deletes that same context before CPU stop. It never logs the
-17-byte response or the 16-byte external form. The kernel path validates every
+`run-acm-context-lifecycle-probe.sh` is a different, mutually exclusive
+wrapper. It uses the observed ACM `(1/10, 1/10)` OOL profile, sends exact SCRD
+initialization, then Apple's bodyless selector-`0x1d` readiness ping before
+attempting current selector `0x24` and its exact legacy selector-1 fallback.
+If creation succeeds it deletes that same token-free ephemeral context before
+CPU stop. It never logs the 17/21-byte response or the 16-byte external form.
+The kernel path validates every
 endpoint/type/length/status/reserved/error field, stops before DMA cleanup on
 all exits, and requires its own confirmation. The independent cursor-bounded
 verifier additionally proves exact phase ordering, secret-free log markers,

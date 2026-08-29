@@ -25,7 +25,7 @@ def _load_ool_verifier():
 
 ool = _load_ool_verifier()
 ENVELOPE = re.compile(
-    r"ACM (SCRD-initialization|context-create-(?:24|01)|context-delete) envelope "
+    r"ACM (SCRD-initialization|ping-1d|context-create-(?:24|01)|context-delete) envelope "
     r"(request|reply): raw=([0-9a-fA-F]{8}) ([0-9a-fA-F]{8}) "
     r"([0-9a-fA-F]{8}) ([0-9a-fA-F]{8})")
 
@@ -35,6 +35,11 @@ MARKERS = {
                           "version=0x28")),
     "ACM SCRD initialization reply passed strict validation:":
         ("init-success", ("status=0", "length=0")),
+    "ACM ping request:":
+        ("ping-request", ("endpoint=10", "message_type=1", "selector=29",
+                          "length=8", "expected_reply=0")),
+    "ACM ping reply passed strict validation:":
+        ("ping-success", ("status=0", "length=0")),
     "ACM context-create request:":
         ("current-request", ("endpoint=10", "message_type=1", "selector=36",
                              "length=8", "expected_reply=21")),
@@ -63,6 +68,10 @@ INIT_PREFIX = (
     envelope_event("SCRD-initialization", "request", (0x0008010A, 0, 0, 0)),
     envelope_event("SCRD-initialization", "reply", (0x0000010A, 0, 0, 0)),
     ("marker", "init-success"),
+    ("marker", "ping-request"),
+    envelope_event("ping-1d", "request", (0x0008010A, 0, 0, 0)),
+    envelope_event("ping-1d", "reply", (0x0000010A, 0, 0, 0)),
+    ("marker", "ping-success"),
     ("marker", "current-request"),
     envelope_event("context-create-24", "request", (0x0008010A, 0, 0, 0)),
 )
