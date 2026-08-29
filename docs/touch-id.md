@@ -1653,6 +1653,35 @@ and accepts `-13` as absence only for that source lifecycle. CPU stop, scrub,
 PCI restoration, and module removal completed. A password-free follow-up
 drained the remaining ACM delete reply and strictly validated a fresh NOP.
 
+The first fully correlated promoted-bag run then completed the entire kernel
+lifecycle. Creation returned runtime selector `3`; make-system-keybag installed
+the authenticated copy at `-501`; verify-secret authorized the ACM context
+against that promoted selector; and the enrollment client consumed the
+credential handoff. BiometricKit no longer returned the earlier synchronous
+`-3`: the same version-2, built-in-group request returned `261` (`0x105`). It
+still did not start enrollment, request a touch, or create an identity. Teardown
+proved a valid 1612-byte system copy, unloaded `-501`, proved status-`-3`
+absence, then independently found the positive source still present in this
+run, unloaded it, and proved its absence before deleting the ACM context and
+stopping/scrubbing the SEP transport. Thus promotion is a necessary, observable
+state transition, but it exposes one additional biometric prerequisite rather
+than completing enrollment.
+
+The matching KDK provides one bounded clue for interpreting `0x105`, although
+it does not yet prove which component originated the live value. In symbolized
+`AppleMesaSEPDriver`,
+`AppleMesaSEPDriver::cacheSysProtectedConfigurationSpecific(bool)` returns the
+literal `0x105` when it cannot obtain/cast the cached system-configuration
+object; that routine otherwise sends biometric command `0x39`
+(`GetSystemProtectedConfig`) and validates a 36-byte response. The common
+`IOBiometricService::cacheSysProtectedConfiguration(bool)` path allocates and
+caches that object, refreshes per-user protected configuration, and updates the
+biometric-token, passcode-input, and match timers. This makes missing system or
+per-user protected configuration the leading explanation for the newly reached
+status, but the next experiment must reproduce Apple's configuration lifecycle
+or obtain direct command-side evidence rather than treating the shared numeric
+value alone as a definitive error name.
+
 The next-stage implementation retains that freshly authorized context only
 inside the bounded kernel probe while a Linux BiometricKit enrollment client
 runs. Its 16-byte external form is readable once through a root-only sysfs

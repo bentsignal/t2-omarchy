@@ -154,6 +154,24 @@ require `-3`. The run did not reach ACM verification or BiometricKit, and CPU
 stop/scrub/module removal completed. A password-free resynchronization drained
 the remaining ACM delete reply and revalidated a fresh control NOP.
 
+A subsequent fully correlated run completed promotion, verification, handoff,
+and teardown. It created runtime selector `3`, promoted it to `-501`, authorized
+the ACM context against `-501`, and delivered the context to the exact current
+enrollment request. That changed the synchronous BiometricKit result from
+`-3` to `261` (`0x105`), but still did not request a touch or create an
+identity. Cleanup proved the 1612-byte system mapping present and then absent;
+in this run the positive source mapping was also retained, so it too was
+unloaded and independently proved absent. The adaptive two-role cleanup is
+therefore required: successful promotion may retain the source even though one
+earlier displaced run reported source status `-13`.
+
+Static KDK analysis shows one relevant use of `0x105`:
+`AppleMesaSEPDriver::cacheSysProtectedConfigurationSpecific(bool)` returns it
+when the cached system-configuration object is unavailable, while the success
+path sends `GetSystemProtectedConfig` (`0x39`) and consumes a 36-byte response.
+This is evidence for the next configuration-lifecycle gate, not yet proof that
+the live `261` has that exact origin.
+
 `run-authorized-enrollment-probe.sh` is the separately confirmed next-stage
 experiment. It repeats that proven lifecycle but keeps the authorized ACM
 context and temporary keybag live while one BiometricKit enrollment runs. A
