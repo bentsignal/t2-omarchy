@@ -17,7 +17,7 @@ SPEC.loader.exec_module(aks)
 class AKSTransportTests(unittest.TestCase):
     def _identity(self, version=1):
         kwargs = dict(continuous_usec=1, process_unique_id=2,
-                      credential_id=3, cdhash=bytes(range(20)))
+                      audit_session_id=3, cdhash=bytes(range(20)))
         if version == 2:
             kwargs["calendar_seconds"] = 4
         return aks.build_identity_header(version, **kwargs)
@@ -88,7 +88,7 @@ class AKSTransportTests(unittest.TestCase):
         header = aks.build_identity_header(
             2, continuous_usec=0x1122334455667788,
             process_unique_id=0x8877665544332211,
-            credential_id=0xaabbccdd, cdhash=cdhash,
+            audit_session_id=0xaabbccdd, cdhash=cdhash,
             calendar_seconds=0x0102030405060708)
         self.assertEqual(len(header), 0x50)
         self.assertEqual(struct.unpack_from("<I", header, 0x10)[0], 2)
@@ -105,7 +105,7 @@ class AKSTransportTests(unittest.TestCase):
 
     def test_build_identity_header_version_rules(self):
         kwargs = dict(continuous_usec=1, process_unique_id=2,
-                      credential_id=3, cdhash=bytes(20))
+                      audit_session_id=3, cdhash=bytes(20))
         self.assertEqual(aks.build_identity_header(1, **kwargs)[0x48:], bytes(8))
         with self.assertRaises(aks.AKSTransportError):
             aks.build_identity_header(1, **kwargs, calendar_seconds=4)
@@ -115,7 +115,7 @@ class AKSTransportTests(unittest.TestCase):
             with self.assertRaises(aks.AKSTransportError):
                 aks.build_identity_header(1, **{**kwargs, "cdhash": bad_hash})
         with self.assertRaises(aks.AKSTransportError):
-            aks.build_identity_header(1, **{**kwargs, "credential_id": -1})
+            aks.build_identity_header(1, **{**kwargs, "audit_session_id": -1})
 
     def test_payload_digest_version_1(self):
         header = bytearray(range(aks.IPC_HEADER_SIZE))

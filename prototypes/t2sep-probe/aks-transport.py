@@ -30,7 +30,7 @@ class AKSTransportError(ValueError):
 
 
 def build_identity_header(version: int, *, continuous_usec: int,
-                          process_unique_id: int, credential_id: int,
+                          process_unique_id: int, audit_session_id: int,
                           cdhash: bytes,
                           calendar_seconds: int | None = None) -> bytes:
     """Build the recovered header from explicit, source-authentic identity data.
@@ -42,7 +42,7 @@ def build_identity_header(version: int, *, continuous_usec: int,
         raise AKSTransportError("AKS IPC header version must be 1 or 2")
     continuous_usec = _uint(continuous_usec, 64, "continuous usec")
     process_unique_id = _uint(process_unique_id, 64, "process unique ID")
-    credential_id = _uint(credential_id, 32, "credential ID")
+    audit_session_id = _uint(audit_session_id, 32, "audit session ID")
     if not isinstance(cdhash, bytes) or len(cdhash) != CDHASH_SIZE:
         raise AKSTransportError("code-directory hash must be exactly 20 bytes")
     if version == 1 and calendar_seconds is not None:
@@ -56,7 +56,7 @@ def build_identity_header(version: int, *, continuous_usec: int,
     struct.pack_into("<I", header, 0x10, version)
     struct.pack_into("<Q", header, 0x14, continuous_usec)
     struct.pack_into("<Q", header, 0x28, process_unique_id)
-    struct.pack_into("<I", header, 0x30, credential_id)
+    struct.pack_into("<I", header, 0x30, audit_session_id)
     header[0x34:0x48] = cdhash
     if version == 2:
         struct.pack_into("<Q", header, 0x48, calendar_seconds)

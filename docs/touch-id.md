@@ -1059,7 +1059,7 @@ this digest and rejects every header version except 1 and 2. It intentionally
 constructs the recovered layout only from explicit caller-supplied identity
 data: version at `0x10`, `mach_continuous_time` converted to microseconds at
 `0x14`, zero flags and reserved qword at `0x1c` and `0x20`, process unique ID
-at `0x28`, the process credential's 32-bit field at `0x30`, and the 20-byte
+at `0x28`, the process credential's 32-bit audit-session ID at `0x30`, and the 20-byte
 code-directory hash at `0x34`. Version 2 adds calendar seconds at `0x48`.
 `get_platform_cdhash` uses `cs_get_cdhash`. More precisely, a null cdhash with
 a valid `proc_self` is explicitly zero-filled and still returns success; the
