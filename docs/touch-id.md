@@ -1232,6 +1232,21 @@ PCI restoration/release, and probe removal. Passing would prove simultaneous
 registration only—not AKS startup, ACM context creation, password verification,
 or enrollment—and it will not be executed while the user is unavailable.
 
+The exact next supervised invocation, after rebuilding as the ordinary user,
+is:
+
+```bash
+cd ~/t2-mbp16-audio-recovery/prototypes/t2sep-probe
+make
+pkexec ./run-dual-credential-ool-capture.sh \
+  I_UNDERSTAND_NONSECRET_DUAL_CREDENTIAL_OOL_CAPTURE
+```
+
+Success is only the verifier's final simultaneous profile
+`((7, 1, 7), (7, 1, 7), (10, 1, 10), (10, 1, 10))` plus clean unload and
+unbind. Any other result stops this branch; it must not be followed
+automatically by a service request.
+
 The corresponding kernel capture path is default-off and was executed once
 under direct user supervision on this MacBookPro16,1 at 2026-08-28 22:55 EDT.
 It requires CPU start, both MSI vectors, a strictly
