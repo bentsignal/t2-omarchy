@@ -380,6 +380,38 @@ the first complete offline decision model
 that could eventually sit behind fprintd/PAM, but it is not connected to either
 until the current bridgeOS ABI and live event transport are verified.
 
+Those ABI and live-decision prerequisites are now proven, so the local Linux
+authorization boundary has been specified offline. This installation currently
+has PAM 1.7.2 and Polkit 127 but neither `libfprint` nor `fprintd`; no package or
+authentication configuration was changed. The least-privileged practical
+shape is a long-lived root daemon that alone owns the SEP/BridgeXPC transports,
+plus a tiny PAM client that never touches hardware. The client resolves
+`PAM_USER` through the local account database, generates a nonzero random
+request ID, and sends one bounded request over a root-owned Unix
+`SOCK_SEQPACKET` socket. The daemon must derive the client's PID/UID/GID only
+from `SO_PEERCRED`, accept a root peer, freshly enumerate the target UID's
+sensor identities, run one ordinary match, cancel it on every exit, and return
+only a correlated Boolean-class result. A wire-supplied peer identity, ambient
+daemon UID, cached match, UUID, or raw biometric event must never authorize.
+
+`linux-auth-broker.py` makes the non-I/O portion mechanical. Its request and
+response are each fixed at 24 bytes with magic/version/opcode, zero reserved
+fields, one 64-bit correlation ID, a target UID below `UINT32_MAX`, and a
+timeout bounded to 60 seconds. The server state accepts one kernel-authenticated
+root peer and one monotonic deadline. It emits match only for the existing
+trusted `AuthenticationDecision` whose identity UID equals the request; exact
+no-match is non-authenticating, while wrong UID, wrong request ID, malformed
+decision type, timeout, abort, reuse, or unknown status fails permanently.
+The PAM client-side decoder authenticates only correlated status zero. This
+module deliberately creates no socket and changes no PAM files.
+
+Once the hardware transport is production-stable, a small native daemon can
+implement this boundary first. PAM should be enabled only after direct password
+fallback and recovery are tested, using fingerprint as `sufficient` rather than
+removing the password path. A later fprintd/libfprint-facing layer can expose
+Linux-native enrollment and management without making the security-sensitive
+PAM client depend on the much larger hardware protocol implementation.
+
 Current bridgeOS compatibility and the live transport still must be proven
 before a result can be interpreted on Linux.
 

@@ -317,6 +317,16 @@ fail closed. A rejected event cannot be followed by a retry on the same
 operation, and callers can permanently abort after timeout, cancellation, or
 transport loss. It has no PAM, fprintd, socket, USB, PCI, or SEP entry point.
 
+`linux-auth-broker.py` defines—but does not open—the narrow local protocol for
+eventually placing that decision behind PAM. The fixed 24-byte request carries
+only a nonzero random correlation ID, root-selected target UID, and bounded
+timeout. A server-side state machine accepts only kernel-derived root peer
+credentials, one request, one fresh deadline, and the exact trusted
+`AuthenticationDecision`; its fixed response authenticates only status zero.
+Wrong users, stale/cross-request replies, explicit no-match, timeout, malformed
+framing, unprivileged peers, and reuse all fail closed. It is an offline model,
+not a daemon, PAM module, socket, or system configuration change.
+
 `read-only-biometric-plan.py` composes the eventual post-handshake inspection
 sequence entirely offline from a strictly validated RSD transcript. It emits
 Bridge methods 0 and 1 followed only by Catalina's maximum-identity-count
