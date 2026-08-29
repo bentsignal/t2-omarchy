@@ -860,11 +860,12 @@ offset zero; it did not print the record, UUID, or opaque result bytes. The
 version-2 decoder consequently requires the exact `0xc9c` size and consumes
 only that stable identity prefix, leaving the changed trailing metadata opaque.
 A second coordinated scan then completed end to end as `matched=true` for UID
-501 against the fresh trusted snapshot and cancelled with status zero. This is
-the first confirmed successful Linux-initiated T2 Touch ID match in this
-investigation. The explicit no-match/rejection path still requires a supervised
-scan with an unenrolled finger before this prototype can be treated as an
-authentication component.
+501 against the fresh trusted snapshot and cancelled with status zero. A third
+run used a finger not enrolled in macOS; the same bounded version-2 terminal
+shape resolved to `matched=false`, returned no matched UID, and cancelled with
+status zero. This proves both the positive and explicit no-match paths without
+logging either result record. These are the first confirmed successful and
+rejected Linux-initiated T2 Touch ID decisions in this investigation.
 
 Linux-native enrollment is now composed offline in `enrollment-probe.py`, also
 with a closed live source gate. A checksum-pinned Catalina jump table maps
