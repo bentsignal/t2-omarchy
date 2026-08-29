@@ -15,9 +15,12 @@ SCRD_MAGIC = b"DRCS\n"
 SCRD_VERSION = 0x28
 COMMAND_MAGIC = b"DRCS"
 CONTEXT_CREATE_SELECTOR = 1
+CURRENT_CONTEXT_CREATE_SELECTOR = 0x24
 CONTEXT_DELETE_SELECTOR = 2
 COMMAND_VERSION = 1
 CONTEXT_RESPONSE_SIZE = 17
+CURRENT_CONTEXT_RESPONSE_SIZE = 21
+CONTEXT_RESPONSE_SIZES = (CONTEXT_RESPONSE_SIZE, CURRENT_CONTEXT_RESPONSE_SIZE)
 CONTEXT_EXTERNAL_FORM_SIZE = 16
 CONTEXT_DELETE_COMMAND_SIZE = 8 + CONTEXT_EXTERNAL_FORM_SIZE
 
@@ -101,13 +104,18 @@ def context_create_command() -> bytes:
     return COMMAND_MAGIC + bytes((CONTEXT_CREATE_SELECTOR, 0, 0, COMMAND_VERSION))
 
 
+def current_context_create_command() -> bytes:
+    return COMMAND_MAGIC + bytes((CURRENT_CONTEXT_CREATE_SELECTOR, 0, 0,
+                                  COMMAND_VERSION))
+
+
 def context_delete_command_into(context_response: bytearray,
                                 command: bytearray) -> None:
     """Build delete in caller-owned mutable memory, without returning a secret copy."""
     if not isinstance(context_response, bytearray):
         raise ACMTransportError("context response must be a mutable bytearray")
-    if len(context_response) != CONTEXT_RESPONSE_SIZE:
-        raise ACMTransportError("context response must be exactly 17 bytes")
+    if len(context_response) not in CONTEXT_RESPONSE_SIZES:
+        raise ACMTransportError("context response must be exactly 17 or 21 bytes")
     if not isinstance(command, bytearray):
         raise ACMTransportError("context-delete command must be a mutable bytearray")
     if len(command) != CONTEXT_DELETE_COMMAND_SIZE:
@@ -128,8 +136,8 @@ def context_external_form_for_authorization(
     """
     if not isinstance(context_response, bytearray):
         raise ACMTransportError("context response must be a mutable bytearray")
-    if len(context_response) != CONTEXT_RESPONSE_SIZE:
-        raise ACMTransportError("context response must be exactly 17 bytes")
+    if len(context_response) not in CONTEXT_RESPONSE_SIZES:
+        raise ACMTransportError("context response must be exactly 17 or 21 bytes")
     return bytearray(memoryview(context_response)[:CONTEXT_EXTERNAL_FORM_SIZE])
 
 
@@ -138,7 +146,7 @@ def scrub_context_material(context_response: bytearray,
     """Zero both caller-owned buffers after delete attempt or transport stop."""
     if not isinstance(context_response, bytearray) or not isinstance(command, bytearray):
         raise ACMTransportError("context material must remain in mutable bytearrays")
-    if (len(context_response) != CONTEXT_RESPONSE_SIZE or
+    if (len(context_response) not in CONTEXT_RESPONSE_SIZES or
             len(command) != CONTEXT_DELETE_COMMAND_SIZE):
         raise ACMTransportError("context material has an unexpected size")
     context_response[:] = b"\0" * len(context_response)
@@ -147,8 +155,8 @@ def scrub_context_material(context_response: bytearray,
 
 def validate_context_create_response_length(length: int) -> None:
     length = _integer(length, OOL_CAPACITY, "context-create response length")
-    if length != CONTEXT_RESPONSE_SIZE:
-        raise ACMTransportError("context-create response must be exactly 17 bytes")
+    if length not in CONTEXT_RESPONSE_SIZES:
+        raise ACMTransportError("context-create response must be exactly 17 or 21 bytes")
 
 
 class ContextCreatePlan:
@@ -214,3 +222,53 @@ class ContextCreatePlan:
         validate_success_reply(self.context_delete_request, reply_data, payload,
                                expected_length=0)
         self.context_deleted = True
+
+
+class CurrentContextCreatePlan(ContextCreatePlan):
+    """Model Apple's command-0x24-first create with exact -3 fallback."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._create_mode: str | None = None
+        self._fallback_pending = False
+
+    def context_request(self) -> tuple[bytes, bytes]:
+        if not self.initialized or self.context_created:
+            raise ACMTransportError("context creation is out of order")
+        if self.context_create_request is None and self._create_mode is None:
+            payload = current_context_create_command()
+            self._create_mode = "current"
+        elif (self.context_create_request is None and
+              self._create_mode == "current" and self._fallback_pending):
+            payload = context_create_command()
+            self._create_mode = "legacy"
+            self._fallback_pending = False
+        else:
+            raise ACMTransportError("context creation is out of order")
+        envelope = encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0)
+        self.context_create_request = decode_envelope(envelope)
+        return envelope, payload
+
+    def accept_context_response(self, reply_data: bytes,
+                                payload: bytearray) -> bool:
+        if (not self.initialized or self.context_create_request is None or
+                self.context_created):
+            raise ACMTransportError("context response is out of order")
+        if not isinstance(payload, bytearray):
+            raise ACMTransportError("context response must be a mutable bytearray")
+        expected = (CURRENT_CONTEXT_RESPONSE_SIZE
+                    if self._create_mode == "current" else CONTEXT_RESPONSE_SIZE)
+        reply = validate_reply(self.context_create_request, reply_data,
+                               maximum_reply=expected)
+        if (self._create_mode == "current" and reply.value == 0xFFFFFFFD):
+            if reply.payload_length != 0 or payload:
+                raise ACMTransportError("modern-create fallback reply is malformed")
+            self.context_create_request = None
+            self._fallback_pending = True
+            return False
+        if reply.value != 0:
+            raise ACMTransportError("ACM context create reports a nonzero SEP status")
+        if reply.payload_length != expected or len(payload) != expected:
+            raise ACMTransportError("ACM context-create payload length does not match")
+        self.context_created = True
+        return True

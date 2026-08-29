@@ -185,6 +185,7 @@ struct t2sep_irq_probe {
 #define T2SEP_AKS_HEADER_SIZE 0x50
 #define T2SEP_AKS_SERIALIZED_HEADER_SIZE 0x54
 #define T2SEP_ACM_CONTEXT_RESPONSE_SIZE 17
+#define T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE 21
 #define T2SEP_ACM_CONTEXT_SIZE 16
 #define T2SEP_SBIO_IN_SIZE (T2SEP_SBIO_IN_PAGES * PAGE_SIZE)
 #define T2SEP_SBIO_OUT_SIZE (T2SEP_SBIO_OUT_PAGES * PAGE_SIZE)
@@ -742,6 +743,46 @@ static int t2sep_acm_exchange(struct pci_dev *pdev, void __iomem *bar4,
 	return 0;
 }
 
+static int t2sep_acm_create_exchange(struct pci_dev *pdev, void __iomem *bar4,
+				     u8 selector, u16 expected_reply_length,
+				     bool allow_minus_three_fallback)
+{
+	u32 request[3] = {
+		T2SEP_ACM_ENDPOINT | 1 << 8 | 8 << 16,
+		0,
+		0,
+	};
+	u32 response[4];
+	u16 reply_length;
+	int ret;
+
+	ret = t2sep_send_intel_message(bar4, request);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "ACM context-create-%02x envelope request: raw=%08x %08x %08x 00000000\n",
+		 selector, request[0], request[1], request[2]);
+	ret = t2sep_wait_intel_message(bar4, response);
+	if (ret)
+		return ret;
+	dev_info(&pdev->dev,
+		 "ACM context-create-%02x envelope reply: raw=%08x %08x %08x %08x\n",
+		 selector, response[0], response[1], response[2], response[3]);
+	reply_length = response[0] >> 16;
+	if ((response[0] & 0xff) != T2SEP_ACM_ENDPOINT ||
+	    ((response[0] >> 8) & 0xff) != 1 || response[2] != 0 ||
+	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL)))
+		return -EPROTO;
+	if (allow_minus_three_fallback && response[1] == 0xfffffffd) {
+		if (reply_length != 0)
+			return -EPROTO;
+		return 1;
+	}
+	if (response[1] != 0 || reply_length != expected_reply_length)
+		return -EPROTO;
+	return 0;
+}
+
 static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
 					      void __iomem *bar4,
 					      void *send_buffer,
@@ -749,6 +790,7 @@ static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
 {
 	u8 *send = send_buffer;
 	u8 *receive = receive_buffer;
+	u16 context_response_size;
 	int ret;
 
 	memset(send, 0, 8);
@@ -763,22 +805,39 @@ static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
 	dev_info(&pdev->dev,
 		 "ACM SCRD initialization reply passed strict validation: status=0 length=0\n");
 
-	memset(receive, 0, T2SEP_ACM_CONTEXT_RESPONSE_SIZE);
+	memset(receive, 0, T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE);
 	memcpy(send, "DRCS", 4);
-	send[4] = 1;
+	send[4] = 0x24;
 	send[5] = 0;
 	send[6] = 0;
 	send[7] = 1;
 	dma_wmb();
 	dev_info(&pdev->dev,
-		 "ACM context-create request: endpoint=10 message_type=1 selector=1 length=8\n");
-	ret = t2sep_acm_exchange(pdev, bar4, "context-create", 8,
-				 T2SEP_ACM_CONTEXT_RESPONSE_SIZE);
-	if (ret)
+		 "ACM context-create request: endpoint=10 message_type=1 selector=36 length=8 expected_reply=21\n");
+	ret = t2sep_acm_create_exchange(
+		pdev, bar4, 0x24, T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE, true);
+	if (ret < 0)
 		return ret;
+	if (ret == 1) {
+		dev_info(&pdev->dev,
+			 "ACM current context-create returned -3; applying Apple legacy fallback\n");
+		memset(receive, 0, T2SEP_ACM_CONTEXT_RESPONSE_SIZE);
+		send[4] = 1;
+		dma_wmb();
+		dev_info(&pdev->dev,
+			 "ACM context-create fallback request: endpoint=10 message_type=1 selector=1 length=8 expected_reply=17\n");
+		ret = t2sep_acm_create_exchange(
+			pdev, bar4, 1, T2SEP_ACM_CONTEXT_RESPONSE_SIZE, false);
+		if (ret)
+			return ret;
+		context_response_size = T2SEP_ACM_CONTEXT_RESPONSE_SIZE;
+	} else {
+		context_response_size = T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE;
+	}
 	dma_rmb();
 	dev_info(&pdev->dev,
-		 "ACM context-create reply passed strict validation: status=0 length=17 context_bytes=not-logged\n");
+		 "ACM context-create reply passed strict validation: status=0 length=%u context_bytes=not-logged\n",
+		 context_response_size);
 
 	memcpy(send, "DRCS", 4);
 	send[4] = 2;

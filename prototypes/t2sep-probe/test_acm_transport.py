@@ -170,6 +170,49 @@ class ACMTransportTests(unittest.TestCase):
                 with self.assertRaises(acm.ACMTransportError):
                     acm.context_external_form_for_authorization(bad)
 
+    def test_current_create_uses_command_24_and_21_byte_context(self):
+        plan = acm.CurrentContextCreatePlan()
+        plan.initialize()
+        plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
+        envelope, payload = plan.context_request()
+        self.assertEqual(payload, b"DRCS\x24\0\0\x01")
+        self.assertEqual(acm.decode_envelope(envelope), acm.ACMEnvelope(1, 8, 0))
+        response = bytearray(range(21))
+        self.assertTrue(plan.accept_context_response(
+            acm.encode_envelope(1, 21, 0), response))
+        self.assertEqual(acm.context_external_form_for_authorization(response),
+                         bytearray(range(16)))
+        command = bytearray(24)
+        plan.delete_request(response, command)
+        self.assertEqual(command[8:], bytearray(range(16)))
+        plan.accept_delete_response(acm.encode_envelope(1, 0, 0), b"")
+        acm.scrub_context_material(response, command)
+        self.assertEqual(response, bytearray(21))
+
+    def test_current_create_falls_back_only_on_exact_minus_three(self):
+        plan = acm.CurrentContextCreatePlan()
+        plan.initialize()
+        plan.accept_initialization_reply(acm.encode_envelope(1, 0, 0), b"")
+        plan.context_request()
+        self.assertFalse(plan.accept_context_response(
+            acm.encode_envelope(1, 0, 0xFFFFFFFD), bytearray()))
+        _, payload = plan.context_request()
+        self.assertEqual(payload, b"DRCS\x01\0\0\x01")
+        self.assertTrue(plan.accept_context_response(
+            acm.encode_envelope(1, 17, 0), bytearray(range(17))))
+
+        for value, length in ((0xFFFFFFFC, 0), (0xFFFFFFFD, 1), (0, 17)):
+            with self.subTest(value=value, length=length):
+                rejected = acm.CurrentContextCreatePlan()
+                rejected.initialize()
+                rejected.accept_initialization_reply(
+                    acm.encode_envelope(1, 0, 0), b"")
+                rejected.context_request()
+                with self.assertRaises(acm.ACMTransportError):
+                    rejected.accept_context_response(
+                        acm.encode_envelope(1, length, value),
+                        bytearray(length))
+
 
 if __name__ == "__main__":
     unittest.main()

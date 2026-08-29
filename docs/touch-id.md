@@ -1334,6 +1334,16 @@ itself returns `-3`. The Linux probe had skipped that modern-first branch. Its
 next ACM revision must reproduce `0x24` then the exact Apple fallback rather
 than retry selector 1.
 
+That revision is now implemented offline and in the separately gated kernel
+path. `CurrentContextCreatePlan` emits `DRCS 24 00 00 01`, accepts only an
+exact zero-status 21-byte context, or treats only an empty status-`-3` reply as
+the source-proven signal to emit legacy `DRCS 01 00 00 01` and require 17
+bytes. Every other status, length, or ordering fails. Both context forms retain
+only their first 16 bytes for external-form authorization and deletion, while
+all 17 or 21 returned bytes remain mutable and are scrubbed at teardown. The
+live verifier independently accepts exactly the modern lifecycle or that one
+fallback sequence; no other branch is representable.
+
 `run-acm-context-lifecycle-probe.sh` adds the model/PCI/driver checks, exact
 human confirmation, a fresh journal cursor, unload/unbind checks, and an
 independent verifier. The verifier composes the proven endpoint-10 OOL

@@ -41,7 +41,10 @@ secret serialization.
 `acm-transport.py` models AppleCredentialManager's distinct fixed-endpoint-10
 envelope, OOL length bound, reply message-type correlation, zero-status SCRD
 initialization with Apple's fixed KDK-derived version `0x28`, and zero-status
-exact-length context creation. It also models the source-proven selector-2
+exact-length context creation. Its current path sends selector `0x24` first and
+expects 21 bytes, accepting only an exact empty status-`-3` reply as permission
+to fall back to legacy selector `1` and 17 bytes, matching the pinned
+`LibCall_ACMContextCreate` branch. It also models the source-proven selector-2
 context deletion, including its exact 16-byte external-form body, empty reply,
 mutable caller-owned buffers, and explicit scrub. Its state does not advance
 when a request is merely constructed or sent, and it never stores or returns

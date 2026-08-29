@@ -25,36 +25,65 @@ def _load_ool_verifier():
 
 ool = _load_ool_verifier()
 ENVELOPE = re.compile(
-    r"ACM (SCRD-initialization|context-create|context-delete) envelope "
+    r"ACM (SCRD-initialization|context-create-(?:24|01)|context-delete) envelope "
     r"(request|reply): raw=([0-9a-fA-F]{8}) ([0-9a-fA-F]{8}) "
     r"([0-9a-fA-F]{8}) ([0-9a-fA-F]{8})")
 
-STAGES = (
-    ("ACM SCRD initialization request:",
-     ("endpoint=10", "message_type=1", "length=8", "version=0x28")),
-    ("ACM SCRD initialization reply passed strict validation:",
-     ("status=0", "length=0")),
-    ("ACM context-create request:",
-     ("endpoint=10", "message_type=1", "selector=1", "length=8")),
-    ("ACM context-create reply passed strict validation:",
-     ("status=0", "length=17", "context_bytes=not-logged")),
-    ("ACM context-delete request:",
-     ("endpoint=10", "message_type=1", "selector=2", "length=24",
-      "context_length=16", "context_bytes=not-logged")),
-    ("ACM context-delete reply passed strict validation:",
-     ("status=0", "length=0")),
-)
+MARKERS = {
+    "ACM SCRD initialization request:":
+        ("init-request", ("endpoint=10", "message_type=1", "length=8",
+                          "version=0x28")),
+    "ACM SCRD initialization reply passed strict validation:":
+        ("init-success", ("status=0", "length=0")),
+    "ACM context-create request:":
+        ("current-request", ("endpoint=10", "message_type=1", "selector=36",
+                             "length=8", "expected_reply=21")),
+    "ACM current context-create returned -3; applying Apple legacy fallback":
+        ("fallback", ()),
+    "ACM context-create fallback request:":
+        ("legacy-request", ("endpoint=10", "message_type=1", "selector=1",
+                            "length=8", "expected_reply=17")),
+    "ACM context-create reply passed strict validation:":
+        ("create-success", ("status=0", "context_bytes=not-logged")),
+    "ACM context-delete request:":
+        ("delete-request", ("endpoint=10", "message_type=1", "selector=2",
+                            "length=24", "context_length=16",
+                            "context_bytes=not-logged")),
+    "ACM context-delete reply passed strict validation:":
+        ("delete-success", ("status=0", "length=0")),
+}
 
-EXPECTED_ENVELOPES = (
-    ("SCRD-initialization", "request", (0x0008010A, 0, 0, 0)),
-    ("SCRD-initialization", "reply", (0x0000010A, 0, 0, 0)),
-    ("context-create", "request", (0x0008010A, 0, 0, 0)),
-    ("context-create", "reply", (0x0011010A, 0, 0, 0)),
-    ("context-delete", "request", (0x0018010A, 0, 0, 0)),
-    ("context-delete", "reply", (0x0000010A, 0, 0, 0)),
+
+def envelope_event(phase, direction, words):
+    return ("envelope", phase, direction, words[:3])
+
+
+INIT_PREFIX = (
+    ("marker", "init-request"),
+    envelope_event("SCRD-initialization", "request", (0x0008010A, 0, 0, 0)),
+    envelope_event("SCRD-initialization", "reply", (0x0000010A, 0, 0, 0)),
+    ("marker", "init-success"),
+    ("marker", "current-request"),
+    envelope_event("context-create-24", "request", (0x0008010A, 0, 0, 0)),
 )
-STAGE_ENVELOPE_COUNTS = (0, 2, 2, 4, 4, 6)
-ENVELOPE_STAGE_COUNTS = (1, 1, 3, 3, 5, 5)
+DELETE_SUFFIX = (
+    ("marker", "delete-request"),
+    envelope_event("context-delete", "request", (0x0018010A, 0, 0, 0)),
+    envelope_event("context-delete", "reply", (0x0000010A, 0, 0, 0)),
+    ("marker", "delete-success"),
+)
+MODERN_EVENTS = INIT_PREFIX + (
+    envelope_event("context-create-24", "reply", (0x0015010A, 0, 0, 0)),
+    ("marker", "create-success"),
+) + DELETE_SUFFIX
+FALLBACK_EVENTS = INIT_PREFIX + (
+    envelope_event("context-create-24", "reply", (0x0000010A, 0xFFFFFFFD, 0, 0)),
+    ("marker", "fallback"),
+    ("marker", "legacy-request"),
+    envelope_event("context-create-01", "request", (0x0008010A, 0, 0, 0)),
+    envelope_event("context-create-01", "reply", (0x0011010A, 0, 0, 0)),
+    ("marker", "create-success"),
+) + DELETE_SUFFIX
 
 
 def verify(text: str) -> None:
@@ -66,8 +95,7 @@ def verify(text: str) -> None:
     except ool.VerificationError as error:
         raise VerificationError(str(error)) from error
 
-    stage = 0
-    envelope = 0
+    events = []
     stopped = False
     for line in text.splitlines():
         if "t2sep_probe 0000:04:00.2:" not in line:
@@ -78,36 +106,34 @@ def verify(text: str) -> None:
             raise VerificationError("transcript appears to expose secret material")
         match = ENVELOPE.search(line)
         if match:
-            if envelope >= len(EXPECTED_ENVELOPES):
-                raise VerificationError("unexpected extra ACM envelope")
-            if stage != ENVELOPE_STAGE_COUNTS[envelope]:
-                raise VerificationError("ACM envelope is outside its lifecycle stage")
             phase, direction = match[1], match[2]
             words = tuple(int(match[index], 16) for index in range(3, 7))
-            expected_phase, expected_direction, expected_words = \
-                EXPECTED_ENVELOPES[envelope]
-            if ((phase, direction) != (expected_phase, expected_direction) or
-                    words[:3] != expected_words[:3] or
-                    words[3] & ((1 << 18) | (1 << 19)) or
+            if (words[3] & ((1 << 18) | (1 << 19)) or
                     (direction == "request" and words[3] != 0)):
                 raise VerificationError("ACM envelope changed or is reordered")
-            envelope += 1
+            events.append(envelope_event(phase, direction, words))
             continue
-        if stage < len(STAGES) and STAGES[stage][0] in line:
-            marker, fields = STAGES[stage]
-            if envelope != STAGE_ENVELOPE_COUNTS[stage]:
-                raise VerificationError("ACM lifecycle stage precedes its envelope")
+        found = [value for marker, value in MARKERS.items() if marker in line]
+        if found:
+            if len(found) != 1:
+                raise VerificationError("ACM lifecycle marker is ambiguous")
+            name, fields = found[0]
             if not all(field in line for field in fields):
-                raise VerificationError(f"malformed ACM stage: {marker}")
-            stage += 1
+                raise VerificationError(f"malformed ACM stage: {name}")
+            if name == "create-success":
+                expected_length = ("length=21" if events and events[-1] ==
+                                   envelope_event(
+                                       "context-create-24", "reply",
+                                       (0x0015010A, 0, 0, 0)) else "length=17")
+                if expected_length not in line:
+                    raise VerificationError("ACM context response length changed")
+            events.append(("marker", name))
             continue
-        if any(marker in line for marker, _ in STAGES):
-            raise VerificationError("ACM lifecycle stage is duplicated or reordered")
         if "issued Apple CPU-stop value 5" in line:
-            if stage != len(STAGES) or envelope != len(EXPECTED_ENVELOPES) or stopped:
+            if tuple(events) not in (MODERN_EVENTS, FALLBACK_EVENTS) or stopped:
                 raise VerificationError("ACM lifecycle did not complete before CPU stop")
             stopped = True
-    if stage != len(STAGES) or envelope != len(EXPECTED_ENVELOPES) or not stopped:
+    if tuple(events) not in (MODERN_EVENTS, FALLBACK_EVENTS) or not stopped:
         raise VerificationError("ACM context lifecycle transcript is incomplete")
 
 
