@@ -1032,6 +1032,16 @@ and correlates the response before consuming the receive OOL buffer.
 bit, selector, and tag to match before exposing a response length. It has no
 password input and no device-I/O path.
 
+`credential-services-bootstrap.py` now composes the existing control-message
+encoder and stop-before-free ownership model for both fixed services. It
+creates distinct tagged opcode-2/opcode-3 registrations for two 16 KiB DMA
+mappings, refuses any endpoint other than ACM `0x0a` or AKS `0x07`, and cannot
+mark either service ready without an independently supplied, exactly matching
+acknowledgement profile. A failed second acknowledgement commits neither
+mapping. Successful mappings remain retained until transport stop, explicit
+scrub, and release. This is still a pure plan: it allocates no memory and has
+no route into the kernel probe.
+
 The same offline model computes the exact verify-secret serialized size
 without accepting secret bytes: an `0x54`-byte serialized header, the variant
 word, keybag qword, selector word, two 32-bit-length-prefixed blobs padded to

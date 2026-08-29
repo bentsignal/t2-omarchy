@@ -28,6 +28,10 @@ handling, or AKS IPC serialization.
 envelope, OOL length bound, and reply message-type correlation. It likewise
 has no device-I/O path.
 
+`credential-services-bootstrap.py` composes fixed ACM/AKS OOL registration,
+independently observed acknowledgement profiles, and stop-scrub-release
+ownership. It deliberately has no kernel or DMA-allocation path.
+
 Build against the running kernel:
 
 ```bash
