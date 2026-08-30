@@ -536,3 +536,26 @@ probes. It will never commit, upload, print, or persist decrypted bytes; every
 plaintext will be unlinked immediately after its probe. This retained
 encrypted copy avoids another macOS reboot for each non-secret sequence
 correction. Commit and push only the sanitized transfer report.
+
+## macOS return result: retained-development transfer complete
+
+The authorized repeat transfer completed using the fresh EFI public
+certificate. The fail-closed extractor required root ownership, exact 599/708
+archive sizes, keyed-archive structure, and exactly one unique secure-data
+object of the established length in each archive. It selected 148 bytes from
+the 599-byte general archive and 104 bytes from the 708-byte user archive. The
+standalone helper still cannot instantiate the private archive class, so UID
+classification relies explicitly on the previously established 599 -> general
+UID -1 and 708 -> UID 501 mapping rather than a fresh UID decode.
+
+Each object was streamed directly into an atomic AES-256 CMS DER output with
+no plaintext temporary file. `t2-touchid-transfer-global.cms` is 727 bytes and
+`t2-touchid-transfer-user.cms` is 678 bytes. Both final envelopes passed
+independent `openssl cms -cmsout -noout` parsing. No source path, UUID,
+plaintext, hash, or secret value was printed or retained, and neither source
+archive nor the enrolled fingerprint was changed.
+
+Linux may now move the two ciphertexts, certificate, and private key into the
+handoff's mode-0700 LUKS-home directory with individual mode 0600, use them
+only for the authorized bounded local sequence probes, unlink plaintext after
+every probe, and never commit, upload, or print any transfer material.

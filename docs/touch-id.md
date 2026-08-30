@@ -2945,6 +2945,16 @@ calibration retrieval/upload belongs in this machine's path. Linux now places
 this read between sensor info and `0x52` and refuses to load if calibration is
 reported absent.
 
+The resulting development transfer was reproduced on macOS with the same
+fail-closed 599/708-byte archive and unique 148/104-byte data-object checks.
+The helper still relies on the previously proven size-to-UID mapping because
+the private archive class cannot be instantiated standalone. It streamed the
+objects without plaintext temporary files into 727-byte global and 678-byte
+user AES-256 CMS DER envelopes, both of which passed independent structure
+parsing. Linux may retain only the encrypted transfer set under the documented
+mode-0700/mode-0600 LUKS-home controls and must unlink plaintext after every
+bounded probe.
+
 ## Useful baseline commands
 
 ```bash
