@@ -2886,6 +2886,20 @@ do not themselves construct the accessory group. A sanitized read-only
 writes remain unjustified. The pinned verifier is
 `tools/research/macos-calibration-accessory-evidence.py`.
 
+Linux's bounded `0x52` read then succeeded with one 44-byte built-in
+accessory/group record, completing the non-secret pre-load context. The next
+authorized macOS pass reproduced the two-component encrypted transfer. Among
+40 files at the two expected archive sizes, exactly two were keyed archives
+and each contained one unique data object of the established secure-data
+length: 148 bytes in the 599-byte general archive and 104 bytes in the
+708-byte user archive. The standalone helper could not instantiate the
+private archive class to freshly decode `CatacombUserID`, so selection relied
+on the previously proven 599 -> UID -1 and 708 -> UID 501 mapping; this is a
+documented limitation. No plaintext temporary file was created. The resulting
+CMS DER envelopes are 711 and 662 bytes and both passed independent structure
+parsing. Linux can now run the same-session context-plus-ordered-load
+comparison and immediately remove all ephemeral artifacts.
+
 Linux's bounded `0x52` comparison returned status zero with exactly one
 44-byte record, classified as the built-in accessory and built-in device
 group. No UUID or record bytes were printed or retained. This confirms the

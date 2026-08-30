@@ -381,3 +381,33 @@ Linux will decrypt both into private temporary inputs, perform the now-complete
 same-session read sequence, load general then UID 501 exactly once, report
 only statuses/policy length/identity count, and immediately remove every
 transfer artifact and throwaway key.
+
+## macOS return result: post-accessory-context transfer complete
+
+The authorized two-component transfer completed. A root-privileged,
+Terminal-context helper found 40 files at either expected archive size; only
+two were valid keyed archives, and each contained exactly one unique data
+object of its previously established secure-data length. The 599-byte archive
+yielded 148 bytes and the 708-byte archive yielded 104 bytes. No archive path,
+UUID, data value, or hash was printed or retained.
+
+The current private archive class would not instantiate in the standalone
+helper, so this pass could not independently decode `CatacombUserID`. Selection
+therefore used the exact root-owned archive sizes, keyed-archive structure,
+unique expected-length data objects, and the size-to-UID mapping established
+by the prior successful Foundation decode (599 -> general UID -1; 708 -> UID
+501). This limitation is explicit rather than silently claiming a fresh UID
+decode.
+
+Each selected data object was streamed directly to OpenSSL CMS encryption;
+no plaintext temporary file was created. The final EFI artifacts are:
+
+- `t2-touchid-transfer-global.cms`: 711 bytes, wrapping 148 bytes;
+- `t2-touchid-transfer-user.cms`: 662 bytes, wrapping 104 bytes.
+
+Both final DER envelopes passed independent `openssl cms -cmsout -noout`
+parsing. The source archives and enrolled fingerprint were untouched. Linux
+may now perform the bounded same-session readiness/provisioning/sensor-info/
+bio-device-list sequence, load general then UID 501 once, report only the
+authorized status/length/count fields, and remove all transfer and key
+artifacts immediately afterward.
