@@ -121,6 +121,22 @@ two-mapping keybag teardown, ACM deletion, CPU stop, DMA scrub, and transcript
 verification passed. The cold state-read/`NoCatacomb` ordering is therefore
 ruled out as the missing prerequisite by itself.
 
+A second supervised run combined that cold same-session prefix with the
+UID-501 protected-policy transaction. The policy setter and exact readback,
+copied/unloaded/reloaded/promoted keybag lifecycle, and password verification
+all succeeded; the AKS verifier explicitly reported `authorized=yes`.
+Enrollment again returned synchronous status `261` before requesting a touch,
+and full teardown passed. This rules out an interaction in which the daemon's
+cold-state ordering and authenticated per-user policy must both be present.
+
+Static analysis of Catalina's first-unlock handler found the same literal
+status, `0x105`, when class-C host files are inaccessible. On success that
+handler performs host bookkeeping and enters the already mirrored
+`restoreAndSyncTemplates`/`loadCatacomb` flow; its cold no-file branch exposes
+no additional Bridge command. This is evidence for a remaining protected-data
+or keybag-readiness boundary, not permission to fabricate a first-unlock wire
+message or proof that the host and SEP status namespaces are identical.
+
 This is an experiment boundary, not account authentication. Because the probe
 creates the bag whose secret it then verifies, success establishes that Linux
 can manufacture a fresh ACM credential context; it does not independently

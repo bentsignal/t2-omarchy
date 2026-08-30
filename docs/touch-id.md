@@ -1651,6 +1651,28 @@ mappings, the ACM context, SEP CPU state, and DMA buffers passed complete
 verified teardown. Same-session state reads plus the daemon's exact general
 `NoCatacomb` cold transition are therefore not sufficient for enrollment.
 
+The follow-up supervised transaction combined that exact cold-state prefix
+with UID-501 authenticated protected-policy creation and readback on the same
+Bridge session. Its opaque AKS bag was copied, unloaded, proven absent,
+reloaded, promoted to `-501`, and verified; `authorized=yes` conclusively rules
+out an incorrectly entered password. Command `3` still returned synchronous
+status `261` before requesting a touch. Both keybag mappings, the ACM context,
+SEP CPU state, and DMA buffers then passed the strict teardown verifier. Thus
+neither prerequisite alone nor their same-session combination accounts for
+the rejection.
+
+Catalina's symbolized first-unlock path gives the number `261` additional—but
+not yet dispositive—context. `handleFirstUnlock` returns literal `0x105` when
+the host cannot access its class-C protected files. Once those files are
+accessible it changes only daemon bookkeeping, calls the already analyzed
+`restoreAndSyncTemplates`/`loadCatacomb` path, and posts a host notification.
+The cold no-file branch of `loadCatacomb` adds no undiscovered Bridge command
+beyond the reproduced general `NoCatacomb`; first unlock is not itself a wire
+operation that Linux can safely imitate. The numerical match strengthens the
+hypothesis that command 3 is rejecting protected-data/keybag readiness, but it
+does not prove that the daemon's local error namespace and SEP's returned
+status have identical meanings.
+
 The first supervised promotion request did not reach verification because it
 revealed asynchronous ordering that the initial receiver did not yet model.
 T2 emitted two endpoint-7 notifications before the correlated reply: opcode
