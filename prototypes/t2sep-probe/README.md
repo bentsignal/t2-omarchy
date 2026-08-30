@@ -644,6 +644,13 @@ same current byte pattern is compatibility-wrapper version 1 with `inValue=2`.
 The corrected live request succeeded on its first attempt, followed by valid
 sensor-info and exactly one built-in device record on the same session.
 
+The next missing normal read was recovered locally from the checksum-known
+Catalina daemon: command `0x28` v1/value 0 returns exactly 23 packed bytes, and
+byte 22 is the calibration-present boolean. The current T2 returned status
+zero with `calibration_present=True`. `sensor-reset-probe.py` now reports only
+that boolean and lengths/counts; `external-catacomb-load-probe.py` inserts the
+read between sensor info and `0x52` and refuses any load when the flag is false.
+
 `BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
 queues server-initiated envelopes that race a synchronous call. The gated
 `presence-event-probe.py` verified a status-zero presence start, method-9

@@ -506,3 +506,33 @@ enrolled fingerprint was changed.
 Linux may now perform exactly one corrected-reset same-session ordered-load
 comparison, general followed by UID 501, and must remove all CMS, certificate,
 private-key, and decrypted transfer material immediately afterward.
+
+## Linux return result: corrected reset still needs daemon-info read
+
+The corrected reset succeeded in the ordered-load session, followed by valid
+sensor info and one built-in device record. The general load nevertheless
+returned 257; the user component was not sent, and every transfer artifact was
+removed.
+
+Local checksum-known Catalina disassembly then recovered the one remaining
+normal initialization read. `performGetBiometrickitdInfoCommand:` sends
+command `0x28` through the compatibility wrapper (version 1), with
+`inValue=0`, no input, and an exact packed 23-byte `IIIQCCC` output. The final
+byte at offset 22 is the calibration-present boolean checked by
+`loadCalibrationData`. A bounded current-T2 run succeeded with an exact
+23-byte reply and `calibration_present=True`; therefore macOS skips methods
+5/11 and command `0x20` on this machine. The same session then returned one
+built-in device record. Linux now implements that exact ordering between
+sensor info and `0x52`, and fails closed if calibration is absent.
+
+The next macOS pass may repeat the established general/UID-501 CMS transfer
+using the fresh EFI certificate. Apply the same exact ownership, archive-size,
+keyed-archive, unique-data-object, and 148/104-byte validation. Stream directly
+to atomic AES-256 CMS DER outputs; create no plaintext file and expose no
+paths, UUIDs, values, or hashes. This time Linux will move the two ciphertexts,
+certificate, and private key into a mode-0700 directory on its LUKS-encrypted
+home, with each file mode 0600, solely for repeated bounded local development
+probes. It will never commit, upload, print, or persist decrypted bytes; every
+plaintext will be unlinked immediately after its probe. This retained
+encrypted copy avoids another macOS reboot for each non-secret sequence
+correction. Commit and push only the sanitized transfer report.

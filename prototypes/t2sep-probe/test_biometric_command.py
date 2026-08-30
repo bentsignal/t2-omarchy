@@ -32,6 +32,8 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
                          (0x35, 1, 0, b"", 12))
         self.assertEqual(command.bio_device_list_fields(),
                          (0x52, 1, 0, b"", 264))
+        self.assertEqual(command.biometrickitd_info_fields(),
+                         (0x28, 1, 0, b"", 23))
         self.assertEqual(command.decode_sensor_readiness(b"\x01"), 1)
         self.assertEqual(command.decode_provisioning_state(
             struct.pack("<I", 5)), 5)
@@ -41,6 +43,10 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
             1, bytes(16), 1, bytes(16), 6)
         self.assertEqual(command.decode_bio_device_list_summary(record),
                          command.BioDeviceListSummary(1, 1))
+        info = bytearray(23)
+        info[22] = 1
+        self.assertEqual(command.decode_biometrickitd_info_summary(bytes(info)),
+                         command.BiometrickitdInfoSummary(True))
 
     def test_sensor_initialization_decoders_reject_wrong_shapes(self):
         for output in (b"", bytes(2), bytearray(b"\0")):
@@ -60,6 +66,14 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
             with self.subTest(decoder="bio_device", output_type=type(output)):
                 with self.assertRaises(command.BiometricCommandError):
                     command.decode_bio_device_list_summary(output)
+        for output in (b"", bytes(22), bytes(24), bytearray(23)):
+            with self.subTest(decoder="biometrickitd_info", output=output):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.decode_biometrickitd_info_summary(output)
+        invalid_flag = bytearray(23)
+        invalid_flag[22] = 2
+        with self.assertRaises(command.BiometricCommandError):
+            command.decode_biometrickitd_info_summary(bytes(invalid_flag))
 
     def test_bio_device_summary_does_not_disclose_record_data(self):
         builtin = command.BIO_DEVICE_RECORD.pack(

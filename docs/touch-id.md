@@ -2935,6 +2935,16 @@ envelopes, respectively, and both passed independent CMS structure parsing.
 Linux may now run exactly one corrected-reset same-session general-then-user
 load and immediately remove every ephemeral transfer artifact.
 
+That corrected-reset comparison still returned 257 on the general component,
+then removed every artifact. A checksum-known Catalina cross-check recovered
+the remaining `performGetBiometrickitdInfoCommand:` read as command `0x28` v1,
+value 0, no input, and an exact packed 23-byte output. Its final byte at offset
+22 is the calibration-present boolean. The current T2 returned status zero,
+an exact 23-byte shape, and `calibration_present=True`, proving that no
+calibration retrieval/upload belongs in this machine's path. Linux now places
+this read between sensor info and `0x52` and refuses to load if calibration is
+reported absent.
+
 ## Useful baseline commands
 
 ```bash

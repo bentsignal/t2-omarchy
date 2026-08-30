@@ -33,6 +33,8 @@ class SensorResetResult:
     reset_attempts: int
     reset_status: int
     sensor_info_length: int
+    biometrickitd_info_length: int
+    calibration_present: bool
     device_records: int
     builtin_records: int
 
@@ -67,6 +69,12 @@ def probe_socket(sock) -> SensorResetResult:
     if info_status != 0:
         raise SensorResetProbeError("sensor-info read failed after reset")
     context.biometric.decode_sensor_info(info_output or b"")
+    daemon_info_status, daemon_info_output = context._perform(
+        session, context.biometric.biometrickitd_info_fields())
+    if daemon_info_status != 0:
+        raise SensorResetProbeError("biometrickitd-info read failed after reset")
+    daemon_info = context.biometric.decode_biometrickitd_info_summary(
+        daemon_info_output or b"")
     devices_status, devices_output = context._perform(
         session, context.biometric.bio_device_list_fields())
     if devices_status != 0:
@@ -74,6 +82,8 @@ def probe_socket(sock) -> SensorResetResult:
     summary = context.biometric.decode_bio_device_list_summary(devices_output or b"")
     return SensorResetResult(
         attempts, reset_status, context.biometric.SENSOR_INFO_SIZE,
+        context.biometric.BIOMETRICKITD_INFO_SIZE,
+        daemon_info.calibration_present,
         summary.record_count, summary.builtin_record_count)
 
 
@@ -121,6 +131,8 @@ def main() -> None:
     print("sensor reset: "
           f"attempts={result.reset_attempts} status={result.reset_status} "
           f"sensor_info_length={result.sensor_info_length} "
+          f"biometrickitd_info_length={result.biometrickitd_info_length} "
+          f"calibration_present={result.calibration_present} "
           f"device_records={result.device_records} "
           f"builtin_records={result.builtin_records}")
 

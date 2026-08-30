@@ -25,6 +25,7 @@ COMMAND_REMOVE_IDENTITY = 0x0D
 COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PROVISIONING_STATE = 0x10
 COMMAND_PRESENCE_DETECT = 0x26
+COMMAND_GET_BIOMETRICKITD_INFO = 0x28
 COMMAND_GET_PROTECTED_CONFIG = 0x2E
 COMMAND_SET_PROTECTED_CONFIG = 0x2F
 COMMAND_NO_CATACOMB = 0x31
@@ -77,6 +78,7 @@ SERVICE_RECORD_HEADER_SIZE = 40
 MAX_SERVICE_EVENT_DATA = 64 * 1024
 PROVISIONING_STATE_SIZE = 4
 SENSOR_INFO_SIZE = 12
+BIOMETRICKITD_INFO_SIZE = 23
 BIO_DEVICE_RECORD = struct.Struct("<I16sI16sI")
 MAX_BIO_DEVICE_RECORDS = 6
 BIO_DEVICE_LIST_CAPACITY = BIO_DEVICE_RECORD.size * MAX_BIO_DEVICE_RECORDS
@@ -177,6 +179,11 @@ class BioDeviceListSummary:
     builtin_record_count: int
 
 
+@dataclass(frozen=True)
+class BiometrickitdInfoSummary:
+    calibration_present: bool
+
+
 class AuthorizedPolicyRequest:
     """One mutable current-format per-user policy request with scrubbing."""
 
@@ -255,6 +262,22 @@ def bio_device_list_fields():
     """Encode the current bounded, read-only accessory/device-group query."""
     return (COMMAND_GET_BIO_DEVICE_LIST, COMMAND_VERSION, 0,
             b"", BIO_DEVICE_LIST_CAPACITY)
+
+
+def biometrickitd_info_fields():
+    """Encode the current bounded daemon-information read."""
+    return (COMMAND_GET_BIOMETRICKITD_INFO, COMMAND_VERSION, 0,
+            b"", BIOMETRICKITD_INFO_SIZE)
+
+
+def decode_biometrickitd_info_summary(output: bytes) -> BiometrickitdInfoSummary:
+    """Expose only the statically identified final calibration-present flag."""
+    if not isinstance(output, bytes) or len(output) != BIOMETRICKITD_INFO_SIZE:
+        raise BiometricCommandError(
+            "biometrickitd information must be exactly 23 bytes")
+    if output[22] not in (0, 1):
+        raise BiometricCommandError("calibration-present flag is not boolean")
+    return BiometrickitdInfoSummary(bool(output[22]))
 
 
 def decode_bio_device_list_summary(output: bytes) -> BioDeviceListSummary:

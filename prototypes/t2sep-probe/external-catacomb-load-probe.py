@@ -68,6 +68,16 @@ def _establish_nonsecret_context(session) -> None:
         raise ExternalCatacombLoadError(
             f"sensor-info read failed with status {sensor_info_status}")
     state.biometric.decode_sensor_info(sensor_info_output or b"")
+    daemon_info_status, daemon_info_output = state._perform(
+        session, state.biometric.biometrickitd_info_fields())
+    if daemon_info_status != 0:
+        raise ExternalCatacombLoadError(
+            f"biometrickitd-info read failed with status {daemon_info_status}")
+    daemon_info = state.biometric.decode_biometrickitd_info_summary(
+        daemon_info_output or b"")
+    if not daemon_info.calibration_present:
+        raise ExternalCatacombLoadError(
+            "sensor reports missing calibration; upload is not authorized")
     devices_status, devices_output = state._perform(
         session, state.biometric.bio_device_list_fields())
     if devices_status != 0:

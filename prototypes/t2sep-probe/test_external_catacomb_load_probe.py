@@ -42,12 +42,15 @@ class ExternalCatacombLoadTests(unittest.TestCase):
     def context_replies(self):
         record = probe.state.biometric.BIO_DEVICE_RECORD.pack(
             1, bytes(16), 1, bytes(16), 6)
+        info = bytearray(23)
+        info[22] = 1
         return (
             envelope(self.IDS[3], [0, b"\x01"])
             + envelope(self.IDS[4], [0, struct.pack("<I", 5)])
             + envelope(self.IDS[5], [0, protocol.NO_REPLY_UUID.lower()])
             + envelope(self.IDS[6], [0, struct.pack("<3I", 1, 12, 7)])
-            + envelope(self.IDS[7], [0, record]))
+            + envelope(self.IDS[7], [0, bytes(info)])
+            + envelope(self.IDS[8], [0, record]))
 
     def test_one_shot_load_reports_only_policy_length_and_count(self):
         identity = struct.pack("<I16s", 501, bytes(16))
@@ -55,9 +58,9 @@ class ExternalCatacombLoadTests(unittest.TestCase):
                     + envelope(self.IDS[1], [0])
                     + envelope(self.IDS[2], [0, True])
                     + self.context_replies()
-                    + envelope(self.IDS[8], [0, protocol.NO_REPLY_UUID.lower()])
-                    + envelope(self.IDS[9], [0, bytes(32)])
-                    + envelope(self.IDS[10], [0, identity]))
+                    + envelope(self.IDS[9], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[10], [0, bytes(32)])
+                    + envelope(self.IDS[11], [0, identity]))
         ids = iter(self.IDS)
         original = probe.state.coupled.bridge_query.uuid.uuid4
         probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
@@ -74,10 +77,10 @@ class ExternalCatacombLoadTests(unittest.TestCase):
                     + envelope(self.IDS[1], [0])
                     + envelope(self.IDS[2], [0, True])
                     + self.context_replies()
-                    + envelope(self.IDS[8], [0, protocol.NO_REPLY_UUID.lower()])
                     + envelope(self.IDS[9], [0, protocol.NO_REPLY_UUID.lower()])
-                    + envelope(self.IDS[10], [0, bytes(32)])
-                    + envelope(self.IDS[11], [0, identity]))
+                    + envelope(self.IDS[10], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[11], [0, bytes(32)])
+                    + envelope(self.IDS[12], [0, identity]))
         ids = iter(self.IDS)
         original = probe.state.coupled.bridge_query.uuid.uuid4
         probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
@@ -100,7 +103,8 @@ class ExternalCatacombLoadTests(unittest.TestCase):
                     + envelope(self.IDS[4], [0, struct.pack("<I", 5)])
                     + envelope(self.IDS[5], [0, protocol.NO_REPLY_UUID.lower()])
                     + envelope(self.IDS[6], [0, struct.pack("<3I", 1, 12, 7)])
-                    + envelope(self.IDS[7], [0, record]))
+                    + envelope(self.IDS[7], [0, bytes(22) + b"\x01"])
+                    + envelope(self.IDS[8], [0, record]))
         ids = iter(self.IDS)
         original = probe.state.coupled.bridge_query.uuid.uuid4
         probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
@@ -123,13 +127,34 @@ class ExternalCatacombLoadTests(unittest.TestCase):
                     + envelope(self.IDS[6], [7, protocol.NO_REPLY_UUID.lower()])
                     + envelope(self.IDS[7], [0, protocol.NO_REPLY_UUID.lower()])
                     + envelope(self.IDS[8], [0, struct.pack("<3I", 1, 12, 7)])
-                    + envelope(self.IDS[9], [0, record])
-                    + envelope(self.IDS[10], [257, protocol.NO_REPLY_UUID.lower()]))
+                    + envelope(self.IDS[9], [0, bytes(22) + b"\x01"])
+                    + envelope(self.IDS[10], [0, record])
+                    + envelope(self.IDS[11], [257, protocol.NO_REPLY_UUID.lower()]))
         ids = iter(self.IDS)
         original = probe.state.coupled.bridge_query.uuid.uuid4
         probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
         try:
             with self.assertRaisesRegex(probe.ExternalCatacombLoadError, "status 257"):
+                probe.probe_socket(FakeSocket(incoming), user_id=501,
+                                   secure_data=b"opaque-current-data")
+        finally:
+            probe.state.coupled.bridge_query.uuid.uuid4 = original
+
+    def test_refuses_load_when_calibration_is_not_present(self):
+        incoming = (envelope(self.IDS[0], [0, 3])
+                    + envelope(self.IDS[1], [0])
+                    + envelope(self.IDS[2], [0, True])
+                    + envelope(self.IDS[3], [0, b"\x01"])
+                    + envelope(self.IDS[4], [0, struct.pack("<I", 5)])
+                    + envelope(self.IDS[5], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[6], [0, struct.pack("<3I", 1, 12, 7)])
+                    + envelope(self.IDS[7], [0, bytes(23)]))
+        ids = iter(self.IDS)
+        original = probe.state.coupled.bridge_query.uuid.uuid4
+        probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            with self.assertRaisesRegex(probe.ExternalCatacombLoadError,
+                                        "missing calibration"):
                 probe.probe_socket(FakeSocket(incoming), user_id=501,
                                    secure_data=b"opaque-current-data")
         finally:

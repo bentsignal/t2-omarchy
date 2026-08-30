@@ -37,18 +37,22 @@ class SensorResetProbeTests(unittest.TestCase):
     def successful_tail():
         record = probe.context.biometric.BIO_DEVICE_RECORD.pack(
             1, bytes(16), 1, bytes(16), 6)
-        return ([0, struct.pack("<3I", 1, 12, 7)], [0, record])
+        info = bytearray(23)
+        info[22] = 1
+        return ([0, struct.pack("<3I", 1, 12, 7)],
+                [0, bytes(info)], [0, record])
 
     def test_exact_order_and_success(self):
         session, result = self.run_probe((
             [0, 3], [0], [0, True], [0, b"\x01"],
             [0, struct.pack("<I", 5)], [0, None], *self.successful_tail(),
         ))
-        self.assertEqual(result, probe.SensorResetResult(1, 0, 12, 1, 1))
+        self.assertEqual(result,
+                         probe.SensorResetResult(1, 0, 12, 23, True, 1, 1))
         inner = [request[2] for request in session.requests[3:]]
         self.assertEqual([payload[2:4] for payload in inner],
                          [b"\x53\0", b"\x10\0", b"\x02\0",
-                          b"\x35\0", b"\x52\0"])
+                          b"\x35\0", b"\x28\0", b"\x52\0"])
         self.assertEqual(inner[2][4:8], b"\x01\0\x02\0")
 
     def test_retries_no_more_than_three_times(self):
