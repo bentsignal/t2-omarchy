@@ -39,6 +39,7 @@ COMMAND_LOAD_CATACOMB = 0x40
 COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
 COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
+COMMAND_IS_XART_AVAILABLE = 0x4C
 COMMAND_GET_CATACOMB_GROUP_STATE = 0x50
 COMMAND_GET_BIO_DEVICE_LIST = 0x52
 COMMAND_SENSOR_READINESS = 0x53
@@ -369,6 +370,20 @@ def catacomb_state_fields():
 def catacomb_group_state_fields():
     return (COMMAND_GET_CATACOMB_GROUP_STATE, 0, 0, b"",
             CATACOMB_GROUP_STATE_RECORD_SIZE * MAX_CATACOMB_GROUP_STATE_RECORDS)
+
+
+def xart_available_fields(*, version: int = 0):
+    """Query Catalina's read-only one-byte xART availability result."""
+    if isinstance(version, bool) or version not in (0, 1, 2):
+        raise BiometricCommandError("xART query version must be 0, 1, or 2")
+    return (COMMAND_IS_XART_AVAILABLE, version, 0, b"", 1)
+
+
+def decode_xart_available(output: bytes) -> bool:
+    if not isinstance(output, bytes) or len(output) != 1 or output[0] not in (0, 1):
+        raise BiometricCommandError(
+            "xART availability must be exactly one canonical boolean byte")
+    return bool(output[0])
 
 
 def builtin_catacomb_save_context(*, user_id: int) -> bytes:

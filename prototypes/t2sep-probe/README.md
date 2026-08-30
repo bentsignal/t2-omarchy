@@ -667,6 +667,10 @@ sensor-info, calibration-present, and one-built-in-accessory sequence on the
 same Bridge connection before initializing either empty catacomb. Earlier
 enrollment attempts performed only a separate connectivity preflight, so they
 did not establish this per-connection sensor context before command `0x03`.
+Current command `0x4c` version 1 also reports xART available with a canonical
+one-byte true result after that sequence; versions 0 and 2 return
+`kIOReturnBadArgument`. Enrollment now requires the same read on its live
+session before it initializes either empty catacomb.
 
 `BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
 queues server-initiated envelopes that race a synchronous call. The gated

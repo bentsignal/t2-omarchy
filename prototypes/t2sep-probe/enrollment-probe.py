@@ -133,6 +133,18 @@ def _initialize_current_bridge(session) -> None:
         raise EnrollmentProbeError("biometric service did not report opened")
 
 
+def _establish_enrollment_sensor_context(session) -> None:
+    """Establish proven sensor state and require current xART availability."""
+    sensor_context._establish_nonsecret_context(session)
+    status, output = _perform(
+        session, biometric.xart_available_fields(version=1))
+    if status != 0:
+        raise EnrollmentProbeError(
+            f"xART availability query failed with status {status}")
+    if not biometric.decode_xart_available(output or b""):
+        raise EnrollmentProbeError("xART is unavailable for enrollment")
+
+
 def probe_socket(sock, *, user_id: int,
                  authorized_request=None,
                  policy_request=None,
@@ -145,7 +157,7 @@ def probe_socket(sock, *, user_id: int,
     _initialize_current_bridge(session)
     if establish_sensor_context:
         try:
-            sensor_context._establish_nonsecret_context(session)
+            _establish_enrollment_sensor_context(session)
         except (sensor_context.ExternalCatacombLoadError,
                 sensor_context.state.biometric.BiometricCommandError) as error:
             raise EnrollmentProbeError(

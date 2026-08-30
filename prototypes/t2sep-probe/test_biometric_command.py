@@ -260,6 +260,14 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         self.assertEqual(match[4], 0)
         self.assertEqual(command.presence_detect_fields(), (0x26, 1, 0, b"", 0))
         self.assertEqual(command.cancel_fields(), (0x0C, 1, 0, b"", 0))
+        self.assertEqual(command.xart_available_fields(), (0x4C, 0, 0, b"", 1))
+        self.assertEqual(command.xart_available_fields(version=2),
+                         (0x4C, 2, 0, b"", 1))
+        self.assertFalse(command.decode_xart_available(b"\0"))
+        self.assertTrue(command.decode_xart_available(b"\1"))
+        for bad in (b"", b"\2", b"\1\0"):
+            with self.assertRaises(command.BiometricCommandError):
+                command.decode_xart_available(bad)
 
     def test_identity_queries_and_strict_decoders(self):
         self.assertEqual(command.max_identity_count_fields(), (0x0F, 1, 0, b"", 4))

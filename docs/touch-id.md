@@ -2980,6 +2980,21 @@ not the project goal, further work should return to the Linux-native empty
 catacomb enrollment path and isolate the independent synchronous status 261
 rather than broadening extraction of macOS key material.
 
+The next native-enrollment comparison closed a per-connection initialization
+gap. On the very Bridge session used for `NoCatacomb`, authenticated policy
+creation, and command `0x03`, Linux successfully performed readiness and
+provisioning reads, corrected reset, post-reset cancellation, sensor-info and
+calibration-present reads, and exact one-built-in-accessory enumeration. With
+the password-verified system bag and ACM context still live, command `0x03`
+nevertheless returned synchronous status 261 before requesting a touch. The
+temporary system and source bags were independently proven absent afterward,
+the ACM context was deleted, and the SEP transport was stopped and scrubbed.
+Missing same-session sensor/accessory initialization is therefore not the
+remaining native-enrollment prerequisite. The next comparison should isolate
+the daemon's load-completion/catacomb-state transition after its per-component
+load loop; repeating command `0x03` or altering its proven authorization bytes
+cannot add evidence.
+
 ## Useful baseline commands
 
 ```bash
