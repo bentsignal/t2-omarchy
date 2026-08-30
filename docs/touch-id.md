@@ -2925,6 +2925,16 @@ on the same session. Linux therefore reproduces the entire normal
 no-calibration initialization sequence through accessory caching. One final
 general-then-user catacomb comparison with this corrected reset is justified.
 
+The follow-up macOS transfer for that corrected-reset comparison completed.
+The same fail-closed structural selection yielded the established 148-byte
+general and 104-byte UID-501 secure-data objects; the standalone helper still
+relies on the previously proven 599 -> UID -1 and 708 -> UID 501 mapping rather
+than freshly decoding the private archive class. The data was streamed without
+a plaintext temporary file into 721-byte and 672-byte AES-256 CMS DER
+envelopes, respectively, and both passed independent CMS structure parsing.
+Linux may now run exactly one corrected-reset same-session general-then-user
+load and immediately remove every ephemeral transfer artifact.
+
 ## Useful baseline commands
 
 ```bash

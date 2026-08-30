@@ -482,3 +482,27 @@ change the archives or enrolled fingerprint. Validate only CMS structure and
 lengths, then commit and push a sanitized report. Linux will perform exactly
 one corrected-reset same-session ordered-load comparison and remove all
 transfer material immediately.
+
+## macOS return result: corrected-reset comparison transfer complete
+
+The authorized repeat transfer completed using the new EFI public
+certificate. The fail-closed extractor again required exact root ownership,
+599/708-byte archive sizes, keyed-archive structure, and one unique secure-data
+object of the established length in each archive. It selected 148 bytes from
+the 599-byte general archive and 104 bytes from the 708-byte user archive.
+Because the standalone helper still cannot instantiate the private archive
+class, the UID classification relies explicitly on the previously established
+599 -> general UID -1 and 708 -> UID 501 mapping rather than claiming a fresh
+UID decode.
+
+Both objects were streamed directly into atomic AES-256 CMS DER outputs; no
+plaintext temporary file was created. The resulting EFI files are 721 bytes
+for `t2-touchid-transfer-global.cms` and 672 bytes for
+`t2-touchid-transfer-user.cms`. Each final envelope passed an independent
+`openssl cms -cmsout -noout` parse. No archive path, UUID, plaintext, hash, or
+secret value was printed or retained, and neither source archive nor the
+enrolled fingerprint was changed.
+
+Linux may now perform exactly one corrected-reset same-session ordered-load
+comparison, general followed by UID 501, and must remove all CMS, certificate,
+private-key, and decrypted transfer material immediately afterward.
