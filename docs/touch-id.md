@@ -2818,6 +2818,15 @@ enumerated UID/identity pair, and exits unsuccessfully for a no-match. It logs
 no UUID or template bytes. This supplies the direct post-restart match test
 once enrollment succeeds; 412 offline tests pass.
 
+The ordered current-macOS comparison later decrypted exact 148-byte general
+and 104-byte user secure-data payloads, then sent the general component first.
+The general command `0x40` returned service status 257, so the user payload was
+not sent and all seven temporary transfer/key artifacts were removed. Ordering
+is therefore not the cause. The next comparison is static-only: recover the
+installed daemon's exact command-`0x40` Bridge version and any accessory or
+device-group preparation performed before the first general load. No further
+catacomb transfer is justified until those fields are closed.
+
 ## Useful baseline commands
 
 ```bash

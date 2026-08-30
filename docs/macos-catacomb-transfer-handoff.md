@@ -171,3 +171,30 @@ enrolled fingerprint were untouched, and no opaque data or ciphertext was
 printed, hashed, committed, or uploaded. Linux should decrypt and load the
 general component first and UID 501 second on the same Bridge connection, then
 remove all temporary transfer material as specified by commit `400af66`.
+
+## Linux return result: general component rejected
+
+Linux decrypted both payloads to the exact reported lengths and issued the
+general component first on a freshly initialized Bridge connection. The
+general command-`0x40` request itself returned service status 257, so the user
+component was not sent. Linux removed both plaintexts, both CMS files, the EFI
+certificate, and both Linux key files immediately afterward. No transfer
+material remains.
+
+This rules out user-component ordering. Do not transfer either catacomb again
+yet. The next macOS pass is static/read-only only and must recover:
+
+1. The exact Bridge command version, `inValue`, input size/source, output
+   pointer/size, and device-group argument (if any) used by current 25G83
+   `performLoadCatacombCommand:inData:` for command `0x40`. The Linux attempt
+   used KDK-derived version 1, `inValue=0`, direct bytes, and no output.
+2. Every BiometricKit Bridge method or biometric command performed after
+   connection initialization/accessory caching and before the first general
+   `loadCatacombForComponent:` call. Record command/method IDs, versions,
+   non-secret payload shapes, and ordering only.
+3. Any current binary enum/string/control-flow evidence naming service status
+   257, especially device-group/accessory/component failures.
+
+Do not decode, transfer, print, hash, or modify catacomb data; do not enroll,
+remove, or touch a fingerprint. Add checksum-pinned evidence tooling/tests,
+update this file and `docs/touch-id.md`, commit, and push `main`.
