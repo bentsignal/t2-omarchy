@@ -27,7 +27,7 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         self.assertEqual(command.provisioning_state_fields(),
                          (0x10, 1, 0, b"", 4))
         self.assertEqual(command.reset_sensor_fields(),
-                         (0x02, 2, 0, b"", 0))
+                         (0x02, 1, 2, b"", 0))
         self.assertEqual(command.sensor_info_fields(),
                          (0x35, 1, 0, b"", 12))
         self.assertEqual(command.bio_device_list_fields(),

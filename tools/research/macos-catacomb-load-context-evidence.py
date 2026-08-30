@@ -46,6 +46,9 @@ PATCH_COMMAND = bytes.fromhex(
     "0f57c00f1104244c89efba2400000031c94989d84d89f9")
 PROVISIONING_COMMAND = bytes.fromhex(
     "ba1000000031c94531c04531c9415250")
+# This is a compatibility-wrapper call: command 2 and inValue 2. The wrapper
+# inserts version 1. Catalina's symbolized Objective-C call independently
+# fixes the register-to-argument assignment; it is not explicit version 2.
 RESET_COMMAND = bytes.fromhex(
     "0f57c00f1104244889dfba02000000b9020000004531c04531c9")
 SENSOR_INFO_COMMAND = bytes.fromhex(

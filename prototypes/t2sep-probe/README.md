@@ -634,12 +634,15 @@ exactly one built-in record; it never exposes record UUIDs or bytes.
 
 The ordered load comparison still returned status 257 on the general
 component after all four reads succeeded. A separate, confirmation-gated
-`sensor-reset-probe.py` then reproduced reset `0x02` v2 between provisioning
+`sensor-reset-probe.py` then initially attempted misdecoded reset `0x02` v2
 and sensor-info reads with a maximum of three attempts. The live T2 returned
 `0xe00002c2` (`kIOReturnBadArgument`) on all three, so the runner stopped before
 sensor-info and device-list readback. This is preserved as evidence of a
-missing pre-reset prerequisite; it is not treated as permission to guess MSRk
-or calibration inputs.
+missing reset-envelope evidence; it is not treated as permission to guess MSRk
+or calibration inputs. Catalina's symbolized call subsequently proved the
+same current byte pattern is compatibility-wrapper version 1 with `inValue=2`.
+The corrected live request succeeded on its first attempt, followed by valid
+sensor-info and exactly one built-in device record on the same session.
 
 `BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
 queues server-initiated envelopes that race a synchronous call. The gated

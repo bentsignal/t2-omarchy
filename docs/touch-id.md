@@ -2913,10 +2913,17 @@ The ordered comparison then reproduced every successful non-secret read on one
 session, but the general load still returned 257 and the user load was not
 sent. All temporary transfer material was removed. The next known macOS
 initialization step, reset `0x02` v2, was isolated without a catacomb: three
-bounded attempts all returned `0xe00002c2` (`kIOReturnBadArgument`). This
-shifts the active boundary to a missing pre-reset prerequisite, most likely
-the provisioning-state/MSRk branch or another daemon-info flag. Static
-recovery of that branch is required before another reset or transfer.
+bounded attempts all returned `0xe00002c2` (`kIOReturnBadArgument`). A local
+Catalina symbolized cross-check then corrected the envelope: reset uses the
+compatibility wrapper with version 1 and `inValue=2`, not explicit version 2
+and value 0. The current instruction bytes have the same register setup; the
+earlier analysis had assigned `ecx=2` to the wrong selector argument.
+
+The corrected reset succeeded live on the first attempt with status zero;
+sensor-info and the one-record built-in device list also succeeded afterward
+on the same session. Linux therefore reproduces the entire normal
+no-calibration initialization sequence through accessory caching. One final
+general-then-user catacomb comparison with this corrected reset is justified.
 
 ## Useful baseline commands
 

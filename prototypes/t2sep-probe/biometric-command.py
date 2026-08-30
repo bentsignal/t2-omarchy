@@ -234,7 +234,7 @@ def decode_provisioning_state(output: bytes) -> int:
 
 def reset_sensor_fields():
     """Encode one current reset attempt; retry policy belongs to the caller."""
-    return (COMMAND_RESET_SENSOR, CURRENT_COMMAND_VERSION, 0, b"", 0)
+    return (COMMAND_RESET_SENSOR, COMMAND_VERSION, 2, b"", 0)
 
 
 def sensor_info_fields():

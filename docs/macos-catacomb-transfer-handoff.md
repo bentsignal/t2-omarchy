@@ -227,8 +227,10 @@ command shapes before the first general load:
 4. `setMSRkData:`: conditional on provisioning state; command `0x5c`, version
    1, `inValue=0`, opaque MSRk bytes as input, no output. Do not synthesize or
    send those bytes.
-5. `resetSensor`: command `0x02`, explicit version 2, `inValue=0`, no input or
-   output, with at most three host retries.
+5. `resetSensor`: command `0x02`, compatibility-wrapper version 1,
+   `inValue=2`, no input or output, with at most three host retries. The
+   earlier version-2/value-0 interpretation was corrected after Catalina's
+   symbolized call fixed the current instruction sequence's argument mapping.
 6. `cacheSensorInfo`: command `0x35`, version 1, `inValue=0`, no input, exact
    12-byte output.
 7. `setCalibrationData:source:`: command `0x20`, version 1; `inValue` is the
@@ -421,7 +423,8 @@ built-in record. The immediately following general command `0x40` still
 returned status 257, so the user component was not sent. Linux then removed
 both plaintexts, CMS files, the EFI certificate, and the throwaway key.
 
-The remaining known startup difference was reset `0x02` v2 between
+The remaining known startup difference was the then-misdecoded reset `0x02`
+version 2/value 0 between
 provisioning and sensor info. A separate bounded Linux run attempted that exact
 no-input/no-output shape at most three times. All three attempts returned
 signed status -536870206 (`0xe00002c2`, `kIOReturnBadArgument`); no subsequent
@@ -447,4 +450,35 @@ daemon and support framework:
 Do not create another catacomb transfer, reset the sensor, retrieve MSRk or
 calibration data, or touch/enroll/remove a fingerprint. Add checksum-pinned
 static evidence tooling and negative tests, update this handoff and
-`docs/touch-id.md`, commit, and push `main`.
+`docs/touch-id.md`, commit, and push `main`. This requested macOS pass was
+superseded before reboot by the local Catalina cross-check described below.
+
+## Linux correction: reset argument mapping
+
+The retained checksum-known Catalina daemon has symbolized Objective-C
+metadata for `resetSensor`. Its disassembly calls the compatibility
+`performCommand:inValue:inData:inSize:outData:outSize:` selector with command
+2 in `edx` and `inValue=2` in `ecx`; the wrapper supplies version 1. The current
+25G83 byte sequence has the same command/value register setup. The earlier
+analysis had mistaken `ecx=2` for an explicit version argument despite not
+pinning the called selector. Linux's version-2/value-0 experiment therefore
+tested the wrong envelope and its `kIOReturnBadArgument` is fully explained.
+
+The corrected Linux reset (command `0x02`, version 1, `inValue=2`) succeeded on
+its first live attempt. The same session then returned valid 12-byte sensor
+info and exactly one built-in bio-device record. No MSRk, calibration,
+catacomb, enrollment, or match operation was issued. Linux now reproduces the
+complete normal no-calibration initialization sequence through accessory
+caching.
+
+The next macOS pass is authorized to repeat the established two-component CMS
+transfer using the new EFI public certificate. Revalidate the active general
+and UID-501 archives by the same fail-closed structure and established
+599/708-byte archive to 148/104-byte secure-data mapping. Stream only those
+two decoded data objects directly into atomic AES-256 CMS DER files named
+`t2-touchid-transfer-global.cms` and `t2-touchid-transfer-user.cms` on EFI.
+Never create plaintext temporary files, expose values/UUIDs/paths/hashes, or
+change the archives or enrolled fingerprint. Validate only CMS structure and
+lengths, then commit and push a sanitized report. Linux will perform exactly
+one corrected-reset same-session ordered-load comparison and remove all
+transfer material immediately.

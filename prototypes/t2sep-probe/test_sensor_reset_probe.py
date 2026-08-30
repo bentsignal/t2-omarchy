@@ -49,7 +49,7 @@ class SensorResetProbeTests(unittest.TestCase):
         self.assertEqual([payload[2:4] for payload in inner],
                          [b"\x53\0", b"\x10\0", b"\x02\0",
                           b"\x35\0", b"\x52\0"])
-        self.assertEqual(inner[2][4:8], b"\x02\0\0\0")
+        self.assertEqual(inner[2][4:8], b"\x01\0\x02\0")
 
     def test_retries_no_more_than_three_times(self):
         replies = ([0, 3], [0], [0, True], [0, b"\x01"],
