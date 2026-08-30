@@ -625,6 +625,13 @@ provisioning state 5, and a 12-byte sensor-info result. The companion reset
 `0x02` version-2 codec is tested offline but is intentionally absent from this
 runner. Patch, MSRk, calibration, and catacomb-load commands are also absent.
 
+The live accessory result was status zero with exactly one 44-byte record and
+one built-in accessory/group classification. `external-catacomb-load-probe.py`
+now reproduces and validates this complete non-secret read sequence on the
+same session before its already-gated general-then-user load. It fails closed
+unless readiness is 1, sensor-info declares size 12, and the device list is
+exactly one built-in record; it never exposes record UUIDs or bytes.
+
 `BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
 queues server-initiated envelopes that race a synchronous call. The gated
 `presence-event-probe.py` verified a status-zero presence start, method-9

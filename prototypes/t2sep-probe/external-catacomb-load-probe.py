@@ -36,6 +36,37 @@ class ExternalCatacombLoadResult:
     identity_count: int
 
 
+def _establish_nonsecret_context(session) -> None:
+    """Reproduce only the successful boot's proven no-calibration read path."""
+    readiness_status, readiness_output = state._perform(
+        session, state.biometric.sensor_readiness_fields())
+    if (readiness_status != 0
+            or state.biometric.decode_sensor_readiness(readiness_output or b"") != 1):
+        raise ExternalCatacombLoadError(
+            f"sensor readiness failed with status {readiness_status}")
+    provisioning_status, provisioning_output = state._perform(
+        session, state.biometric.provisioning_state_fields())
+    if provisioning_status != 0:
+        raise ExternalCatacombLoadError(
+            f"provisioning-state read failed with status {provisioning_status}")
+    state.biometric.decode_provisioning_state(provisioning_output or b"")
+    sensor_info_status, sensor_info_output = state._perform(
+        session, state.biometric.sensor_info_fields())
+    if sensor_info_status != 0:
+        raise ExternalCatacombLoadError(
+            f"sensor-info read failed with status {sensor_info_status}")
+    state.biometric.decode_sensor_info(sensor_info_output or b"")
+    devices_status, devices_output = state._perform(
+        session, state.biometric.bio_device_list_fields())
+    if devices_status != 0:
+        raise ExternalCatacombLoadError(
+            f"bio-device-list read failed with status {devices_status}")
+    summary = state.biometric.decode_bio_device_list_summary(devices_output or b"")
+    if summary.record_count != 1 or summary.builtin_record_count != 1:
+        raise ExternalCatacombLoadError(
+            "bio-device list is not exactly one built-in record")
+
+
 def read_secure_data(path: Path) -> bytes:
     if not isinstance(path, Path) or not path.is_absolute():
         raise ExternalCatacombLoadError("secure-data path must be absolute")
@@ -54,6 +85,11 @@ def probe_socket(sock, *, user_id: int, secure_data: bytes,
                  global_secure_data: bytes | None = None) -> ExternalCatacombLoadResult:
     session = state.coupled.bridge_query.BridgeSession(sock)
     state._initialize(session)
+    try:
+        _establish_nonsecret_context(session)
+    except state.biometric.BiometricCommandError as error:
+        raise ExternalCatacombLoadError(
+            "pre-load sensor context has an invalid reply shape") from error
     global_status = None
     if global_secure_data is not None:
         global_status, global_output = state._perform(

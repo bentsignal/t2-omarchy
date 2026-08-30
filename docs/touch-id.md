@@ -2886,6 +2886,15 @@ do not themselves construct the accessory group. A sanitized read-only
 writes remain unjustified. The pinned verifier is
 `tools/research/macos-calibration-accessory-evidence.py`.
 
+Linux's bounded `0x52` comparison returned status zero with exactly one
+44-byte record, classified as the built-in accessory and built-in device
+group. No UUID or record bytes were printed or retained. This confirms the
+last non-secret pre-load query on the real T2. The external two-component
+loader now requires, on the same Bridge session, readiness 1, valid
+provisioning and sensor-info replies, and exactly that one built-in device
+record before it can issue either command `0x40`. It still contains no reset,
+calibration, patch, or MSRk path.
+
 ## Useful baseline commands
 
 ```bash

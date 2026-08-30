@@ -38,6 +38,9 @@ class SensorContextResult:
     provisioning_state: int | None
     sensor_info_status: int
     sensor_info_length: int | None
+    bio_device_status: int
+    bio_device_records: int | None
+    builtin_records: int | None
 
 
 def _perform(session, fields):
@@ -81,12 +84,21 @@ def probe_socket(sock) -> SensorContextResult:
         biometric.decode_provisioning_state, "provisioning state")
     sensor_info_status, sensor_info_output = _perform(
         session, biometric.sensor_info_fields())
-    sensor_info_length = _decode_success(
+    sensor_info = _decode_success(
         sensor_info_status, sensor_info_output,
-        biometric.decode_sensor_info_shape, "sensor information")
+        biometric.decode_sensor_info, "sensor information")
+    bio_device_status, bio_device_output = _perform(
+        session, biometric.bio_device_list_fields())
+    bio_device_summary = _decode_success(
+        bio_device_status, bio_device_output,
+        biometric.decode_bio_device_list_summary, "bio-device list")
     return SensorContextResult(
         readiness_status, readiness, provisioning_status, provisioning,
-        sensor_info_status, sensor_info_length)
+        sensor_info_status,
+        biometric.SENSOR_INFO_SIZE if sensor_info is not None else None,
+        bio_device_status,
+        bio_device_summary.record_count if bio_device_summary is not None else None,
+        bio_device_summary.builtin_record_count if bio_device_summary is not None else None)
 
 
 def live_probe(*, interface: str = "enp4s0f1u1", timeout: float = 5.0):
@@ -135,7 +147,10 @@ def main() -> None:
           f"provisioning_status={result.provisioning_status} "
           f"provisioning_state={result.provisioning_state} "
           f"sensor_info_status={result.sensor_info_status} "
-          f"sensor_info_length={result.sensor_info_length}")
+          f"sensor_info_length={result.sensor_info_length} "
+          f"bio_device_status={result.bio_device_status} "
+          f"bio_device_records={result.bio_device_records} "
+          f"builtin_records={result.builtin_records}")
 
 
 if __name__ == "__main__":

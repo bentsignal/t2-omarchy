@@ -37,16 +37,26 @@ class FakeSocket:
 
 
 class ExternalCatacombLoadTests(unittest.TestCase):
-    IDS = tuple(f"{index}7654321-89AB-4CDE-8FAB-0123456789AB" for index in range(7))
+    IDS = tuple(f"{index:08d}-89AB-4CDE-8FAB-0123456789AB" for index in range(12))
+
+    def context_replies(self):
+        record = probe.state.biometric.BIO_DEVICE_RECORD.pack(
+            1, bytes(16), 1, bytes(16), 6)
+        return (
+            envelope(self.IDS[3], [0, b"\x01"])
+            + envelope(self.IDS[4], [0, struct.pack("<I", 5)])
+            + envelope(self.IDS[5], [0, struct.pack("<3I", 1, 12, 7)])
+            + envelope(self.IDS[6], [0, record]))
 
     def test_one_shot_load_reports_only_policy_length_and_count(self):
         identity = struct.pack("<I16s", 501, bytes(16))
         incoming = (envelope(self.IDS[0], [0, 3])
                     + envelope(self.IDS[1], [0])
                     + envelope(self.IDS[2], [0, True])
-                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
-                    + envelope(self.IDS[4], [0, bytes(32)])
-                    + envelope(self.IDS[5], [0, identity]))
+                    + self.context_replies()
+                    + envelope(self.IDS[7], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[8], [0, bytes(32)])
+                    + envelope(self.IDS[9], [0, identity]))
         ids = iter(self.IDS)
         original = probe.state.coupled.bridge_query.uuid.uuid4
         probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
@@ -62,10 +72,11 @@ class ExternalCatacombLoadTests(unittest.TestCase):
         incoming = (envelope(self.IDS[0], [0, 3])
                     + envelope(self.IDS[1], [0])
                     + envelope(self.IDS[2], [0, True])
-                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
-                    + envelope(self.IDS[4], [0, protocol.NO_REPLY_UUID.lower()])
-                    + envelope(self.IDS[5], [0, bytes(32)])
-                    + envelope(self.IDS[6], [0, identity]))
+                    + self.context_replies()
+                    + envelope(self.IDS[7], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[8], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[9], [0, bytes(32)])
+                    + envelope(self.IDS[10], [0, identity]))
         ids = iter(self.IDS)
         original = probe.state.coupled.bridge_query.uuid.uuid4
         probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
@@ -77,6 +88,26 @@ class ExternalCatacombLoadTests(unittest.TestCase):
         finally:
             probe.state.coupled.bridge_query.uuid.uuid4 = original
         self.assertEqual(result, probe.ExternalCatacombLoadResult(0, 0, 32, 1))
+
+    def test_refuses_load_without_exact_builtin_accessory_context(self):
+        record = probe.state.biometric.BIO_DEVICE_RECORD.pack(
+            2, bytes(16), 1, bytes(16), 6)
+        incoming = (envelope(self.IDS[0], [0, 3])
+                    + envelope(self.IDS[1], [0])
+                    + envelope(self.IDS[2], [0, True])
+                    + envelope(self.IDS[3], [0, b"\x01"])
+                    + envelope(self.IDS[4], [0, struct.pack("<I", 5)])
+                    + envelope(self.IDS[5], [0, struct.pack("<3I", 1, 12, 7)])
+                    + envelope(self.IDS[6], [0, record]))
+        ids = iter(self.IDS)
+        original = probe.state.coupled.bridge_query.uuid.uuid4
+        probe.state.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            with self.assertRaisesRegex(probe.ExternalCatacombLoadError, "built-in"):
+                probe.probe_socket(FakeSocket(incoming), user_id=501,
+                                   secure_data=b"opaque-current-data")
+        finally:
+            probe.state.coupled.bridge_query.uuid.uuid4 = original
 
     def test_input_file_must_be_private_and_bounded(self):
         with tempfile.TemporaryDirectory() as directory:

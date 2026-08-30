@@ -350,3 +350,34 @@ BiometricSupport UUID `93788D32-9E1E-37CE-8E4A-EBE8ECBD6735`, and its
 The verifier and negative tests are
 `tools/research/macos-calibration-accessory-evidence.py` and
 `tools/research/test_macos_calibration_accessory_evidence.py`.
+
+## Linux return result: built-in accessory context confirmed
+
+The bounded Linux `0x52` probe returned status zero, one 44-byte record, and
+exactly one built-in accessory/group classification. No record bytes or UUIDs
+were printed or retained. Linux now validates readiness 1, provisioning and
+sensor-info reply shapes, and exactly this built-in device list on the same
+Bridge session before its gated general-then-user loader. All non-secret reads
+match current macOS, so one further encrypted load comparison is justified.
+
+For the next macOS pass, repeat only the already established two-component CMS
+transfer using the fresh public certificate on the EFI partition:
+
+1. Revalidate the active general component (decoded UID -1, 148-byte secure
+   data) and UID-501 component (104-byte secure data) through Foundation keyed
+   archive decoding. Fail closed if those identities or lengths changed.
+2. Stream each decoded `CatacombSecureData` object directly into AES-256 CMS
+   DER encryption using `/Volumes/EFI/t2-touchid-transfer-cert.pem`. Write
+   `/Volumes/EFI/t2-touchid-transfer-global.cms` and
+   `/Volumes/EFI/t2-touchid-transfer-user.cms` atomically. Never create a
+   plaintext temporary file.
+3. Validate only CMS structure and ciphertext lengths. Do not print, inspect,
+   hash, decode, or commit source data, ciphertext, filenames, UUIDs, or other
+   biometric material. Leave the archives and enrolled fingerprint untouched.
+4. Commit and push only a sanitized success/failure report with the two decoded
+   lengths and ciphertext lengths.
+
+Linux will decrypt both into private temporary inputs, perform the now-complete
+same-session read sequence, load general then UID 501 exactly once, report
+only statuses/policy length/identity count, and immediately remove every
+transfer artifact and throwaway key.

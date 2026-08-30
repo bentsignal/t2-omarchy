@@ -30,10 +30,17 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
                          (0x02, 2, 0, b"", 0))
         self.assertEqual(command.sensor_info_fields(),
                          (0x35, 1, 0, b"", 12))
+        self.assertEqual(command.bio_device_list_fields(),
+                         (0x52, 1, 0, b"", 264))
         self.assertEqual(command.decode_sensor_readiness(b"\x01"), 1)
         self.assertEqual(command.decode_provisioning_state(
             struct.pack("<I", 5)), 5)
-        self.assertEqual(command.decode_sensor_info_shape(bytes(12)), 12)
+        self.assertEqual(command.decode_sensor_info(
+            struct.pack("<3I", 1, 12, 7)), command.SensorInfo(1, 12, 7))
+        record = command.BIO_DEVICE_RECORD.pack(
+            1, bytes(16), 1, bytes(16), 6)
+        self.assertEqual(command.decode_bio_device_list_summary(record),
+                         command.BioDeviceListSummary(1, 1))
 
     def test_sensor_initialization_decoders_reject_wrong_shapes(self):
         for output in (b"", bytes(2), bytearray(b"\0")):
@@ -44,10 +51,25 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
             with self.subTest(decoder="provisioning", output=output):
                 with self.assertRaises(command.BiometricCommandError):
                     command.decode_provisioning_state(output)
-        for output in (b"", bytes(11), bytes(13), bytearray(12)):
+        for output in (b"", bytes(11), bytes(13), bytearray(12),
+                       struct.pack("<3I", 1, 11, 7)):
             with self.subTest(decoder="sensor_info", output=output):
                 with self.assertRaises(command.BiometricCommandError):
-                    command.decode_sensor_info_shape(output)
+                    command.decode_sensor_info(output)
+        for output in (b"x", bytes(265), bytearray(44)):
+            with self.subTest(decoder="bio_device", output_type=type(output)):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.decode_bio_device_list_summary(output)
+
+    def test_bio_device_summary_does_not_disclose_record_data(self):
+        builtin = command.BIO_DEVICE_RECORD.pack(
+            1, bytes(range(16)), 1, bytes(range(16, 32)), 6)
+        external = command.BIO_DEVICE_RECORD.pack(
+            2, b"a" * 16, 3, b"b" * 16, 9)
+        summary = command.decode_bio_device_list_summary(builtin + external)
+        self.assertEqual(summary, command.BioDeviceListSummary(2, 1))
+        self.assertEqual(tuple(summary.__dict__),
+                         ("record_count", "builtin_record_count"))
 
     def test_current_user_protected_config_getter_envelope(self):
         self.assertEqual(command.protected_config_fields(user_id=501),

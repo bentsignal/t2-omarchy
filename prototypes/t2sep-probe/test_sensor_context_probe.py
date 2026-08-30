@@ -35,20 +35,26 @@ class SensorContextProbeTests(unittest.TestCase):
     def test_reads_only_recovered_sensor_context_shapes(self):
         session, result = self.run_probe((
             [0, 3], [0], [0, True],
-            [0, b"\x01"], [0, b"\x05\0\0\0"], [0, bytes(12)],
+            [0, b"\x01"], [0, b"\x05\0\0\0"],
+            [0, b"\x01\0\0\0\x0c\0\0\0\x07\0\0\0"],
+            [0, probe.biometric.BIO_DEVICE_RECORD.pack(
+                1, bytes(16), 1, bytes(16), 6)],
         ))
-        self.assertEqual(result, probe.SensorContextResult(0, 1, 0, 5, 0, 12))
+        self.assertEqual(result,
+                         probe.SensorContextResult(0, 1, 0, 5, 0, 12, 0, 1, 1))
         inner = [request[2] for request in session.requests[3:]]
         self.assertEqual([payload[2:4] for payload in inner],
-                         [b"\x53\0", b"\x10\0", b"\x35\0"])
+                         [b"\x53\0", b"\x10\0", b"\x35\0", b"\x52\0"])
         self.assertNotIn(b"\x02\0", inner)
 
     def test_preserves_service_errors_without_decoding_output(self):
         _, result = self.run_probe((
             [0, 3], [0], [0, True], [257, None], [7, None], [9, None],
+            [11, None],
         ))
         self.assertEqual(result,
-                         probe.SensorContextResult(257, None, 7, None, 9, None))
+                         probe.SensorContextResult(
+                             257, None, 7, None, 9, None, 11, None, None))
 
     def test_rejects_malformed_success_and_wrong_bridge(self):
         with self.assertRaisesRegex(probe.SensorContextProbeError, "generation 3"):

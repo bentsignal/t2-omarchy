@@ -39,6 +39,7 @@ COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
 COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
 COMMAND_GET_CATACOMB_GROUP_STATE = 0x50
+COMMAND_GET_BIO_DEVICE_LIST = 0x52
 COMMAND_SENSOR_READINESS = 0x53
 DEFAULT_USER_ID = 0xFFFFFFFF
 ORDINARY_MATCH_FLAGS = 0
@@ -76,6 +77,11 @@ SERVICE_RECORD_HEADER_SIZE = 40
 MAX_SERVICE_EVENT_DATA = 64 * 1024
 PROVISIONING_STATE_SIZE = 4
 SENSOR_INFO_SIZE = 12
+BIO_DEVICE_RECORD = struct.Struct("<I16sI16sI")
+MAX_BIO_DEVICE_RECORDS = 6
+BIO_DEVICE_LIST_CAPACITY = BIO_DEVICE_RECORD.size * MAX_BIO_DEVICE_RECORDS
+BUILTIN_ACCESSORY_TYPE = 1
+BUILTIN_DEVICE_GROUP_TYPE = 1
 
 
 @dataclass(frozen=True)
@@ -158,6 +164,19 @@ class UserProtectedPolicy:
     apple_pay_enabled: int
 
 
+@dataclass(frozen=True)
+class SensorInfo:
+    version: int
+    struct_size: int
+    sensor_type: int
+
+
+@dataclass(frozen=True)
+class BioDeviceListSummary:
+    record_count: int
+    builtin_record_count: int
+
+
 class AuthorizedPolicyRequest:
     """One mutable current-format per-user policy request with scrubbing."""
 
@@ -223,11 +242,37 @@ def sensor_info_fields():
     return (COMMAND_SENSOR_INFO, COMMAND_VERSION, 0, b"", SENSOR_INFO_SIZE)
 
 
-def decode_sensor_info_shape(output: bytes) -> int:
-    """Validate sensor information without interpreting or exposing its fields."""
+def decode_sensor_info(output: bytes) -> SensorInfo:
     if not isinstance(output, bytes) or len(output) != SENSOR_INFO_SIZE:
         raise BiometricCommandError("sensor information must be exactly 12 bytes")
-    return len(output)
+    result = SensorInfo(*struct.unpack("<3I", output))
+    if result.struct_size != SENSOR_INFO_SIZE:
+        raise BiometricCommandError("sensor information declares the wrong size")
+    return result
+
+
+def bio_device_list_fields():
+    """Encode the current bounded, read-only accessory/device-group query."""
+    return (COMMAND_GET_BIO_DEVICE_LIST, COMMAND_VERSION, 0,
+            b"", BIO_DEVICE_LIST_CAPACITY)
+
+
+def decode_bio_device_list_summary(output: bytes) -> BioDeviceListSummary:
+    """Classify bounded device records without returning UUIDs or record bytes."""
+    if not isinstance(output, bytes):
+        raise BiometricCommandError("bio-device list must be bytes")
+    if len(output) > BIO_DEVICE_LIST_CAPACITY:
+        raise BiometricCommandError("bio-device list exceeds its capacity")
+    if len(output) % BIO_DEVICE_RECORD.size:
+        raise BiometricCommandError("bio-device list has a partial record")
+    builtin = 0
+    for offset in range(0, len(output), BIO_DEVICE_RECORD.size):
+        accessory_type, _, group_type, _, _ = BIO_DEVICE_RECORD.unpack_from(
+            output, offset)
+        if (accessory_type == BUILTIN_ACCESSORY_TYPE
+                and group_type == BUILTIN_DEVICE_GROUP_TYPE):
+            builtin += 1
+    return BioDeviceListSummary(len(output) // BIO_DEVICE_RECORD.size, builtin)
 
 
 def decode_system_protected_config(output: bytes) -> SystemProtectedConfig:
