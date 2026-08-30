@@ -24,6 +24,8 @@ def _load(name: str, filename: str):
 
 coupled = _load("enroll_probe_coupled", "coupled-bridge-query.py")
 biometric = _load("enroll_probe_biometric", "biometric-command.py")
+sensor_context = _load(
+    "enroll_probe_sensor_context", "external-catacomb-load-probe.py")
 
 LIVE_ENROLLMENT_ENABLED = False
 MAX_EVENTS = 256
@@ -134,12 +136,20 @@ def _initialize_current_bridge(session) -> None:
 def probe_socket(sock, *, user_id: int,
                  authorized_request=None,
                  policy_request=None,
+                 establish_sensor_context: bool = False,
                  catacomb_sink: Callable[[bytes], None] | None = None,
                  progress: Callable[[tuple[int, int, int]], None] | None = None
                  ) -> EnrollmentProbeResult:
     """Enroll one token-free identity and prove an exact terminal/list delta."""
     session = coupled.bridge_query.BridgeSession(sock)
     _initialize_current_bridge(session)
+    if establish_sensor_context:
+        try:
+            sensor_context._establish_nonsecret_context(session)
+        except (sensor_context.ExternalCatacombLoadError,
+                sensor_context.state.biometric.BiometricCommandError) as error:
+            raise EnrollmentProbeError(
+                "same-session sensor initialization failed") from error
     policy_initialized = False
     if policy_request is not None:
         if not isinstance(policy_request, biometric.AuthorizedPolicyRequest):
@@ -261,6 +271,7 @@ def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
                timeout: float = 5.0, event_timeout: float = 30.0,
                authorized_request=None,
                policy_request=None,
+               establish_sensor_context: bool = False,
                catacomb_sink: Callable[[bytes], None] | None = None,
                progress: Callable[[tuple[int, int, int]], None] | None = None
                ) -> EnrollmentProbeResult:
@@ -279,6 +290,7 @@ def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
         result = probe_socket(sock, user_id=user_id,
                               authorized_request=authorized_request,
                               policy_request=policy_request,
+                              establish_sensor_context=establish_sensor_context,
                               catacomb_sink=catacomb_sink,
                               progress=progress)
         return result

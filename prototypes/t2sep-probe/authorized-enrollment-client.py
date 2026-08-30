@@ -72,6 +72,7 @@ def main() -> None:
         result = enrollment.live_probe(
             user_id=args.user_id, interface=args.interface,
             event_timeout=60.0, authorized_request=request,
+            establish_sensor_context=True,
             progress=progress_instruction)
     finally:
         request.close()

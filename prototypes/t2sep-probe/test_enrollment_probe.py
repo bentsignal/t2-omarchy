@@ -193,6 +193,24 @@ class EnrollmentProbeTests(unittest.TestCase):
         with self.assertRaisesRegex(probe.EnrollmentProbeError, "disabled"):
             probe.live_probe(user_id=self.USER)
 
+    def test_optional_sensor_context_runs_on_the_enrollment_session(self):
+        seen = []
+        original = probe.sensor_context._establish_nonsecret_context
+        original_uuid = probe.coupled.bridge_query.uuid.uuid4
+        ids = iter(self.IDS)
+        probe.sensor_context._establish_nonsecret_context = seen.append
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            result = probe.probe_socket(
+                FakeSocket(self.incoming()), user_id=self.USER,
+                establish_sensor_context=True)
+        finally:
+            probe.sensor_context._establish_nonsecret_context = original
+            probe.coupled.bridge_query.uuid.uuid4 = original_uuid
+        self.assertEqual(result.identities_after, 1)
+        self.assertEqual(len(seen), 1)
+        self.assertIsInstance(seen[0], probe.coupled.bridge_query.BridgeSession)
+
 
 if __name__ == "__main__":
     unittest.main()

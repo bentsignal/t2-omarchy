@@ -662,6 +662,12 @@ The following retained general component still returned 257. Missing host-side
 catacomb-map bookkeeping and the cold `NoCatacomb(-1)` transition therefore do
 not explain the rejection.
 
+The native enrollment transaction now also performs the proven reset, cancel,
+sensor-info, calibration-present, and one-built-in-accessory sequence on the
+same Bridge connection before initializing either empty catacomb. Earlier
+enrollment attempts performed only a separate connectivity preflight, so they
+did not establish this per-connection sensor context before command `0x03`.
+
 `BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
 queues server-initiated envelopes that race a synchronous call. The gated
 `presence-event-probe.py` verified a status-zero presence start, method-9

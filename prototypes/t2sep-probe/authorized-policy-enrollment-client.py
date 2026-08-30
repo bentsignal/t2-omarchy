@@ -48,6 +48,7 @@ def main() -> None:
         result = enrollment.live_probe(
             user_id=args.user_id, interface=args.interface, event_timeout=60.0,
             authorized_request=enroll_request, policy_request=policy_request,
+            establish_sensor_context=True,
             catacomb_sink=lambda blob: store.save(
                 args.catacomb_output, user_id=args.user_id, blob=blob),
             progress=client.progress_instruction)
