@@ -2909,6 +2909,15 @@ provisioning and sensor-info replies, and exactly that one built-in device
 record before it can issue either command `0x40`. It still contains no reset,
 calibration, patch, or MSRk path.
 
+The ordered comparison then reproduced every successful non-secret read on one
+session, but the general load still returned 257 and the user load was not
+sent. All temporary transfer material was removed. The next known macOS
+initialization step, reset `0x02` v2, was isolated without a catacomb: three
+bounded attempts all returned `0xe00002c2` (`kIOReturnBadArgument`). This
+shifts the active boundary to a missing pre-reset prerequisite, most likely
+the provisioning-state/MSRk branch or another daemon-info flag. Static
+recovery of that branch is required before another reset or transfer.
+
 ## Useful baseline commands
 
 ```bash

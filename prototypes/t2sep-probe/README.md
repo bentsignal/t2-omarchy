@@ -632,6 +632,15 @@ same session before its already-gated general-then-user load. It fails closed
 unless readiness is 1, sensor-info declares size 12, and the device list is
 exactly one built-in record; it never exposes record UUIDs or bytes.
 
+The ordered load comparison still returned status 257 on the general
+component after all four reads succeeded. A separate, confirmation-gated
+`sensor-reset-probe.py` then reproduced reset `0x02` v2 between provisioning
+and sensor-info reads with a maximum of three attempts. The live T2 returned
+`0xe00002c2` (`kIOReturnBadArgument`) on all three, so the runner stopped before
+sensor-info and device-list readback. This is preserved as evidence of a
+missing pre-reset prerequisite; it is not treated as permission to guess MSRk
+or calibration inputs.
+
 `BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
 queues server-initiated envelopes that race a synchronous call. The gated
 `presence-event-probe.py` verified a status-zero presence start, method-9

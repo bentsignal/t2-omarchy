@@ -50,6 +50,18 @@ def _establish_nonsecret_context(session) -> None:
         raise ExternalCatacombLoadError(
             f"provisioning-state read failed with status {provisioning_status}")
     state.biometric.decode_provisioning_state(provisioning_output or b"")
+    reset_status = None
+    for _ in range(3):
+        reset_status, reset_output = state._perform(
+            session, state.biometric.reset_sensor_fields())
+        if reset_status == 0:
+            if reset_output is not None:
+                raise ExternalCatacombLoadError(
+                    "successful sensor reset returned unexpected output")
+            break
+    if reset_status != 0:
+        raise ExternalCatacombLoadError(
+            f"sensor reset failed after three attempts with status {reset_status}")
     sensor_info_status, sensor_info_output = state._perform(
         session, state.biometric.sensor_info_fields())
     if sensor_info_status != 0:

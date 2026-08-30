@@ -411,3 +411,40 @@ may now perform the bounded same-session readiness/provisioning/sensor-info/
 bio-device-list sequence, load general then UID 501 once, report only the
 authorized status/length/count fields, and remove all transfer and key
 artifacts immediately afterward.
+
+## Linux return result: context reads succeed; reset prerequisite missing
+
+Linux decrypted and length-validated the 148-byte general and 104-byte user
+payloads, then ran readiness, provisioning state, sensor info, and `0x52` on
+one Bridge session. Every read succeeded and the device list was exactly one
+built-in record. The immediately following general command `0x40` still
+returned status 257, so the user component was not sent. Linux then removed
+both plaintexts, CMS files, the EFI certificate, and the throwaway key.
+
+The remaining known startup difference was reset `0x02` v2 between
+provisioning and sensor info. A separate bounded Linux run attempted that exact
+no-input/no-output shape at most three times. All three attempts returned
+signed status -536870206 (`0xe00002c2`, `kIOReturnBadArgument`); no subsequent
+write or load was issued. This strongly indicates that a prerequisite before
+reset is still missing rather than that accessory caching alone explains 257.
+
+The next macOS pass is static/read-only only. Recover from the pinned current
+daemon and support framework:
+
+1. The exact predicate following provisioning state 5: whether `setMSRkData:`
+   is invoked on this normal built-in-sensor boot, and every status/value test
+   controlling that branch.
+2. If MSRk is required, its legitimate source API and complete request/reply
+   ABI, size bounds, validation/transformation, and command-`0x5c` call shape.
+   Do not retrieve or expose machine MSRk bytes.
+3. The complete caller and retry control flow for reset `0x02`, including any
+   preceding command or host-side state not yet modeled and the interpretation
+   of `0xe00002c2` at that point.
+4. Any `performGetBiometrickitdInfoCommand:` fields or other initialization
+   flags consulted between provisioning and reset. Record only field offsets,
+   meanings, predicates, and non-secret shapes.
+
+Do not create another catacomb transfer, reset the sensor, retrieve MSRk or
+calibration data, or touch/enroll/remove a fingerprint. Add checksum-pinned
+static evidence tooling and negative tests, update this handoff and
+`docs/touch-id.md`, commit, and push `main`.
