@@ -18,6 +18,8 @@ insmod_pid=
 client_name=
 client_confirmation=
 catacomb_path=
+global_input=
+user_input=
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] || die "run as the desktop user"
@@ -31,6 +33,14 @@ case $confirmation in
     client_name=authorized-policy-enrollment-client.py
     client_confirmation=$confirmation
     catacomb_path="/var/lib/t2-touchid/$session_uid.catacomb"
+    ;;
+  I_UNDERSTAND_THIS_LOADS_RETAINED_MACOS_CATACOMBS_WITH_AN_AUTHORIZED_BAG)
+    client_name=authorized-catacomb-load-client.py
+    client_confirmation=$confirmation
+    global_input=${4:-}
+    user_input=${5:-}
+    [[ $global_input = /* && $user_input = /* ]] ||
+      die "authorized catacomb inputs must be absolute paths"
     ;;
   *) die "missing exact enrollment confirmation" ;;
 esac
@@ -105,9 +115,16 @@ for _ in $(seq 1 200); do
 done
 (( ready )) || die "authorized credential did not become ready"
 
-echo "Enrollment is starting. Follow the short touch/lift prompts printed here." >&2
+echo "Authorized BiometricKit operation is starting." >&2
 set +e
-if [[ -n $catacomb_path ]]; then
+if [[ -n $global_input ]]; then
+  sudo -n cat "$credential_path" |
+    python3 "$module_dir/$client_name" \
+      --user-id "$session_uid" --interface "$interface" \
+      --global-path "$global_input" --path "$user_input" \
+      --confirm="$client_confirmation"
+  client_status=${PIPESTATUS[1]}
+elif [[ -n $catacomb_path ]]; then
   sudo -n cat "$credential_path" |
     sudo -n python3 "$module_dir/$client_name" \
       --user-id "$session_uid" --interface "$interface" \

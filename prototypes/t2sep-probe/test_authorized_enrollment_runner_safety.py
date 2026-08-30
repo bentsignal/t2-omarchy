@@ -4,6 +4,7 @@ import unittest
 
 SOURCE = Path(__file__).with_name("run-authorized-enrollment-probe.sh").read_text()
 CLIENT = Path(__file__).with_name("authorized-enrollment-client.py").read_text()
+LOAD_CLIENT = Path(__file__).with_name("authorized-catacomb-load-client.py").read_text()
 
 
 class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
@@ -33,6 +34,15 @@ class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
             "I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY",
             SOURCE)
         self.assertIn("authorized-policy-enrollment-client.py", SOURCE)
+
+    def test_authorized_catacomb_load_is_distinct_and_scrubs_handoff(self):
+        self.assertIn(
+            "I_UNDERSTAND_THIS_LOADS_RETAINED_MACOS_CATACOMBS_WITH_AN_AUTHORIZED_BAG",
+            SOURCE)
+        self.assertIn("authorized-catacomb-load-client.py", SOURCE)
+        self.assertIn("sys.stdin.buffer.readline(34)", LOAD_CLIENT)
+        self.assertIn("credential[:] = bytes(len(credential))", LOAD_CLIENT)
+        self.assertNotIn("print(credential", LOAD_CLIENT)
 
     def test_read_only_bridge_preflight_precedes_password_prompt(self):
         preflight = SOURCE.index("biometric-connectivity-preflight.py")

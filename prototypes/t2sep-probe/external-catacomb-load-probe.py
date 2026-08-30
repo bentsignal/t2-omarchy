@@ -62,6 +62,11 @@ def _establish_nonsecret_context(session) -> None:
     if reset_status != 0:
         raise ExternalCatacombLoadError(
             f"sensor reset failed after three attempts with status {reset_status}")
+    cancel_status, cancel_output = state._perform(
+        session, state.biometric.cancel_fields())
+    if cancel_status != 0 or cancel_output is not None:
+        raise ExternalCatacombLoadError(
+            f"post-reset cancellation failed with status {cancel_status}")
     sensor_info_status, sensor_info_output = state._perform(
         session, state.biometric.sensor_info_fields())
     if sensor_info_status != 0:
@@ -104,7 +109,8 @@ def read_secure_data(path: Path) -> bytes:
 
 
 def probe_socket(sock, *, user_id: int, secure_data: bytes,
-                 global_secure_data: bytes | None = None) -> ExternalCatacombLoadResult:
+                 global_secure_data: bytes | None = None,
+                 initialize_general: bool = False) -> ExternalCatacombLoadResult:
     session = state.coupled.bridge_query.BridgeSession(sock)
     state._initialize(session)
     try:
@@ -114,6 +120,13 @@ def probe_socket(sock, *, user_id: int, secure_data: bytes,
             "pre-load sensor context has an invalid reply shape") from error
     global_status = None
     if global_secure_data is not None:
+        if initialize_general:
+            initialize_status, initialize_output = state._perform(
+                session, state.biometric.no_catacomb_fields(user_id=0xFFFFFFFF))
+            if initialize_status != 0 or initialize_output is not None:
+                raise ExternalCatacombLoadError(
+                    "general no-catacomb initialization failed with status "
+                    f"{initialize_status}")
         global_status, global_output = state._perform(
             session, state.biometric.current_catacomb_secure_data_fields(
                 global_secure_data))
@@ -141,6 +154,7 @@ def probe_socket(sock, *, user_id: int, secure_data: bytes,
 
 
 def live_probe(*, user_id: int, path: Path, global_path: Path | None = None,
+               initialize_general: bool = False,
                interface: str = "enp4s0f1u1",
                timeout: float = 5.0) -> ExternalCatacombLoadResult:
     if not LIVE_LOAD_ENABLED:
@@ -153,7 +167,8 @@ def live_probe(*, user_id: int, path: Path, global_path: Path | None = None,
     def run(sock):
         nonlocal result
         result = probe_socket(sock, user_id=user_id, secure_data=secure_data,
-                              global_secure_data=global_secure_data)
+                              global_secure_data=global_secure_data,
+                              initialize_general=initialize_general)
         return result
 
     original = state.coupled.bridge_query.query_connected_socket
@@ -176,6 +191,7 @@ def main() -> None:
     parser.add_argument("--user-id", type=int, required=True)
     parser.add_argument("--path", type=Path, required=True)
     parser.add_argument("--global-path", type=Path)
+    parser.add_argument("--initialize-general", action="store_true")
     parser.add_argument("--interface", default="enp4s0f1u1")
     parser.add_argument("--confirm", default="")
     args = parser.parse_args()
@@ -189,6 +205,7 @@ def main() -> None:
     try:
         result = live_probe(user_id=args.user_id, path=args.path,
                             global_path=args.global_path,
+                            initialize_general=args.initialize_general,
                             interface=args.interface)
     finally:
         LIVE_LOAD_ENABLED = False

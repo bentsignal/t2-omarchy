@@ -2955,6 +2955,31 @@ parsing. Linux may retain only the encrypted transfer set under the documented
 mode-0700/mode-0600 LUKS-home controls and must unlink plaintext after every
 bounded probe.
 
+A checksum-known Catalina `BiometricSupport` comparison then recovered two
+remaining startup details. Immediately after a successful reset, the daemon
+sends the already-decoded command `0x0c` version 1/value 0 cancellation; that
+command succeeded on the current T2 but the following retained general
+component still returned status 257. In the daemon's cold-state branch, an
+absent host-side general archive instead causes `NoCatacomb(0xffffffff)` before
+normal processing. Reproducing that transition also returned status zero, but
+the retained general component again returned 257. Neither post-reset
+cancellation nor host catacomb-map/cold-state initialization is the missing
+load prerequisite.
+
+One final bounded comparison held Linux's password-verified system keybag and
+authorized ACM context alive while attempting the ordered retained load. The
+fresh type-0 bag was promoted to selector `-501`, password verification
+succeeded, and all teardown and independent absence checks passed. The general
+component nevertheless returned status 257 before the user component could be
+sent. This disproves the narrow hypothesis that command `0x40` merely requires
+any currently authorized system-bag lifecycle. It does not prove that the
+retained database is usable with a freshly created Linux bag: that bag is
+cryptographically distinct from the established macOS login keybag under which
+the retained component was created. Because migration of a macOS identity is
+not the project goal, further work should return to the Linux-native empty
+catacomb enrollment path and isolate the independent synchronous status 261
+rather than broadening extraction of macOS key material.
+
 ## Useful baseline commands
 
 ```bash
