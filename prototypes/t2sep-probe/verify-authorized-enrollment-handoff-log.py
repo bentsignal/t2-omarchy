@@ -31,7 +31,8 @@ def verify(log: str) -> None:
     base.verify(log)
     verify_marker = log.index(
         "AKS verify-secret reply passed strict validation: authorized=yes")
-    unload_marker = log.index("AKS unload-keybag reply passed strict validation")
+    unload_marker = log.index(
+        "AKS unload-keybag reply passed strict validation: role=system")
     cursor = verify_marker
     for marker in HANDOFF:
         found = log.find(marker, cursor, unload_marker)

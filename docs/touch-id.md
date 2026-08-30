@@ -1597,6 +1597,16 @@ runtime source before context deletion and CPU stop. The transcript verifier
 distinguishes the two mappings by lifecycle role and fails if either teardown
 is missing.
 
+Static recovery of AppleKeyStore's operation `0x03` subsequently enabled a
+closer session-lifecycle comparison. The Linux gate now copies the freshly
+created bag as an opaque bounded blob, unloads and independently proves the
+original selector absent, reloads that same blob to obtain a new positive
+runtime selector, and only then performs `ipc_make_system_keybag`. No blob
+bytes are emitted to logs or userspace, and the temporary allocation is
+explicitly scrubbed after the load attempt and again on every exit path. This
+tests whether SEP requires a persisted-and-reloaded bag rather than a newly
+created in-memory bag before enrollment; it is not yet a live-positive result.
+
 The first supervised promotion request did not reach verification because it
 revealed asynchronous ordering that the initial receiver did not yet model.
 T2 emitted two endpoint-7 notifications before the correlated reply: opcode

@@ -9,6 +9,12 @@ ORDERED = (
     "ACM context-create reply passed strict validation",
     "AKS create-device-keybag request:",
     "AKS create-device-keybag reply passed strict validation:",
+    "AKS copy-keybag snapshot request:",
+    "AKS copy-keybag snapshot passed strict validation:",
+    "AKS unload-keybag reply passed strict validation: role=preload-source",
+    "AKS copy-keybag confirms teardown: role=preload-source",
+    "AKS load-keybag request:",
+    "AKS load-keybag reply passed strict validation:",
     "AKS make-system-keybag request:",
     "AKS make-system-keybag notification passed strict validation: ordinal=1 opcode=0x00",
     "AKS make-system-keybag notification passed strict validation: ordinal=2 opcode=0x04",
@@ -33,6 +39,7 @@ FORBIDDEN = (
     "transport error",
     "password=",
     "context=",
+    "blob_content=",
 )
 
 

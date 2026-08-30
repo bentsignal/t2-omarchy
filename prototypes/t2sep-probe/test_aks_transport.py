@@ -508,6 +508,29 @@ class AKSTransportTests(unittest.TestCase):
             with self.subTest(length=len(changed)):
                 with self.assertRaises(aks.AKSTransportError):
                     aks.decode_copy_keybag_reply(changed, 2)
+
+    def test_load_keybag_consumes_blob_and_decodes_runtime_selector(self):
+        blob = bytearray(b"persisted-bag")
+        request = aks.consume_load_keybag_blob(
+            self._identity(2), blob,
+            namespace=aks.SessionKeybagHandle(0x1122334455667788))
+        self.assertEqual(blob, bytearray(len(blob)))
+        view = request.view()
+        self.assertEqual(struct.unpack_from("<IQI", view, 84),
+                         (0, 0x1122334455667788, 13))
+        self.assertEqual(bytes(view[100:113]), b"persisted-bag")
+        aks.validate_protected_header(bytes(view[4:84]), bytes(view[84:]))
+        request.close()
+        self.assertEqual(bytes(view), bytes(len(view)))
+
+        body = struct.pack("<Ii", 0, 7)
+        header = aks.protect_header(self._identity(2), body)
+        reply = struct.pack("<I", 0x50) + header + body
+        self.assertEqual(aks.decode_load_keybag_reply(reply, 2),
+                         aks.CreateKeybagReply(aks.SessionKeybagSelector(7)))
+        for changed in (reply[:-1], reply[:84] + struct.pack("<Ii", 1, 7)):
+            with self.assertRaises(aks.AKSTransportError):
+                aks.decode_load_keybag_reply(changed, 2)
         with self.assertRaises(aks.AKSTransportError):
             aks.decode_copy_keybag_reply(reply, 2, max_blob_size=2)
 

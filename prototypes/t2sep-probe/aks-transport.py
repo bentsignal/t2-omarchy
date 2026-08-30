@@ -18,6 +18,7 @@ SET_ENVIRONMENT = 0x2A
 VERIFY_SECRET_V1 = 0x21
 CREATE_KEYBAG_V1 = 0x01
 COPY_KEYBAG = 0x02
+LOAD_KEYBAG = 0x03
 UNLOAD_KEYBAG = 0x05
 MAX_HEADER_VERSION = 2
 SERIALIZED_HEADER_SIZE = 0x54
@@ -37,6 +38,7 @@ CREATE_KEYBAG_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4 + 4
 UNLOAD_KEYBAG_REQUEST_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
 UNLOAD_KEYBAG_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4
 COPY_KEYBAG_REQUEST_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
+LOAD_KEYBAG_REPLY_SIZE = SERIALIZED_HEADER_SIZE + 4 + 4
 
 
 class AKSTransportError(ValueError):
@@ -268,6 +270,43 @@ class CreateKeybagRequest:
                 f"closed={self._closed})")
 
 
+class LoadKeybagRequest:
+    """Single-owner load-keybag request containing an opaque persisted bag."""
+
+    __slots__ = ("_wire", "_closed")
+
+    def __init__(self, wire: bytearray) -> None:
+        if not isinstance(wire, bytearray):
+            raise AKSTransportError("load-keybag request storage must be mutable")
+        self._wire = wire
+        self._closed = False
+
+    def view(self) -> memoryview:
+        if self._closed:
+            raise AKSTransportError("load-keybag request is already scrubbed")
+        return memoryview(self._wire)
+
+    def close(self) -> None:
+        if not self._closed:
+            self._wire[:] = b"\0" * len(self._wire)
+            self._closed = True
+
+    def __enter__(self) -> "LoadKeybagRequest":
+        if self._closed:
+            raise AKSTransportError("load-keybag request is already scrubbed")
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    def __repr__(self) -> str:
+        return (f"LoadKeybagRequest(length={len(self._wire)}, "
+                f"closed={self._closed})")
+
+
 class VerifySecretRequest:
     """Single-owner mutable request whose storage can be explicitly scrubbed.
 
@@ -455,6 +494,51 @@ def decode_copy_keybag_reply(wire: bytes, expected_header_version: int,
     if any(payload[8 + blob_length:]):
         raise AKSTransportError("AKS copy-keybag reply has nonzero padding")
     return payload[8:8 + blob_length]
+
+
+def consume_load_keybag_blob(identity_header: bytes, blob: bytearray, *,
+                             namespace: SessionKeybagHandle) -> LoadKeybagRequest:
+    """Consume one copied bag into operation 0x03 variant 0's exact request."""
+    _require_plain_identity_header(identity_header)
+    if not isinstance(namespace, SessionKeybagHandle):
+        raise AKSTransportError("keybag namespace must be a typed session handle")
+    _uint(namespace.value, 64, "keybag namespace")
+    if not isinstance(blob, bytearray):
+        raise AKSTransportError("keybag blob must be a mutable bytearray")
+    try:
+        if not blob or len(blob) > OOL_CAPACITY - SERIALIZED_HEADER_SIZE - 16:
+            raise AKSTransportError("keybag blob is outside the OOL request bound")
+        padded_length = _align4(len(blob))
+        payload = bytearray(16 + padded_length)
+        struct.pack_into("<IQI", payload, 0, 0, namespace.value, len(blob))
+        payload[16:16 + len(blob)] = blob
+        protected = protect_header(identity_header, bytes(payload))
+        wire = bytearray(struct.pack("<I", IPC_HEADER_SIZE) + protected) + payload
+        return LoadKeybagRequest(wire)
+    finally:
+        blob[:] = bytes(len(blob))
+
+
+def decode_load_keybag_reply(wire: bytes,
+                             expected_header_version: int) -> CreateKeybagReply:
+    """Validate operation 0x03 variant 0 and return its runtime selector."""
+    if expected_header_version not in (1, 2):
+        raise AKSTransportError("expected AKS IPC header version must be 1 or 2")
+    if not isinstance(wire, bytes) or len(wire) != LOAD_KEYBAG_REPLY_SIZE:
+        raise AKSTransportError("AKS load-keybag reply must be exactly 92 bytes")
+    if struct.unpack_from("<I", wire, 0)[0] != IPC_HEADER_SIZE:
+        raise AKSTransportError("AKS load-keybag reply has the wrong header length")
+    header = wire[4:SERIALIZED_HEADER_SIZE]
+    payload = wire[SERIALIZED_HEADER_SIZE:]
+    if struct.unpack_from("<I", header, 0x10)[0] != expected_header_version:
+        raise AKSTransportError("AKS load-keybag reply changed header version")
+    if struct.unpack_from("<I", header, 0x1c)[0] != 0:
+        raise AKSTransportError("AKS load-keybag reply has unsupported header flags")
+    validate_protected_header(header, payload)
+    variant, selector = struct.unpack("<Ii", payload)
+    if variant != 0:
+        raise AKSTransportError("AKS load-keybag reply is not variant 0")
+    return CreateKeybagReply(SessionKeybagSelector(selector))
 
 
 def decode_unload_keybag_reply(wire: bytes,

@@ -75,6 +75,16 @@ buffer is scrubbed only after the corresponding reply or CPU stop. An
 independent transcript verifier requires the full create/authorize/unload/
 absence/context-delete/CPU-stop sequence exactly once.
 
+The current bounded comparison also reproduces the persistence boundary used
+by Apple's session path: immediately after creation it copies the opaque bag,
+unloads the original mapping, proves that selector absent, reloads the copied
+blob through operation `0x03`, and only then promotes and verifies it. The
+snapshot never leaves kernel memory, its bytes are never logged, and both the
+snapshot and shared OOL buffers are explicitly scrubbed. Strict transcript
+verification requires copy, unload, absence proof, reload, promotion, and
+final two-selector teardown in that order. Until a supervised run completes,
+this is an implemented experiment rather than a live result.
+
 This is an experiment boundary, not account authentication. Because the probe
 creates the bag whose secret it then verifies, success establishes that Linux
 can manufacture a fresh ACM credential context; it does not independently

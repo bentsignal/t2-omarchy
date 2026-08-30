@@ -167,6 +167,9 @@ class KernelOolSafetyTests(unittest.TestCase):
                 "static bool apple_probe_ephemeral_keybag_authorization;",
                 "T2SEP_EPHEMERAL_KEYBAG_CONFIRMATION",
                 "t2sep_probe_aks_create_device_keybag(",
+                "t2sep_probe_aks_copy_keybag_blob(",
+                "t2sep_probe_aks_load_keybag_blob(",
+                "blob_bytes=not-logged",
                 "s32 requested_selector = -1;",
                 "store_type=0 secret_bytes=not-logged",
                 "t2sep_probe_aks_make_system_keybag(",
@@ -186,7 +189,11 @@ class KernelOolSafetyTests(unittest.TestCase):
             self.assertIn(fragment, SOURCE)
         create = SOURCE.index("t2sep_probe_aks_create_device_keybag(",
                               SOURCE.index("static int t2sep_probe_ephemeral"))
-        promote = SOURCE.index("t2sep_probe_aks_make_system_keybag(", create)
+        copy = SOURCE.index("t2sep_probe_aks_copy_keybag_blob(", create)
+        preload_unload = SOURCE.index("0x05, 5,", copy)
+        preload_absence = SOURCE.index("0x02, 6,", preload_unload)
+        load = SOURCE.index("t2sep_probe_aks_load_keybag_blob(", preload_absence)
+        promote = SOURCE.index("t2sep_probe_aks_make_system_keybag(", load)
         verify = SOURCE.index("t2sep_probe_aks_verify_password(", promote)
         system_absence = SOURCE.index(
             "t2sep_probe_aks_ensure_keybag_absent(", verify)
@@ -194,6 +201,11 @@ class KernelOolSafetyTests(unittest.TestCase):
             "t2sep_probe_aks_ensure_keybag_absent(", system_absence + 1)
         delete = SOURCE.index("t2sep_probe_acm_context_delete(", source_absence)
         self.assertLess(create, promote)
+        self.assertLess(create, copy)
+        self.assertLess(copy, preload_unload)
+        self.assertLess(preload_unload, preload_absence)
+        self.assertLess(preload_absence, load)
+        self.assertLess(load, promote)
         self.assertLess(promote, verify)
         self.assertLess(verify, system_absence)
         self.assertLess(system_absence, source_absence)
