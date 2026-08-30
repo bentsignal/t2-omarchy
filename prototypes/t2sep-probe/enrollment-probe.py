@@ -29,6 +29,7 @@ sensor_context = _load(
 
 LIVE_ENROLLMENT_ENABLED = False
 MAX_EVENTS = 256
+KIORETURN_BAD_ARGUMENT = -536870206
 READY_STATUS = 0xE3FF8001
 # Minimum payload sizes enforced by Catalina's service-status jump-table arms.
 PROGRESS_MINIMUMS = {
@@ -134,8 +135,40 @@ def _initialize_current_bridge(session) -> None:
 
 
 def _establish_enrollment_sensor_context(session) -> None:
-    """Establish proven sensor state and require current xART availability."""
+    """Mirror the daemon's non-secret state reads on the enrollment session."""
     sensor_context._establish_nonsecret_context(session)
+    status, output = _perform(session, biometric.system_protected_config_fields())
+    if status != 0:
+        raise EnrollmentProbeError(
+            f"system protected-config query failed with status {status}")
+    biometric.decode_system_protected_config(output or b"")
+    status, output = _perform(session, biometric.catacomb_state_fields())
+    if status not in (0, KIORETURN_BAD_ARGUMENT):
+        raise EnrollmentProbeError(
+            f"catacomb-state query failed with status {status}")
+    if status == 0:
+        biometric.validate_opaque_record_array(
+            output or b"", record_size=biometric.CATACOMB_STATE_RECORD_SIZE,
+            maximum_records=biometric.MAX_CATACOMB_STATE_RECORDS)
+    catacomb_state_absent = status == KIORETURN_BAD_ARGUMENT
+    status, output = _perform(session, biometric.catacomb_group_state_fields())
+    if status not in (0, KIORETURN_BAD_ARGUMENT):
+        raise EnrollmentProbeError(
+            f"catacomb-group-state query failed with status {status}")
+    if status == 0:
+        biometric.validate_opaque_record_array(
+            output or b"", record_size=biometric.CATACOMB_GROUP_STATE_RECORD_SIZE,
+            maximum_records=biometric.MAX_CATACOMB_GROUP_STATE_RECORDS)
+    group_state_absent = status == KIORETURN_BAD_ARGUMENT
+    if catacomb_state_absent != group_state_absent:
+        raise EnrollmentProbeError("catacomb state availability is inconsistent")
+    if catacomb_state_absent:
+        status, output = _perform(
+            session, biometric.no_catacomb_fields(
+                user_id=biometric.DEFAULT_USER_ID))
+        if status != 0 or output is not None:
+            raise EnrollmentProbeError(
+                f"cold global catacomb initialization failed with status {status}")
     status, output = _perform(
         session, biometric.xart_available_fields(version=1))
     if status != 0:

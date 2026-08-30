@@ -85,6 +85,35 @@ verification requires copy, unload, absence proof, reload, promotion, and
 final two-selector teardown in that order. Until a supervised run completes,
 this is an implemented experiment rather than a live result.
 
+The supervised run completed on 2026-08-30. SEP copied a 1424-byte opaque bag,
+unloaded selector `3`, independently returned absent status `-3`, reloaded the
+blob as selector `3`, promoted it to `-501`, and authorized the ACM context.
+BiometricKit command `3` still returned synchronous status `261` before any
+touch. Both the promoted and retained source mappings were then independently
+proven absent, and context deletion, CPU stop, DMA scrub, and transcript
+verification all passed. A mistyped password is ruled out by the successful
+verify-secret reply. The missing prerequisite is therefore not the distinction
+between a newly created in-memory bag and a copied, unloaded, reloaded bag.
+
+Catalina's symbolized `BiometricSupport` provides the next bounded ordering
+comparison. Its normal `loadCatacomb` path reads catacomb state before choosing
+load versus `NoCatacomb`, and its per-user synchronization caches daemon info
+and enumerates identities before enrollment is exposed. Linux had proven the
+system, catacomb, and group-state getters only on separate diagnostic
+connections. The enrollment client now issues those three read-only queries
+on its actual initialized session, validates only their public sizes and
+record alignment, then performs the proven xART and identity reads. Host-only
+flags and file cleanup from Apple's implementation are not represented as
+wire commands. The revised transaction is intentionally awaiting a supervised
+run because command acceptance would make it touch-capable.
+
+`enrollment-context-probe.py` exercises that prefix without a credential or
+enrollment command. Its live run observed the previously established exact
+`kIOReturnBadArgument` pair from the two state getters, followed the daemon's
+cold branch with general `NoCatacomb(0xffffffff)`, and completed the remaining
+xART check. No touch was possible or requested. The next command-3 run remains
+separately supervised.
+
 This is an experiment boundary, not account authentication. Because the probe
 creates the bag whose secret it then verifies, success establishes that Linux
 can manufacture a fresh ACM credential context; it does not independently

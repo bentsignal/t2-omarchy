@@ -211,6 +211,35 @@ class EnrollmentProbeTests(unittest.TestCase):
         self.assertEqual(len(seen), 1)
         self.assertIsInstance(seen[0], probe.coupled.bridge_query.BridgeSession)
 
+    def test_enrollment_context_requires_ordered_state_reads_before_xart(self):
+        calls = []
+        original_context = probe.sensor_context._establish_nonsecret_context
+        original_perform = probe._perform
+        replies = iter((
+            (0, struct.pack("<9I", 172800, 5, 5, 1, 1, 1, 1, 14400, 561600)),
+            (probe.KIORETURN_BAD_ARGUMENT, None),
+            (probe.KIORETURN_BAD_ARGUMENT, None),
+            (0, None),
+            (0, b"\x01"),
+        ))
+        probe.sensor_context._establish_nonsecret_context = (
+            lambda session: calls.append("sensor"))
+        probe._perform = lambda session, fields: (
+            calls.append(fields[0]) or next(replies))
+        try:
+            probe._establish_enrollment_sensor_context(object())
+        finally:
+            probe.sensor_context._establish_nonsecret_context = original_context
+            probe._perform = original_perform
+        self.assertEqual(calls, [
+            "sensor",
+            probe.biometric.COMMAND_GET_SYSTEM_PROTECTED_CONFIG,
+            probe.biometric.COMMAND_GET_CATACOMB_STATE,
+            probe.biometric.COMMAND_GET_CATACOMB_GROUP_STATE,
+            probe.biometric.COMMAND_NO_CATACOMB,
+            probe.biometric.COMMAND_IS_XART_AVAILABLE,
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

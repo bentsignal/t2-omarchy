@@ -1607,6 +1607,42 @@ explicitly scrubbed after the load attempt and again on every exit path. This
 tests whether SEP requires a persisted-and-reloaded bag rather than a newly
 created in-memory bag before enrollment; it is not yet a live-positive result.
 
+The supervised 2026-08-30 run completed this comparison. Operation `0x02`
+returned a strictly validated 1424-byte opaque snapshot, operation `0x05`
+unloaded runtime selector `3`, a second copy proved it absent with status `-3`,
+and operation `0x03` reloaded the snapshot as selector `3`. Promotion to
+`-501` and verify-secret both succeeded, proving the entered password was
+accepted. Enrollment nevertheless returned synchronous status `261` before
+requesting a touch. Cleanup independently removed both system and source
+mappings, deleted the ACM context, stopped SEP, scrubbed DMA, and passed the
+strict transcript verifier. Fresh-versus-reloaded AKS persistence is therefore
+ruled out as the missing enrollment prerequisite.
+
+The next static comparison returned to Catalina's symbolized
+`BiometricSupport`. Its base `loadCatacomb` implementation clears the host
+template list and calls `readCatacombState` before choosing either load or
+`NoCatacomb`. After loading each selected user it calls
+`syncTemplateListForUser:`, whose first remote operations cache the packed
+biometrickitd information and enumerate identities. Only after that loop does
+the host mark its private catacomb-loaded byte, validate users, and remove
+unused host files. The byte, validation, and file cleanup are host-only and
+must not be fabricated as Bridge commands. The actionable wire-level gap is
+that Linux previously performed the system-config, catacomb-state, and
+catacomb-group-state reads only in separate diagnostic sessions. Native
+enrollment now requires all three bounded, read-only, shape-validated queries
+on the actual enrollment connection before its already proven xART read and
+identity synchronization. This change is offline-tested but deliberately not
+run until the user is present, because successful command acceptance would
+cross into a touch-capable enrollment transaction.
+
+The non-enrolling live context probe then reproduced the known cold result:
+both state getters returned bounded `kIOReturnBadArgument`. The client treats
+that exact pair—not arbitrary failure—as the daemon's no-loaded-state branch,
+sends the proven general `NoCatacomb(0xffffffff)` transition, and continues
+through xART without sending command `3`. The full pre-enrollment context
+completed. This validates the revised ordering while leaving the actual
+enrollment attempt for a separately supervised run.
+
 The first supervised promotion request did not reach verification because it
 revealed asynchronous ordering that the initial receiver did not yet model.
 T2 emitted two endpoint-7 notifications before the correlated reply: opcode
