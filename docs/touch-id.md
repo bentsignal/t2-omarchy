@@ -2827,6 +2827,27 @@ installed daemon's exact command-`0x40` Bridge version and any accessory or
 device-group preparation performed before the first general load. No further
 catacomb transfer is justified until those fields are closed.
 
+That static comparison proves the Linux load envelope was already exact:
+command `0x40`, compatibility-wrapper version 1, `inValue=0`, direct `NSData`
+bytes/length, no output, and no device-group argument. Status 257 is passed
+through unchanged by the host; only `0x8002`, `0x8003`, and `0x192` are mapped
+to daemon status `0x10d`. No installed-host symbol directly names 257, though
+its prior association with unsupported enrollment groups makes missing
+accessory/device-group context the leading evidence-backed interpretation.
+
+The successful macOS boot establishes that context earlier. After Bridge
+methods 0, conditional 10 with client version 2, and 1, the sensor path uses
+readiness `0x53` v1 (one-byte output), provisioning state `0x10` v1 (four-byte
+output; observed state 5), reset `0x02` v2, sensor info `0x35` v1 (12-byte
+output), and calibration `0x20` v1 (source in `inValue`, bytes as input;
+observed source 0). Patch `0x24` v1 and MSRk `0x5c` v1 are conditional and
+must not be sent with guessed data. Host-side `cacheAccessories` follows
+sensor initialization and immediately precedes the general load; it is not a
+separate recovered Bridge command. Linux should implement/test the read-only
+shapes first and recover legitimate calibration/accessory inputs before
+another load. The pinned verifier is
+`tools/research/macos-catacomb-load-context-evidence.py`.
+
 ## Useful baseline commands
 
 ```bash

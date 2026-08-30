@@ -198,3 +198,65 @@ yet. The next macOS pass is static/read-only only and must recover:
 Do not decode, transfer, print, hash, or modify catacomb data; do not enroll,
 remove, or touch a fingerprint. Add checksum-pinned evidence tooling/tests,
 update this file and `docs/touch-id.md`, commit, and push `main`.
+
+## macOS return result: load ABI matches; initialization context does not
+
+Static inspection of the installed macOS 26.6.2 (25G83) `biometrickitd`
+x86_64 slice, SHA-256
+`248d4521007f95c916ae682c1a3d13d1c431626f4be4e84a0758d6dfbc94ce20`,
+proves that Linux already reproduced the current load envelope exactly.
+`performLoadCatacombCommand:inData:` sends command `0x40` through the
+compatibility wrapper, which inserts version 1. It uses `inValue=0`, passes
+the supplied `NSData` bytes and exact length directly, requests no output,
+and supplies no device-group argument. Do not change that framing and do not
+transfer either catacomb again.
+
+The missing distinction is earlier connection-local sensor context. Current
+startup gets Bridge version with method 0, sets client version 2 with method
+10 when the Bridge version is greater than one, and opens/checks the service
+with method 1. Its successful sensor path then has these statically recovered
+command shapes before the first general load:
+
+1. `checkSensorReadiness`: command `0x53`, version 1, `inValue=0`, no input,
+   one-byte output.
+2. `cachePatch`: conditional internal-build path only; command `0x24`, version
+   1, `inValue=0`, patch bytes as input, no output. Normal 25G83 startup gives
+   no evidence that this optional command was issued.
+3. `provisioningState`: command `0x10`, version 1, `inValue=0`, no input,
+   exact four-byte output. The observed boot returned state 5.
+4. `setMSRkData:`: conditional on provisioning state; command `0x5c`, version
+   1, `inValue=0`, opaque MSRk bytes as input, no output. Do not synthesize or
+   send those bytes.
+5. `resetSensor`: command `0x02`, explicit version 2, `inValue=0`, no input or
+   output, with at most three host retries.
+6. `cacheSensorInfo`: command `0x35`, version 1, `inValue=0`, no input, exact
+   12-byte output.
+7. `setCalibrationData:source:`: command `0x20`, version 1; `inValue` is the
+   calibration source, and the calibration `NSData` bytes/length are the
+   input, with no output. The observed successful boot used source 0. Do not
+   guess or transfer calibration bytes.
+
+After `initSensor` succeeds, the host calls `cacheAccessories`, which builds
+its accessory/device-group state from cached sensor information, immediately
+before loading the general component. No separate direct Bridge command was
+found for `cacheAccessories`. Sanitized live boot logs confirm the resulting
+order: readiness, sensor initialization, accessory caching, general load,
+then UID-501 load.
+
+The load wrapper normalizes only raw statuses `0x8002`, `0x8003`, and `0x192`
+to daemon status `0x10d`; raw `0x101` (257) is returned unchanged. No current
+host enum or string directly names 257. Behavioral evidence nevertheless
+ties it strongly to unavailable accessory/device-group context: enrollment
+group types 2 through 5 return 257 while built-in type 1 does not, and Linux's
+load reaches 257 before macOS's sensor/accessory initialization has been
+reproduced. This is an inference, not a recovered symbolic definition.
+
+The next Linux step is to model this initialization state using only
+evidence-backed, non-secret inputs. It should first implement and test the
+read-only readiness, provisioning-state, and sensor-info shapes and the
+explicit reset shape. It must not guess patch, MSRk, or calibration payloads
+or repeat command `0x40` until their legitimate sources and the host-side
+accessory-cache construction are understood. The new checksum-pinned verifier
+and negative tests are
+`tools/research/macos-catacomb-load-context-evidence.py` and
+`tools/research/test_macos-catacomb-load-context-evidence.py`.

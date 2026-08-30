@@ -195,6 +195,14 @@ that method. `macos-biometric-evidence.py` additionally pins the current
 daemon's setup order: method 0 (`getBridgeVersion:`) precedes method 10
 (`setBridgeClientVersion:2`), so method 10 cannot unlock the first reply.
 
+`macos-catacomb-load-context-evidence.py` pins the installed 25G83 daemon's
+current command-`0x40` call shape and its sensor-preparation implementations.
+It proves version 1, `inValue=0`, direct `NSData` bytes/length, no output, and
+that service status 257 passes through unchanged. It also verifies the
+readiness, optional patch, provisioning-state, reset, sensor-info,
+calibration, and optional MSRk command shapes without reading a device or any
+catacomb data.
+
 `capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
 the transient network interface using binary `usbmon7`. It accepts only the
 exact private output path, requires the exact bound `7-1:1.0` function, and
