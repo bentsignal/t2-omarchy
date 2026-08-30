@@ -2995,6 +2995,16 @@ the daemon's load-completion/catacomb-state transition after its per-component
 load loop; repeating command `0x03` or altering its proven authorization bytes
 cannot add evidence.
 
+Static Catalina evidence then identified `IsXARTAvailable` as read-only command
+`0x4c`, with a one-byte Boolean output. Current live version discrimination
+showed that command version 1 returns status zero and canonical true after the
+same-session sensor initialization; versions 0 and 2 return
+`kIOReturnBadArgument`. Requiring that successful read on the authorized
+enrollment session still left command `0x03` at synchronous status 261. xART
+is therefore online, and neither absent xART nor omission of the daemon's
+availability-cache read explains the enrollment rejection. The temporary AKS
+and ACM lifecycle again passed complete teardown and scrub verification.
+
 ## Useful baseline commands
 
 ```bash
