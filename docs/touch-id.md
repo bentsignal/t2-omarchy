@@ -1643,6 +1643,14 @@ through xART without sending command `3`. The full pre-enrollment context
 completed. This validates the revised ordering while leaving the actual
 enrollment attempt for a separately supervised run.
 
+That supervised run then completed the same cold-state prefix under the fully
+authorized copied/unloaded/reloaded/promoted keybag lifecycle. Verify-secret
+returned `authorized=yes`, ruling out a password typo, but command `3` again
+returned synchronous status `261` and never requested a touch. Both keybag
+mappings, the ACM context, SEP CPU state, and DMA buffers passed complete
+verified teardown. Same-session state reads plus the daemon's exact general
+`NoCatacomb` cold transition are therefore not sufficient for enrollment.
+
 The first supervised promotion request did not reach verification because it
 revealed asynchronous ordering that the initial receiver did not yet model.
 T2 emitted two endpoint-7 notifications before the correlated reply: opcode

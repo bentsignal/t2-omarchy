@@ -114,6 +114,13 @@ cold branch with general `NoCatacomb(0xffffffff)`, and completed the remaining
 xART check. No touch was possible or requested. The next command-3 run remains
 separately supervised.
 
+The supervised command-3 run completed the same prefix with a verified ACM
+context and promoted system keybag. Password verification succeeded, but
+enrollment still returned synchronous status `261` before a touch. Complete
+two-mapping keybag teardown, ACM deletion, CPU stop, DMA scrub, and transcript
+verification passed. The cold state-read/`NoCatacomb` ordering is therefore
+ruled out as the missing prerequisite by itself.
+
 This is an experiment boundary, not account authentication. Because the probe
 creates the bag whose secret it then verifies, success establishes that Linux
 can manufacture a fresh ACM credential context; it does not independently
