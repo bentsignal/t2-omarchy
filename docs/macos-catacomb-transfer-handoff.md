@@ -292,3 +292,61 @@ catacomb/biometric material. Do not enroll, remove, reset, load, or touch a
 fingerprint. Add only checksum-pinned static evidence tooling, tests, and
 sanitized conclusions; update this handoff and `docs/touch-id.md`, commit, and
 push `main`.
+
+## macOS return result: calibration ABI and accessory command recovered
+
+The installed Bridge transport implements `calibrationDataFromEEPROM` and
+`calibrationDataFromFDR` as no-argument methods 5 and 11. Each sends a
+one-element request array containing its method number. Transport failure or
+a reply other than exactly one object returns nil; the sole reply object must
+be `NSData`. Neither wrapper imposes a byte-length bound, so Linux must apply
+its own conservative bound before retaining or forwarding a response.
+
+Current `loadCalibrationData` first reads `performGetBiometrickitdInfoCommand:`.
+On this normal boot its already-calibrated flag was set, so the daemon selected
+source 0 and sent neither calibration retrieval method nor command `0x20`.
+This corrects the earlier interpretation that source 0 was supplied to a
+successful `0x20`: source 0 in the boot log means no calibration upload was
+needed. When loading is required, the current non-internal paths are:
+
+- non-Gibraltar: method 5 (`calibrationDataFromEEPROM`), then command `0x20`
+  version 1 with source 2;
+- Gibraltar: method 11 (`calibrationDataFromFDR`), then command `0x20` version
+  1 with source 3.
+
+An AppleInternal-only custom-file path uses source 5. The selected `NSData` is
+not transformed or structurally validated by the daemon: its bytes and exact
+length are passed directly to `setCalibrationData:source:`. Linux must not
+invoke either setter path merely to reproduce a boot that already reports the
+calibration-present flag.
+
+The accessory trace also corrects the earlier host-only conclusion.
+`cacheAccessories` calls `performGetBioDeviceListCommand:`. For communication
+protocol versions above 1, that method sends read-only command `0x52` through
+the version-1 compatibility wrapper, with `inValue=0`, no input, and a
+264-byte output capacity. The reply length must be bounded and divisible by
+the exact 44-byte device-record size. Protocol version 1 instead synthesizes
+one local 44-byte built-in record: accessory type 1 plus zero UUID, device
+group type 1 plus zero UUID, and flags 6. The common parser constructs the
+host `BiometricKitAccessory` and `BiometricKitAccessoryGroup` objects from
+those record fields. Thus current Linux is missing a separate `0x52` read,
+not a hidden argument to command `0x40`.
+
+The cached 12-byte command-`0x35` result is exactly three uint32 fields named
+`version`, `structSize`, and `sensorType`. The daemon stores all 12 bytes;
+`getSensorType` requires `structSize == 12` and returns the final word.
+`cacheAccessories` does not derive its device group from those raw 12 bytes;
+it obtains the independent bio-device list described above.
+
+The next Linux step is a bounded read-only `0x52` probe after the already
+successful readiness/provisioning/sensor-info sequence. Validate only status,
+length, 44-byte divisibility, record count, and whether exactly one record has
+built-in accessory/group types. Do not print UUIDs or other record bytes and
+do not send calibration or catacomb commands yet. Evidence is pinned to
+daemon SHA-256 `248d4521007f95c916ae682c1a3d13d1c431626f4be4e84a0758d6dfbc94ce20`,
+BiometricSupport UUID `93788D32-9E1E-37CE-8E4A-EBE8ECBD6735`, and its
+`__TEXT,__text` SHA-256
+`f356bdc6419cb93dc3f0f8c40ffca8bc5bb7894b407264f9eeac06ddb2b103bc`.
+The verifier and negative tests are
+`tools/research/macos-calibration-accessory-evidence.py` and
+`tools/research/test_macos_calibration_accessory_evidence.py`.

@@ -2863,6 +2863,29 @@ selection and reply ABI plus how the returned legitimate bytes feed command
 `0x20` and host-side accessory caching. Do not reset or reload merely to repeat
 the already-successful read results.
 
+Static inspection closes both questions and corrects one earlier inference.
+Bridge methods 5 (EEPROM) and 11 (FDR) take no arguments and accept only an
+exact one-object `NSData` reply; neither wrapper bounds its length. The normal
+observed boot's calibration-present flag bypassed both methods and command
+`0x20`, leaving source 0 for the success log. If loading is required, the
+non-Gibraltar path uses method 5 then `0x20` v1/source 2, while Gibraltar uses
+method 11 then `0x20` v1/source 3. The daemon forwards returned bytes and
+length unchanged, so Linux must bound them and must not upload calibration
+when the presence flag says it is already installed.
+
+Accessory caching is not purely host-side. On current protocol versions above
+1, `performGetBioDeviceListCommand:` sends read-only command `0x52` v1 with no
+input and a 264-byte output capacity. It accepts only a bounded length
+divisible by the 44-byte device-record size, then constructs accessory and
+device-group objects from those records. The protocol-1 fallback synthesizes
+accessory type 1/zero UUID, group type 1/zero UUID, and flags 6. Separately,
+the 12-byte sensor-info result is `{uint32 version, structSize, sensorType}`;
+the getter validates `structSize == 12` and returns `sensorType`. Those bytes
+do not themselves construct the accessory group. A sanitized read-only
+`0x52` shape probe is the next Linux comparison; calibration and catacomb
+writes remain unjustified. The pinned verifier is
+`tools/research/macos-calibration-accessory-evidence.py`.
+
 ## Useful baseline commands
 
 ```bash

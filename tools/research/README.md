@@ -203,6 +203,13 @@ readiness, optional patch, provisioning-state, reset, sensor-info,
 calibration, and optional MSRk command shapes without reading a device or any
 catacomb data.
 
+`macos-calibration-accessory-evidence.py` pins the current calibration
+retrieval methods 5/11, the three-field 12-byte sensor-info cache, and the
+generation-3 read-only bio-device-list command `0x52`. It checks the daemon
+SHA-256 plus the dyld-cached BiometricSupport UUID and `__TEXT,__text`
+SHA-256, including the exact 44-byte built-in accessory/device-group record
+construction. It reads only installed executable code through `dyld_info`.
+
 `capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
 the transient network interface using binary `usbmon7`. It accepts only the
 exact private output path, requires the exact bound `7-1:1.0` function, and
