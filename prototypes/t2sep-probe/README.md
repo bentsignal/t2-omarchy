@@ -616,6 +616,15 @@ enumerated one. UUID bytes are intentionally omitted. Current bridgeOS's
 private `BTNil` output is the exact lower-case reserved UUID string and is
 accepted only in that form by the method-3 decoder.
 
+`sensor-context-probe.py` is a separately gated, bounded read-only extension
+of that working session. It sends only the current readiness `0x53`,
+provisioning-state `0x10`, and sensor-info `0x35` requests, validates their
+exact one-, four-, and 12-byte success shapes, and never prints sensor-info
+bytes. Its first live run returned status zero for all three, readiness 1,
+provisioning state 5, and a 12-byte sensor-info result. The companion reset
+`0x02` version-2 codec is tested offline but is intentionally absent from this
+runner. Patch, MSRk, calibration, and catacomb-load commands are also absent.
+
 `BridgeSession` keeps one HELO-active socket, correlates multiple replies, and
 queues server-initiated envelopes that race a synchronous call. The gated
 `presence-event-probe.py` verified a status-zero presence start, method-9

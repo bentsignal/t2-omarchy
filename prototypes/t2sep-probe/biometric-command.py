@@ -17,15 +17,18 @@ class BiometricCommandError(ValueError):
 
 COMMAND_VERSION = 1
 CURRENT_COMMAND_VERSION = 2
+COMMAND_RESET_SENSOR = 0x02
 COMMAND_ENROLL = 0x03
 COMMAND_MATCH = 0x04
 COMMAND_CANCEL = 0x0C
 COMMAND_REMOVE_IDENTITY = 0x0D
 COMMAND_MAX_IDENTITY_COUNT = 0x0F
+COMMAND_PROVISIONING_STATE = 0x10
 COMMAND_PRESENCE_DETECT = 0x26
 COMMAND_GET_PROTECTED_CONFIG = 0x2E
 COMMAND_SET_PROTECTED_CONFIG = 0x2F
 COMMAND_NO_CATACOMB = 0x31
+COMMAND_SENSOR_INFO = 0x35
 COMMAND_GET_CATACOMB_UUID = 0x38
 COMMAND_GET_CATACOMB_STATE = 0x3C
 COMMAND_PREPARE_SAVE_CATACOMB = 0x3D
@@ -36,6 +39,7 @@ COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
 COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
 COMMAND_GET_CATACOMB_GROUP_STATE = 0x50
+COMMAND_SENSOR_READINESS = 0x53
 DEFAULT_USER_ID = 0xFFFFFFFF
 ORDINARY_MATCH_FLAGS = 0
 MATCH_PAYLOAD = struct.Struct("<II60s")
@@ -70,6 +74,8 @@ BRIDGE_SERVICE_EVENT_METHOD = 9
 BRIDGE_SERVICE_EVENT_CHANNEL = 0xE3FF8000
 SERVICE_RECORD_HEADER_SIZE = 40
 MAX_SERVICE_EVENT_DATA = 64 * 1024
+PROVISIONING_STATE_SIZE = 4
+SENSOR_INFO_SIZE = 12
 
 
 @dataclass(frozen=True)
@@ -182,6 +188,46 @@ def system_protected_config_fields():
     """Encode the current read-only generation-3 protected-config query."""
     return (COMMAND_GET_SYSTEM_PROTECTED_CONFIG, CURRENT_COMMAND_VERSION, 0,
             b"", SYSTEM_PROTECTED_CONFIG.size)
+
+
+def sensor_readiness_fields():
+    """Encode the current one-byte, read-only sensor-readiness query."""
+    return (COMMAND_SENSOR_READINESS, COMMAND_VERSION, 0, b"", 1)
+
+
+def decode_sensor_readiness(output: bytes) -> int:
+    if not isinstance(output, bytes) or len(output) != 1:
+        raise BiometricCommandError("sensor readiness must be exactly one byte")
+    return output[0]
+
+
+def provisioning_state_fields():
+    """Encode the current four-byte, read-only provisioning-state query."""
+    return (COMMAND_PROVISIONING_STATE, COMMAND_VERSION, 0,
+            b"", PROVISIONING_STATE_SIZE)
+
+
+def decode_provisioning_state(output: bytes) -> int:
+    if not isinstance(output, bytes) or len(output) != PROVISIONING_STATE_SIZE:
+        raise BiometricCommandError("provisioning state must be exactly four bytes")
+    return struct.unpack("<I", output)[0]
+
+
+def reset_sensor_fields():
+    """Encode one current reset attempt; retry policy belongs to the caller."""
+    return (COMMAND_RESET_SENSOR, CURRENT_COMMAND_VERSION, 0, b"", 0)
+
+
+def sensor_info_fields():
+    """Encode the current 12-byte, read-only sensor-information query."""
+    return (COMMAND_SENSOR_INFO, COMMAND_VERSION, 0, b"", SENSOR_INFO_SIZE)
+
+
+def decode_sensor_info_shape(output: bytes) -> int:
+    """Validate sensor information without interpreting or exposing its fields."""
+    if not isinstance(output, bytes) or len(output) != SENSOR_INFO_SIZE:
+        raise BiometricCommandError("sensor information must be exactly 12 bytes")
+    return len(output)
 
 
 def decode_system_protected_config(output: bytes) -> SystemProtectedConfig:

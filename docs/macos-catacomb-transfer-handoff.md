@@ -260,3 +260,35 @@ accessory-cache construction are understood. The new checksum-pinned verifier
 and negative tests are
 `tools/research/macos-catacomb-load-context-evidence.py` and
 `tools/research/test_macos-catacomb-load-context-evidence.py`.
+
+## Linux return result: pre-calibration reads match macOS
+
+Linux implemented the exact readiness, provisioning-state, reset, and
+sensor-info codecs with fail-closed shape validation. Reset remains
+offline-only. A bounded live runner containing only the other three read
+commands returned status zero, readiness 1, provisioning state 5, and an exact
+12-byte sensor-info response. It did not print or retain the sensor-info bytes.
+This matches the successful macOS state and proves that Linux reaches the
+pre-calibration portion of current initialization. No catacomb, reset,
+calibration, patch, or MSRk command was sent.
+
+The next macOS pass is static/read-only. Recover from the checksum-pinned
+installed binaries:
+
+1. The exact request and reply ABI for Bridge methods 5
+   (`calibrationDataFromEEPROM`) and 11 (`calibrationDataFromFDR`), including
+   arguments, status handling, output type/size bounds, and which method the
+   normal built-in sensor path selects.
+2. The complete control flow from those legitimate Bridge-returned bytes into
+   `setCalibrationData:source:` command `0x20`, including how source 0 is
+   selected and whether any validation/transformation occurs.
+3. The fields of the cached 12-byte sensor-info result used by
+   `cacheAccessories`, and the exact host-side accessory/device-group object
+   constructed before general catacomb load. Distinguish host-only bookkeeping
+   from any additional Bridge call.
+
+Do not print, copy, hash, decode, or commit machine calibration bytes or any
+catacomb/biometric material. Do not enroll, remove, reset, load, or touch a
+fingerprint. Add only checksum-pinned static evidence tooling, tests, and
+sanitized conclusions; update this handoff and `docs/touch-id.md`, commit, and
+push `main`.

@@ -21,6 +21,34 @@ BRIDGE_SPEC.loader.exec_module(bridge)
 
 
 class OrdinaryMatchPayloadTests(unittest.TestCase):
+    def test_current_sensor_initialization_command_shapes(self):
+        self.assertEqual(command.sensor_readiness_fields(),
+                         (0x53, 1, 0, b"", 1))
+        self.assertEqual(command.provisioning_state_fields(),
+                         (0x10, 1, 0, b"", 4))
+        self.assertEqual(command.reset_sensor_fields(),
+                         (0x02, 2, 0, b"", 0))
+        self.assertEqual(command.sensor_info_fields(),
+                         (0x35, 1, 0, b"", 12))
+        self.assertEqual(command.decode_sensor_readiness(b"\x01"), 1)
+        self.assertEqual(command.decode_provisioning_state(
+            struct.pack("<I", 5)), 5)
+        self.assertEqual(command.decode_sensor_info_shape(bytes(12)), 12)
+
+    def test_sensor_initialization_decoders_reject_wrong_shapes(self):
+        for output in (b"", bytes(2), bytearray(b"\0")):
+            with self.subTest(decoder="readiness", output=output):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.decode_sensor_readiness(output)
+        for output in (b"", bytes(3), bytes(5), bytearray(4)):
+            with self.subTest(decoder="provisioning", output=output):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.decode_provisioning_state(output)
+        for output in (b"", bytes(11), bytes(13), bytearray(12)):
+            with self.subTest(decoder="sensor_info", output=output):
+                with self.assertRaises(command.BiometricCommandError):
+                    command.decode_sensor_info_shape(output)
+
     def test_current_user_protected_config_getter_envelope(self):
         self.assertEqual(command.protected_config_fields(user_id=501),
                          (0x2e, 1, 0, b"\xf5\x01\0\0", 32))

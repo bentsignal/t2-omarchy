@@ -2848,6 +2848,21 @@ shapes first and recover legitimate calibration/accessory inputs before
 another load. The pinned verifier is
 `tools/research/macos-catacomb-load-context-evidence.py`.
 
+Linux now implements those four evidence-backed command shapes in
+`biometric-command.py`. The reset codec remains offline-only; no reset was
+needed for the first bounded live observation. The source-gated
+`sensor-context-probe.py` sends only readiness, provisioning-state, and
+sensor-info reads and reports no opaque sensor-info bytes. On the first live
+run after activating the existing internal-NCM NetworkManager profile, all
+three commands succeeded: readiness was 1, provisioning state was 5, and
+sensor info had the required 12-byte shape. This independently matches the
+successful macOS provisioning state and proves that Linux can already reach
+this portion of current sensor initialization without a catacomb transfer.
+The remaining evidence gap is the exact Bridge method 5/11 calibration-source
+selection and reply ABI plus how the returned legitimate bytes feed command
+`0x20` and host-side accessory caching. Do not reset or reload merely to repeat
+the already-successful read results.
+
 ## Useful baseline commands
 
 ```bash
