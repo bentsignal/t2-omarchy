@@ -3406,6 +3406,25 @@ command 3 is about to be sent. If command 3 starts successfully, subsequent
 placement/reposition events can be tested repeatedly within that one run. No
 macOS reboot is needed.
 
+The first composed setup run accepted the password (`verify-password-acm`
+status zero) and began the fresh-state transaction, but stopped during
+protected-policy readback before creating an enrollment-start record or asking
+for a touch. Its setup intent was durably classified as outcome-unknown because
+the first parser required byte output before checking a synchronous nonzero
+getter status. Fresh-connection reconciliation proved zero identities and no
+persistent identity delta, then cleared the live-operation block. Operator
+timing was irrelevant: the Enter/three-second touch gate was never reached.
+
+External GPL commit `4df6e98` now distinguishes a rejected getter with nil
+output from an ambiguous successful readback and reports only privacy-safe
+diagnostics: synchronous status, output length, four non-secret set-policy
+flags when structurally available, or the count of unexpected service events.
+It never exposes the ACM form or returned opaque bytes. The dependency-complete
+suite passes 299 tests, the corrected module is installed byte-for-byte in the
+root-owned runtime, and the status audit reports zero unfinished operations.
+One more password-authorized Linux run is required to classify the readback;
+no touch should occur unless that readback verifies and command 3 is ready.
+
 ## Useful baseline commands
 
 ```bash

@@ -235,3 +235,11 @@ closed on every ambiguous result. The dependency-complete suite passes 297
 tests, the changed runtime files are installed, and a no-touch hardware
 preflight passed without mutation. The next supervised run is Linux-only; do
 not reboot to macOS unless a later Linux finding explicitly requests it.
+
+That first composed Linux run accepted the password but stopped at the
+protected-policy readback before command 3 or any touch cue. Fresh-connection
+reconciliation proved no persistent identity delta and left zero unfinished
+operations. External GPL commit `4df6e98` corrects the parser's treatment of a
+nonzero getter with nil output and adds privacy-safe status/length/policy-shape
+diagnostics; all 299 tests pass and the installed module matches. The next
+classification run remains Linux-only.
