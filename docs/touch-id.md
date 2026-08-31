@@ -3223,6 +3223,60 @@ All plaintext and temporary macOS files were removed. The encrypted artifact
 now permits Linux to compare the fresh complete host state after its automatic
 warm-transition read-only capture.
 
+Linux's guarded warm-transition service completed before either reset-capable
+biometric unit. Its initial cached-port connection raced interface assignment,
+then its bounded discovery retry succeeded. The privacy-safe record was valid
+but contained zero UID-501 identities. This matches the fresh macOS host
+archive itself, whose strictly decoded identity list is also empty; the warm
+reboot did not lose an archived identity because no archived identity existed.
+
+Linux decrypted the 1,946-byte CMS only in a mode-0700 LUKS-home staging
+directory and revalidated the exact three-component archive. The fresh master
+and UID-501 secure envelopes are byte-identical to the older retained envelopes
+that returned load status 257, while the newly included bio-lockout component
+also passed its strict codec. A root-only hash-addressed backup remains under
+`/var/lib/t2-touchid/backups`; no plaintext, component digest, UUID, or secure
+envelope was printed or committed.
+
+The current T2's stable read-only inventory identifies a different enrollment
+shape from the reference project's proven protocol-2 machine. Direct protocol
+query `0x01` returns exact `kIOReturnBadArgument` with a four-byte zero output,
+global identity command `0x51` returns bkremoted's exact nil sentinel, and the
+UID-501 list is likewise nil/empty. Capacity remains available (device maximum
+five, configured-user free three). Catacomb hash state reports the selected
+component absent, while `0x3c` still returns unique master and UID-501 state
+records. SKS state remains `0x15`. The prior enrollment broker therefore failed
+preflight because it required protocol 2, a global identity inventory, and an
+already-present SEP Catacomb—not because the macOS export was invalid.
+
+The separate GPL reference checkout is now based on upstream commit `936a980`
+and has a local Linux branch `t2-v1-first-enrollment` at commit `703b287`.
+That checkpoint adds fail-closed protocol-1 attestation and exact nil handling,
+permits only the zero-identity/absent-Catacomb baseline, emits four-byte
+protocol-1 user/master persistence descriptors, allows the successful first
+enrollment to transition the SEP Catacomb from absent to present, and preserves
+failure/no-change reconciliation. Its zero-identity codec preserves the
+validated keyed-archive graph for neutral replacement and constructs canonical
+built-in accessory metadata only behind an explicit built-in-enrollment gate.
+The real decrypted macOS zero-identity component passed both the neutral and
+first-identity offline paths. All 274 dependency-independent tests, Python
+compilation, privacy scan, kernel-module build, and userspace-tool build pass;
+the one unrun fprintd test imports an unavailable optional `dbus-next` package
+and covers unchanged code. No GPL source was copied into this MIT repository.
+
+Upstream also supplies the critical ACM correction absent from our earlier
+status-261 experiments: after creating and preflighting the context it sends
+ACM externalization opcode `0x13`, then binds the password, evaluates policy
+1007, and releases the external form only when policy is satisfied. The latest
+userspace and next-boot kernel module are staged locally, but the running kernel
+still holds the older pinned module and cannot be safely unloaded. Before any
+fingerprint touch, Linux must first install the protocol-1 checkpoint, pass a
+read-only enrollment preflight, reboot once to load the opcode-`0x13`-capable
+module, and run a password-authorized no-enrollment policy control. Only after
+those gates pass may one explicitly supervised enrollment begin. PAM remains
+out of scope until enrollment, durable readback, reboot persistence, and match
+all succeed.
+
 ## Useful baseline commands
 
 ```bash

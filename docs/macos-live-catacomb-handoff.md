@@ -154,3 +154,29 @@ This report was committed before the final daemon freeze. The remaining macOS
 action is exactly the handoff's `SIGSTOP` of the running `biometrickitd`
 followed immediately by a warm reboot to Linux; if reboot scheduling fails,
 the helper must send `SIGCONT` before returning.
+
+## Linux return result
+
+The guarded boot capture completed successfully after a bounded interface/port
+retry and reported a structurally valid zero-record UID-501 identity list. The
+fresh encrypted archive also strictly decodes to zero identities, so this is a
+true empty first-enrollment baseline rather than evidence that a macOS identity
+was lost during the transition.
+
+Linux privately decrypted and revalidated all three components. The fresh
+master and user secure envelopes are byte-identical to the older retained
+copies that already returned load status 257, and the bio-lockout component is
+valid. The root-only backup and encrypted EFI recovery artifact remain; no
+private identifier, digest, envelope, or plaintext archive was committed.
+
+The remaining blocker is now precisely characterized: this T2 exposes the
+protocol-1/zero-identity/absent-Catacomb shape, while the upstream experimental
+broker assumed protocol 2 and a preexisting identity. A local GPL checkpoint
+based on upstream `936a980` is branch `t2-v1-first-enrollment`, commit `703b287`.
+It implements strict protocol-1 inventory, baseline, persistence,
+reconciliation, and explicitly gated first-identity encoding. Its complete
+dependency-independent test suite and build checks pass, and the real private
+zero-identity archive passes the new offline codec path. The next Linux gates
+are a read-only preflight, one reboot to activate the latest ACM
+externalization-capable kernel transport, then a password-authorized policy-only
+control before any supervised touch or enrollment.
