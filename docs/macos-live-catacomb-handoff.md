@@ -31,7 +31,19 @@ the Linux agent continues while macOS is active.
    Record its commit in the sanitized result. Do not copy its GPL source here.
 3. Run its current `tools/macos/macos-export-touchid-catacomb.sh --no-reboot`.
    Require the full nonempty `t2-touchid-catacomb.tar.gz`; reject a diagnostic
-   or partial result. Do not log archive members.
+   or partial result. Do not log archive members. Before encryption, run the
+   same checkout's privacy-safe checker as root so the root-owned mode-0600
+   archive must contain exactly the current master, bio-lockout, and UID-501
+   components and must pass independent semantic readback:
+
+   ```sh
+   sudo python3 /absolute/checkout/src/t2-catacomb-fixture-check.py \
+     --apple-user-id 501 \
+     /absolute/checkout/tools/macos/t2-touchid-catacomb.tar.gz
+   ```
+
+   Treat any checker failure as a failed export; do not improvise a loadable
+   archive from partial files.
 4. Encrypt the archive with AES-256 CMS DER to an atomic EFI temporary name,
    validate the CMS structure, rename it, and `sync`:
 
