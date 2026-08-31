@@ -169,7 +169,7 @@ copies that already returned load status 257, and the bio-lockout component is
 valid. The root-only backup and encrypted EFI recovery artifact remain; no
 private identifier, digest, envelope, or plaintext archive was committed.
 
-The remaining blocker is now precisely characterized: this T2 exposes the
+The remaining blocker was initially characterized as a
 protocol-1/zero-identity/absent-Catacomb shape, while the upstream experimental
 broker assumed protocol 2 and a preexisting identity. A local GPL checkpoint
 based on upstream `936a980` is branch `t2-v1-first-enrollment`, commit `703b287`.
@@ -196,3 +196,21 @@ ran. The final post-reboot read-only enrollment preflight also passed with the
 same zero-identity protocol-1 baseline. The cross-OS handoff is therefore
 complete. Linux can proceed to one explicitly supervised first-enrollment run
 without another macOS boot.
+
+That first enrollment attempt accepted the password and satisfied policy 1007,
+but its 48-byte protocol-1 start request returned synchronous status 22 before
+any touch. This corrected the earlier inference: nil identity lists describe an
+empty database, not the request version. The live Bridge handshake negotiated
+client version 2, so Linux must retain the 68-byte version-2 built-in request.
+The rejected attempt persisted only the refreshed bio-lockout component and
+reconciled at E3 with zero identities and no unfinished operation.
+
+The external GPL branch now has local commits `a697957` and `2f264ab` after
+`703b287`. They implement the negotiated-version correction, a press-Enter plus
+three-second human touch cue, and proof that any locally evolved Catacomb
+exactly matches a unique earlier E3 digest before another operation. All 292
+tests pass in the installed virtual environment. The corrected root-owned
+runtime passed another real no-touch preflight with zero identities, available
+capacity, stable same-connection inventory, and the evolved store matched to
+the prior E3. The next action remains in the Linux thread: one supervised
+version-2 enrollment retry. No additional macOS work or reboot is required.

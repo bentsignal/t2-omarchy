@@ -3238,8 +3238,9 @@ also passed its strict codec. A root-only hash-addressed backup remains under
 `/var/lib/t2-touchid/backups`; no plaintext, component digest, UUID, or secure
 envelope was printed or committed.
 
-The current T2's stable read-only inventory identifies a different enrollment
-shape from the reference project's proven protocol-2 machine. Direct protocol
+At this checkpoint, the current T2's stable read-only inventory was initially
+interpreted as a different enrollment shape from the reference project's
+proven protocol-2 machine. Direct protocol
 query `0x01` returns exact `kIOReturnBadArgument` with a four-byte zero output,
 global identity command `0x51` returns bkremoted's exact nil sentinel, and the
 UID-501 list is likewise nil/empty. Capacity remains available (device maximum
@@ -3249,8 +3250,8 @@ records. SKS state remains `0x15`. The prior enrollment broker therefore failed
 preflight because it required protocol 2, a global identity inventory, and an
 already-present SEP Catacomb—not because the macOS export was invalid.
 
-The separate GPL reference checkout is now based on upstream commit `936a980`
-and has a local Linux branch `t2-v1-first-enrollment` at commit `703b287`.
+The separate GPL reference checkout was then based on upstream commit `936a980`
+and had a local Linux branch `t2-v1-first-enrollment` at commit `703b287`.
 That checkpoint adds fail-closed protocol-1 attestation and exact nil handling,
 permits only the zero-identity/absent-Catacomb baseline, emits four-byte
 protocol-1 user/master persistence descriptors, allows the successful first
@@ -3314,6 +3315,42 @@ supervised built-in enrollment run; it must request the password first, announce
 sensor-touch timing separately, retain the same Bridge/ACM generation through
 durable Catacomb persistence and readback, and stop fail-closed on any ambiguous
 result. PAM remains disabled.
+
+The first password-authorized enrollment attempt disproved the protocol-1
+interpretation. Password binding and committed policy 1007 both succeeded, but
+the 48-byte protocol-1 command-3 request returned synchronous status 22 before
+the sensor requested a touch. The terminal notification was therefore generic
+and did not indicate a missed human cue. The failure transaction refreshed only
+`biolockout.cat`, completed its host/SEP persistence confirmations, and reached
+E3 with zero identities and no unfinished journal.
+
+The empty identity-list shapes were ambiguous: the direct version query still
+returned exact bad-argument/zero and the global list still returned nil, but
+the live Bridge connection had negotiated client version 2. That negotiated
+version, the recovered current enrollment serializer, and the earlier
+status-261 request shape all require the 68-byte version-2 built-in enrollment
+request. An empty database must not downgrade that connection to version 1.
+
+The external GPL branch now contains local commits `a697957` and `2f264ab`
+after `703b287`. They retain version 2 when a version-2 Bridge connection has
+nil/empty identity lists, require the negotiated client version to be exactly
+1 or 2, and add an explicit human gate after policy authorization but before
+command 3. The terminal waits for Enter, prints a short ready instruction,
+waits three seconds, and only then prints `TOUCH NOW`; every progress/reposition
+transition uses the same gate before the next continue. The retry path also
+accepts an evolved Linux-local Catacomb only when its complete current host/SEP
+snapshot uniquely reproduces a prior E3 journal digest. This was needed because
+the clean status-22 failure correctly refreshed the bio-lockout component, so
+the current store is no longer byte-equal to the original rollback archive.
+
+All 292 tests pass in the installed dependency-complete virtual environment,
+all Python files compile, and the changed files are installed in the root-owned
+runtime. A fresh hardware preflight then passed with zero identities, available
+capacity, stable same-connection inventory, a verified local store, and no
+mutation; the evolved store uniquely matched the earlier E3 attestation. The
+next action is one supervised version-2 enrollment retry after the user returns.
+It requires no macOS reboot. PAM remains disabled until enrollment, persistence,
+post-reboot verification, and matching all succeed.
 
 ## Useful baseline commands
 
