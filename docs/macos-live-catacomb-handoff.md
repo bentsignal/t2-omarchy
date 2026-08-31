@@ -187,3 +187,12 @@ mutation. The temporary service marker was removed, both reset-capable services
 are disabled/inactive again, and the enrollment-journal audit is empty. The
 next action is the single Linux reboot needed to replace the boot-pinned old
 transport with the already-staged ACM-externalization-capable module.
+
+The Linux reboot, keybag reload, and transient ACM lifecycle checks succeeded.
+In the password-authorized policy-only control, command `0x13` externalized the
+tracking context, password binding succeeded, policy 1007 became satisfied,
+and mandatory context deletion completed; no biometric consumer or mutation
+ran. The final post-reboot read-only enrollment preflight also passed with the
+same zero-identity protocol-1 baseline. The cross-OS handoff is therefore
+complete. Linux can proceed to one explicitly supervised first-enrollment run
+without another macOS boot.

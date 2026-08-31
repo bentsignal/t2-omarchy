@@ -3289,6 +3289,32 @@ only the already-loaded, boot-pinned older module remains in memory. The next
 required action is therefore one Linux reboot, followed by a password-authorized
 policy-only control before any fingerprint enrollment or touch.
 
+That reboot completed into Linux and loaded the staged transport from the
+root filesystem. The genuine keybag and its UID-501 alias loaded with status
+zero. A transient tracking-context lifecycle test and policy-1007 preflight
+both passed their exact parsers and mandatory deletion checks; the preflight
+correctly remained unsatisfied with requirement type 1 before password entry.
+
+The subsequent password-authorized, no-consumer control crossed the previously
+missing boundary. ACM command `0x13` externalized the live tracking context,
+selector-42 binding accepted the macOS login password, committed policy 1007
+changed to satisfied, and the authorized consumer deliberately performed no
+operation. The process returned success only after mandatory context deletion;
+a second lifecycle test also passed, the enrollment-journal audit remained
+empty, and no fingerprint mutation occurred. This rules out password-entry
+error and proves the complete Linux-native enrollment authorization lifecycle
+on this T2 for the first time in this investigation.
+
+A final post-reboot enrollment preflight then again passed with zero identities,
+available capacity, stable same-connection protocol-1 inventory, and the exact
+local three-component store. The reset-service marker was removed and both
+reset-capable services were returned to disabled/inactive state. All no-touch
+gates are now complete. The next operation may be exactly one explicitly
+supervised built-in enrollment run; it must request the password first, announce
+sensor-touch timing separately, retain the same Bridge/ACM generation through
+durable Catacomb persistence and readback, and stop fail-closed on any ambiguous
+result. PAM remains disabled.
+
 ## Useful baseline commands
 
 ```bash
