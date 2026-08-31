@@ -3144,6 +3144,15 @@ Linux APFS path. The next controlled step is the encrypted macOS export in
 `docs/macos-keybag-export-handoff.md`, followed by a policy-only comparison
 with the genuine bag. Enrollment and touch remain gated off.
 
+That macOS export completed on build 25G83. The upstream helper's first pass
+hit a candidate-list permissions bug and produced an empty-candidate archive;
+its 1,658-byte CMS was rejected and deleted. A temporary external checkout was
+retried with the list read through `sudo` and a fail-closed requirement for an
+anonymized candidate entry. The resulting 32,042-byte CMS passed independent
+structure parsing. All plaintext and temporary macOS files were removed, no
+source keybag changed, and no biometric operation occurred. Linux may now run
+the policy-only genuine-keybag comparison described in the dedicated handoff.
+
 ## Useful baseline commands
 
 ```bash

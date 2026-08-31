@@ -76,3 +76,22 @@ and identify the established UID-501 keybag. The first hardware comparison
 will be policy authorization only: no BiometricKit enrollment command and no
 fingerprint touch. The encrypted EFI artifact and all decrypted temporary
 copies will be removed after the bounded comparison.
+
+## macOS return result
+
+The export completed on macOS build 25G83 using upstream commit
+`a3c0f113210cb9365ae48c2e20056063dbe6ef71`. The unmodified upstream script's
+first run exposed a permission bug: its UID-501 shell could not open the
+root-owned candidate list, so its superficially successful archive contained
+no candidate copies. The resulting 1,658-byte CMS was rejected and deleted.
+
+The temporary external checkout was retried with only the candidate-list read
+routed through `sudo`, plus a fail-closed check requiring at least one
+anonymized `candidate-NNNN` archive entry before encryption. The final
+`/Volumes/EFI/t2-keybags.cms` is 32,042 bytes and passed independent
+`openssl cms -cmsout -inform DER -noout` parsing. Its plaintext
+`t2-keybags.tar.gz`, the upstream private work directory, the external clone,
+and the temporary wrappers were removed. The EFI public certificate and final
+CMS ciphertext remain for Linux. No candidate paths or bytes were printed or
+committed, no source keybag was changed, and no BiometricKit or fingerprint
+operation was performed.
