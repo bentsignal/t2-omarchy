@@ -326,3 +326,20 @@ sensor warm-up on a separate, discarded Bridge connection. Linux will first
 run a password-free exact initialization diagnostic on the retained lease,
 classify any callbacks, and then combine that sequence with the proven
 authorization/setup path. The macOS thread has no requested work.
+
+The password-free retained-lease diagnostic passed on the real T2. It confirmed
+service-opened state, readiness, provisioning, first-attempt corrected reset,
+post-reset cancellation, type-3 sensor information, calibration present,
+exactly one built-in device record, the current nine-word system policy,
+consistently absent version-0 catacomb/group state, and xART available. It
+emitted no service callback and performed no fingerprint capture.
+
+External GPL commits `282b678`, `f886a92`, `8718650`, and `e08c5cf` move the
+human cue behind confirmed command-3 acceptance, implement and integrate the
+exact retained-session sequence, and add it to no-touch preflight. All 314
+tests pass and the installed runtime matches. The real composed preflight
+passed with zero identities, available capacity, stable post-initialization
+inventory, a verified local store, and no persistent mutation. Cleanup left
+zero unfinished operations, both reset-capable services inactive, and no
+temporary marker. The next action remains in the Linux thread: one supervised
+password-authorized enrollment run. macOS has no requested work.

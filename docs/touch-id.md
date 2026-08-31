@@ -3594,6 +3594,29 @@ that exact initialization as a password-free diagnostic, classify any bounded
 callbacks, and only then integrate it and justify another password-authorized
 enrollment attempt.
 
+That retained-lease diagnostic passed on the real T2 without a password or
+fingerprint capture. Bridge method 1 confirmed the biometric service was open;
+readiness returned 1, provisioning state 5, corrected reset succeeded on the
+first attempt, the sensor reported type 3 and calibration present, and the
+device list contained exactly one built-in record. The current 36-byte system
+configuration, absent version-0 catacomb/group state pair, and xART-available
+boolean all passed their strict parsers. No service callback was emitted.
+
+External GPL commits `282b678`, `f886a92`, `8718650`, and `e08c5cf` now move
+the operator gate behind durable command-3 acceptance, add the exact bounded
+sensor-session codec and diagnostic, require service-opened state during every
+Bridge handshake, initialize the retained enrollment lease before E0
+inventory, and exercise that composition in no-touch preflight. A rejected
+command 3 can no longer print `TOUCH NOW`. All 314 tests pass, Python
+compilation succeeds, and the root-owned runtime byte-matches the changed
+sources. The real composed preflight then passed with zero identities,
+available capacity, a verified local store, stable post-initialization
+same-connection inventory, and no persistent mutation. Status reports zero
+unfinished operations; both reset-capable services are inactive and the
+temporary marker is absent. One password-authorized Linux run is now justified
+to test the combined initialization, policy-1007, fresh setup, and ordinary v2
+start path. A touch cue will appear only if the T2 accepts command 3.
+
 ## Useful baseline commands
 
 ```bash
