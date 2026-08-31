@@ -3210,6 +3210,19 @@ reset-capable units also received a temporary condition requiring the absent
 runtime marker `/run/t2-touchid/allow-reset-capable-services`. This preserves
 any warm identity after the automatic capture until the supervised comparison.
 
+The fresh macOS live-Catacomb export then passed the exact three-component
+gate on build 25G83. The initial upstream checker decoded every component but
+its neutral user round-trip failed because its deterministic encoder emitted
+unreachable identity/accessory helpers for the valid zero-identity host graph.
+A narrow fix in the temporary external GPL checkout preserved that already
+validated graph while retaining strict primary and independent-oracle
+readback; all 19 relevant tests passed. The guarded retry reported
+`identity_count=0`, passed semantic equality and binding/envelope preservation,
+and produced a 1,946-byte AES-256 CMS DER envelope that independently parsed.
+All plaintext and temporary macOS files were removed. The encrypted artifact
+now permits Linux to compare the fresh complete host state after its automatic
+warm-transition read-only capture.
+
 ## Useful baseline commands
 
 ```bash

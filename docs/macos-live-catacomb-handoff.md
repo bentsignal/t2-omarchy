@@ -118,3 +118,39 @@ handoff. The encrypted EFI copies should remain as recovery artifacts until
 the Linux validation is complete. After the comparison, Linux may reenable
 the two biometric services and disable the temporary capture service only when
 doing so cannot overwrite evidence.
+
+## macOS return result
+
+The full live Catacomb export completed on macOS build 25G83 using upstream
+commit `558b8f4fd9d90adc6f163ade44dae22c91d712dd`. The unmodified privacy-safe
+checker first accepted the exact master, bio-lockout, and UID-501 component
+set and decoded all three, but failed while neutrally re-emitting the decoded
+zero-identity user graph: the upstream deterministic builder unconditionally
+added identity/accessory helper objects, which its own strict reachability
+check correctly rejected as unreachable. That failed run produced no CMS and
+removed its plaintext and staging directory.
+
+The temporary external GPL checkout received a narrow zero-identity verifier
+fix. Neutral secure-data replacement deep-copied the already strictly decoded
+graph and replaced only its opaque secure envelope; it still required the
+primary strict decoder and independent semantic oracle to agree, and did not
+change deletion, enrollment, or nonempty-identity behavior. A dedicated
+zero-identity regression plus all existing codec/fixture tests passed (19
+tests total). No GPL source was copied into this repository.
+
+The guarded retry passed the complete privacy-safe checker with all three
+required components, `identity_count=0`, independent oracle readback, semantic
+round-trip equality, preserved opaque envelopes and account/keybag bindings,
+and redacted identifiers. The archive was streamed into AES-256 CMS DER using
+the EFI public certificate. Final
+`/Volumes/EFI/t2-touchid-catacomb.cms` is 1,946 bytes and passed an independent
+`openssl cms -cmsout -inform DER -noout` parse. The plaintext archive, private
+staging directory, external checkout, and all temporary wrappers were removed.
+No source Catacomb, Touch ID setting, fingerprint, or BiometricKit operation
+was changed or invoked. The validated CMS and public certificate remain on
+EFI for Linux.
+
+This report was committed before the final daemon freeze. The remaining macOS
+action is exactly the handoff's `SIGSTOP` of the running `biometrickitd`
+followed immediately by a warm reboot to Linux; if reboot scheduling fails,
+the helper must send `SIGCONT` before returning.
