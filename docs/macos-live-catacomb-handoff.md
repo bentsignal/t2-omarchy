@@ -300,3 +300,14 @@ but uses two separately created, password-authorized, mandatorily deleted ACM
 contexts: setup-only, then enrollment-only. All 305 tests and no-touch gates
 pass. The next Linux-only supervised run asks for two password entries and
 tests only this authorization-lifetime distinction; macOS still has no work.
+
+Both independently authorized contexts succeeded, but the split-context run
+still received command-3 status 22 without an event. External GPL commit
+`877c82a` removes the disproved split. Review also separated the explicit
+accessory-group probe from ordinary built-in enrollment: type 1/zero UUID can
+address the built-in sensor, but the exact ordinary Settings/UI path supplies
+no accessory-group option, so its v2 suffix remains 20 zero bytes. External
+GPL commit `e714986` restores that ordinary request while retaining strict
+terminal-result group validation. All 305 tests and no-touch gates pass. The
+next Linux-only run uses one password and tests only this request-shape
+difference; macOS still has no requested work.

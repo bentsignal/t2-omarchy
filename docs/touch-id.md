@@ -3546,6 +3546,31 @@ and status plus no-touch hardware preflight remain clean. The next supervised
 Linux run tests this one variable and should touch only after the second
 authorization and explicit `TOUCH NOW` gate.
 
+The split-context run accepted both passwords and independently satisfied
+policy 1007 twice, but command 3 still returned synchronous status 22 with no
+service event. It therefore disproves setup-credential replay as the cause.
+The journal again reconciled cleanly with zero identities and no unfinished
+operation. External GPL commit `877c82a` removes that extra context and restores
+one password prompt.
+
+Review then found that the request had promoted a diagnostic accessory result
+into the normal enrollment serializer. A prior bounded probe established that
+an explicit type-1/zero-UUID group addresses the built-in sensor, but did not
+establish that ordinary Settings enrollment supplies that option. The exact
+framework path says the trailing v2 record is populated only when an accessory
+group option is present, and the recovered ordinary Settings/UI path sets the
+credential and user without an accessory-group option. Its ordinary v2 request
+therefore retains the zero-initialized 20-byte suffix. Earlier zero-group tests
+were unauthenticated and could not classify this difference.
+
+External GPL commit `e714986` restores that exact ordinary zero-group request
+while continuing to accept only zero or canonical built-in groups in a terminal
+identity result. All 305 tests pass; the reverted one-context coordinator and
+changed protocol module byte-match the installed runtime; compilation, status,
+and no-touch hardware preflight are clean. The next supervised Linux run tests
+one request-shape variable with one password entry. A touch is relevant only if
+command 3 returns zero and emits an enrollment event after `TOUCH NOW`.
+
 ## Useful baseline commands
 
 ```bash
