@@ -250,3 +250,11 @@ biometric operation was created. External GPL commit `d93a60d` now requires one
 distinct matching snapshot digest while accepting duplicate attestations of
 that digest. All 299 tests and a real no-touch evolved-state preflight pass;
 the next classification run remains Linux-only.
+
+The next Linux run accepted the password but exposed one interleaved Bridge
+service callback during protected-policy readback, still before command 3 or a
+touch cue. It was rejected and then reconciled with zero persistent delta.
+External GPL commit `3362f5a` now reports only validated public callback-header
+metadata (type, version, ordinal, payload length) without payload bytes. All 300
+tests pass. A Linux-only password run must identify that callback before it can
+be safely queued or ignored.

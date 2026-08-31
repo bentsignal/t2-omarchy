@@ -3442,6 +3442,23 @@ and the real no-touch preflight now crosses the evolved-state gate successfully
 with zero identities and no mutation. The next run can again proceed to the
 password-authorized policy-readback classification entirely in Linux.
 
+That classification run accepted the password and reached the protected-policy
+readback, but exactly one Bridge service callback arrived before its correlated
+reply. The first setup adapter deliberately rejected every interleaved callback,
+so it recorded outcome-unknown before command 3 or the touch gate. Fresh
+reconciliation again proved zero identities and no persistent delta. This
+behavior differs from the earlier MIT prototype's Bridge session, which
+acknowledged and queued interleaved callbacks while waiting for a command reply.
+
+The callback must not be blindly ignored. External GPL commit `3362f5a` adds a
+privacy-safe classifier that reports only the validated public event header:
+envelope type, version, status ordinal, and payload length. It never retains or
+prints payload bytes. Malformed outer/channel/header shapes still invalidate
+the setup transaction. All 300 tests pass and the installed module byte-matches
+the checkout. One further password run is needed to identify the callback; only
+after it is shown to be a normal auxiliary event may it be preserved into the
+enrollment transport rather than treated as failure.
+
 ## Useful baseline commands
 
 ```bash
