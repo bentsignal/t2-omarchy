@@ -58,7 +58,7 @@ class CredentialAuthorizationTests(unittest.TestCase):
             selector=aks.SessionKeybagSelector(-501))
         password = bytearray(b"example!")
         request = plan.consume_verification_secrets(
-            identity(), password, device_state_active=False)
+            identity(), password)
         request_view = request.view()
         self.assertEqual(password, bytearray(8))
         self.assertEqual(response, bytearray(range(21)))
@@ -120,7 +120,7 @@ class CredentialAuthorizationTests(unittest.TestCase):
             6, 3, keybag_handle=aks.SessionKeybagHandle(7),
             selector=aks.SessionKeybagSelector(-4))
         request = plan.consume_verification_secrets(
-            identity(), bytearray(b"abc"), device_state_active=True)
+            identity(), bytearray(b"abc"))
         request_view = request.view()
         plan.abort()
         self.assertEqual(bytes(request_view), bytes(len(request_view)))
@@ -170,7 +170,7 @@ class CredentialAuthorizationTests(unittest.TestCase):
             6, 3, keybag_handle=aks.SessionKeybagHandle(7),
             selector=aks.SessionKeybagSelector(-4))
         request = plan.consume_verification_secrets(
-            identity(), bytearray(b"abc"), device_state_active=False)
+            identity(), bytearray(b"abc"))
         request_view = request.view()
         plan.prepare_context_delete()
         self.assertTrue(plan.failed)

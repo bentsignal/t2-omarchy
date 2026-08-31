@@ -26,6 +26,7 @@ IPC_HEADER_SIZE = 0x50
 IPC_DIGEST_SIZE = 16
 CDHASH_SIZE = 20
 ACM_CONTEXT_SIZE = 16
+CANONICAL_VERIFY_OPTIONS = 0x200
 CAPABILITIES_SERIALIZED_SIZE = SERIALIZED_HEADER_SIZE + 4 + 8 + 4
 COMPACT_V1_HEADER_SIZE = 0x48
 COMPACT_CAPABILITIES_REPLY_SIZE = 4 + COMPACT_V1_HEADER_SIZE + 4 + 8 + 4
@@ -215,7 +216,7 @@ class VerifySecretLayout:
     context_length_offset: int
     context_data_offset: int
     context_padded_end: int
-    device_state_offset: int
+    device_options_offset: int
 
 
 @dataclass(frozen=True)
@@ -727,8 +728,7 @@ def verify_secret_layout(password_length: int,
     if context_length != ACM_CONTEXT_SIZE:
         raise AKSTransportError("ACM external form must be exactly 16 bytes")
     # Header, variant word, keybag qword, selector word, two length-prefixed
-    # four-byte-aligned blobs, and the variant-1 device-state qword. The
-    # in-memory option at offset 0x88 is not serialized by this variant.
+    # four-byte-aligned blobs, and selector 42's canonical options qword.
     variant_offset = SERIALIZED_HEADER_SIZE
     keybag_offset = variant_offset + 4
     selector_offset = keybag_offset + 8
@@ -738,22 +738,21 @@ def verify_secret_layout(password_length: int,
     context_length_offset = password_padded_end
     context_data_offset = context_length_offset + 4
     context_padded_end = context_data_offset + _align4(context_length)
-    device_state_offset = context_padded_end
-    total = device_state_offset + 8
+    device_options_offset = context_padded_end
+    total = device_options_offset + 8
     if total > OOL_CAPACITY:
         raise AKSTransportError("serialized verify-secret request exceeds OOL")
     return VerifySecretLayout(
         total, variant_offset, keybag_offset, selector_offset,
         password_length_offset, password_data_offset, password_padded_end,
         context_length_offset, context_data_offset, context_padded_end,
-        device_state_offset)
+        device_options_offset)
 
 
 def consume_verify_secret_inputs(identity_header: bytes, password: bytearray,
                                  context: bytearray, *,
                                  keybag_handle: SessionKeybagHandle,
-                                 selector: SessionKeybagSelector,
-                                 device_state_active: bool) -> VerifySecretRequest:
+                                 selector: SessionKeybagSelector) -> VerifySecretRequest:
     """Serialize variant 1 while transferring and scrubbing secret inputs.
 
     This mirrors the recovered request fields while imposing a stricter Linux
@@ -768,8 +767,6 @@ def consume_verify_secret_inputs(identity_header: bytes, password: bytearray,
         raise AKSTransportError("password must be a caller-owned bytearray")
     if not isinstance(context, bytearray):
         raise AKSTransportError("ACM context must be a caller-owned bytearray")
-    if not isinstance(device_state_active, bool):
-        raise AKSTransportError("device-state input must be a boolean")
     layout = verify_secret_layout(len(password), len(context))
     wire = bytearray(layout.total_size)
     try:
@@ -783,8 +780,8 @@ def consume_verify_secret_inputs(identity_header: bytes, password: bytearray,
         struct.pack_into("<I", wire, layout.context_length_offset, len(context))
         wire[layout.context_data_offset:
              layout.context_data_offset + len(context)] = context
-        struct.pack_into("<Q", wire, layout.device_state_offset,
-                         0x80 if device_state_active else 0)
+        struct.pack_into("<Q", wire, layout.device_options_offset,
+                         CANONICAL_VERIFY_OPTIONS)
 
         header = memoryview(wire)[4:SERIALIZED_HEADER_SIZE]
         payload = memoryview(wire)[SERIALIZED_HEADER_SIZE:]
@@ -933,8 +930,7 @@ class AuthorizationPlan:
 
     def consume_verify_secret_payload(self, identity_header: bytes,
                                       password: bytearray,
-                                      context: bytearray, *,
-                                      device_state_active: bool) -> VerifySecretRequest:
+                                      context: bytearray) -> VerifySecretRequest:
         if (self.verify_request is None or self.verify_metadata is None or
                 self.header_version not in (1, 2) or self.verify_payload_built):
             raise AKSTransportError("verify-secret payload is out of order")
@@ -947,8 +943,7 @@ class AuthorizationPlan:
         request = consume_verify_secret_inputs(
             identity_header, password, context,
             keybag_handle=self.verify_metadata.keybag_handle,
-            selector=self.verify_metadata.selector,
-            device_state_active=device_state_active)
+            selector=self.verify_metadata.selector)
         if len(request.view()) != self.verify_request.payload_length:
             request.close()
             raise AKSTransportError(

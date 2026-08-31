@@ -1070,10 +1070,10 @@ bytes before pointer-to-blob serialization and is dispatched as operation
 `0x21`. After the versioned IPC header, offset `0x50` is request variant `1`,
 offset `0x58` is the keybag handle, offset `0x60` its 32-bit selector, offsets
 `0x68`/`0x70` describe the password blob, offsets `0x78`/`0x80` describe the
-ACM-context blob, offset `0x88` is the boolean option promoted to a qword, and
-offset `0x90` is the 64-bit device state. For request variant 1 the codec
-serializes the `0x90` state qword after the two blobs; it does not serialize
-the in-memory option at `0x88`. The codec walks both blobs with explicit
+ACM-context blob, offset `0x88` is the input device-options qword, and offset
+`0x90` is the returned device state. For request variant 1 the codec serializes
+the `0x88` options qword after the two blobs; the reply uses `0x90`. The codec
+walks both blobs with explicit
 lengths rather than transmitting kernel pointers. The caller
 maps the secure-key-store result to an AKS result and updates device state only
 after success. This explains how password verification authorizes the already
@@ -1488,14 +1488,14 @@ It also exposes a non-secret layout descriptor for later locked-buffer code.
 For a 12-byte password, the variant, keybag, and selector begin at offsets
 `84`, `88`, and `96`; the password length/data occupy `100`/`104`, the exact
 four-byte-aligned password region ends at `116`, the 16-byte ACM context
-length/data occupy `116`/`120`, and device state begins at `136`, producing
+length/data occupy `116`/`120`, and device options begin at `136`, producing
 the proven 144-byte total. Other password lengths are derived with the same
 checked arithmetic.
 
 The ownership behavior is now recovered too. `__ipc_verify_secret_v1` creates
 and zero-initializes a `0x98`-byte stack descriptor, stores password and ACM
 context pointers and lengths at `0x68/0x70` and `0x78/0x80`, stores the input
-device-state qword at `0x88`, and always wipes the complete descriptor after
+device-options qword at `0x88`, and always wipes the complete descriptor after
 the transport callback. `AppleKeyStore::verify_password` obtains both pointers
 directly from its two `OSData` arguments; its boolean argument becomes exactly
 bit `0x80` in the input device-state qword. On the receiving side,
@@ -2684,11 +2684,13 @@ used by the current Settings enrollment path and any keybag/session operation
 between verification and command 3; repeating command 3 with the current
 credential cannot add evidence.
 
-The macOS return pass proved that Settings uses zero for the operation-`0x21`
-input device-state word and performs no hidden AKS call between password
-verification and exporting the same ACM context. Its caller-facing selector
-`-3` resolves to the same SEP-side `-501` selector Linux uses. These fields must
-not be changed experimentally.
+The first macOS return-pass interpretation concluded that Settings used zero
+for operation `0x21` and correctly found no hidden AKS call between password
+verification and exporting the same ACM context. A later instruction-level
+audit corrected the codec branch direction and selector-42 Boolean ordering:
+the two caller-visible optional Booleans are false, but the wrapper supplies a
+third plaintext-secret option, producing wire value `0x200`. The caller-facing
+selector `-3` still resolves to the same SEP-side `-501` selector Linux uses.
 
 An expanded read-only Linux state query then returned requested and effective
 UID 501 policies both equal to `(1, 1, 1, 0)`, maximum identity count 5, free
@@ -2750,26 +2752,27 @@ respectively, and both passed CMS structural parsing. Linux can now load the
 general object first and the user object second on one Bridge connection and
 remove all transfer artifacts afterward.
 
-That static comparison is now complete. In the checksum-pinned current
+That static comparison recovered the context lifetime but initially
+misidentified the final options field. In the checksum-pinned current
 Settings extension, `ACMContextGetExternalForm` invokes a callback that calls
 the local `_aks_verify_password` wrapper with caller-facing keybag handle `-3`,
 the bounded password, and the same ACM external form. The selected wrapper
-hard-codes both optional Boolean arguments false; consequently the
-AppleKeyStore Boolean that controls input device-state bit `0x80` is false and
-the operation-`0x21` device-state input is zero. On success the callback copies
+hard-codes both optional Boolean arguments false. A later selector-42 audit
+proved that a separate, unconditional third Boolean sets plaintext-secret
+option `0x200`; it is not optional bit `0x80`. On success the callback copies
 that same external form into `NSData`. No further AKS, keybag, or session call
 occurs before the form is returned to the enrollment UI and BiometricKit.
 
 Handle `-3` is AppleKeyStore's caller-facing current-login-session request, not
 the selector serialized to SEP. The previously recovered authenticated session
 mapping resolves it to `-501` for UID 501. Linux's promotion and verify-secret
-against effective selector `-501` therefore match the macOS SEP-side operation,
-as does Linux's zero device-state input. Setting bit `0x80` or sending literal
-`-3` to SEP is disproved. The installed x86_64 extension hash and exact
+against effective selector `-501` therefore match the macOS SEP-side operation.
+Setting optional bit `0x80` or sending literal `-3` to SEP remains disproved,
+but the canonical request must carry `0x200`. The installed x86_64 extension hash and exact
 instruction sequences are enforced by
 `tools/research/macos-enrollment-authorization-evidence.py` and its negative
-tests. Synchronous enrollment status 261 must have another prerequisite; the
-password/ACM request framing itself is no longer an open variable.
+tests. The password/ACM request framing became closed only after the `0x200`
+correction.
 
 Sanitized logs from the current boot establish the pre-client ordering:
 bridge and sensor initialization, accessory caching, general catacomb load,

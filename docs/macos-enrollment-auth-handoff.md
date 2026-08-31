@@ -117,8 +117,9 @@ component with status 22.
 
 On macOS, inspect the already pinned Settings extension call to
 `_aks_verify_password` and record the exact non-secret value of its final
-boolean/device-state argument. In the KDK implementation that boolean becomes
-input device-state bit `0x80`; Linux currently sends zero. Also trace whether
+Boolean/options arguments. A later instruction-level correction proved that
+selector 42 appends canonical plaintext-secret option `0x200`; optional bit
+`0x80` remains clear. Also trace whether
 the normal enrollment path performs any AKS/keybag/session call after password
 verification and before `ACMContextGetExternalForm` or BiometricKit command 3.
 Distinguish an established login keybag from the newly created/promoted bag
@@ -141,9 +142,10 @@ The exact success path is:
 3. The callback reads the entered password, bounds it with `strnlen(..., 128)`,
    and invokes the local `_aks_verify_password` wrapper with API keybag handle
    `-3`, password pointer/length, and ACM external-form pointer/length.
-4. That exact wrapper sets both optional Boolean inputs to false. In particular,
-   the Boolean that `AppleKeyStore::verify_password` maps to device-state bit
-   `0x80` is false, so the serialized input device-state qword is zero.
+4. That exact wrapper sets both optional Boolean inputs to false. A later audit
+   corrected the generated-codec branch direction and found a distinct third,
+   unconditional plaintext-secret Boolean, so the serialized options qword is
+   `0x200`, not zero.
 5. On success the callback copies the same ACM external form into `NSData` and
    returns it. There is no intervening AKS/keybag/session call before the form
    is placed in the enrollment dictionary and passed to BiometricKit.
@@ -153,14 +155,14 @@ the caller-facing current-login-session keybag handle. The already recovered
 AppleKeyStore path resolves it through authenticated session identity to
 effective selector `-501` for UID 501 before operation `0x21` reaches SEP.
 Linux explicitly promotes its fresh bag to `-501` and verifies against that
-effective selector, which matches the macOS SEP-side request. Linux's zero
-input device-state also matches. Do not retry with bit `0x80` set or send
+effective selector, which matches the macOS SEP-side request. Canonical
+`0x200` options now also match. Do not retry with optional bit `0x80` set or send
 literal selector `-3` to SEP; neither is supported by this evidence.
 
 The exact request/response remains the existing operation-`0x21` variant-1
 codec documented in `docs/touch-id.md`: protected header, variant 1, keybag
 namespace, effective signed selector, padded password and 16-byte ACM
-external-form blobs, then the 64-bit zero device-state input. A successful
+external-form blobs, then the 64-bit `0x200` options input. A successful
 reply contains variant 1 and one 64-bit returned device-state value; it does
 not replace or mint another ACM handle.
 

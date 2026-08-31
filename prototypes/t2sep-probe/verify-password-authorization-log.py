@@ -26,7 +26,7 @@ def _load():
 startup = _load()
 REQUEST = re.compile(
     r"AKS verify-secret request: endpoint=7 selector=0x21 tag=3 "
-    r"length=(\d+) variant=1 password_bytes=not-logged "
+    r"length=(\d+) variant=1 options=0x200 password_bytes=not-logged "
     r"context_bytes=not-logged")
 ENVELOPE = re.compile(
     r"AKS verify-secret envelope: raw=([0-9a-fA-F]{8}) "

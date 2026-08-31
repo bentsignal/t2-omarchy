@@ -1283,6 +1283,11 @@ static int t2sep_probe_acm_enrollment_policy(
 			goto out_scrub;
 		}
 	}
+	dev_info(&pdev->dev,
+		 "ACM enrollment-policy response parsed: preflight=%s satisfied=%s requirement_present=%s requirement_type=%u requirement_state=%u requirement_flags=%#x requirement_payload_length=%u\n",
+		 preflight ? "yes" : "no", satisfied ? "yes" : "no",
+		 requirement_present ? "yes" : "no", requirement_type,
+		 requirement_state, requirement_flags, requirement_payload_length);
 	if (preflight) {
 		if (satisfied || !requirement_present || requirement_type != 1) {
 			ret = -EACCES;
@@ -1698,7 +1703,8 @@ static int t2sep_probe_aks_verify_password(
 			   send + context_length_offset);
 	memcpy(send + context_length_offset + sizeof(u32), context,
 	       T2SEP_ACM_CONTEXT_SIZE);
-	put_unaligned_le64(0, send + device_state_offset);
+	/* Selector 42's plaintext-secret call sets the third option: bit 0x200. */
+	put_unaligned_le64(0x200, send + device_state_offset);
 	ret = t2sep_aks_protect(send, request_size, version, digest);
 
 out_unlock:
@@ -1718,7 +1724,7 @@ out_revoke:
 	if (ret)
 		goto out_scrub;
 	dev_info(&pdev->dev,
-		 "AKS verify-secret request: endpoint=7 selector=0x21 tag=3 length=%zu variant=1 password_bytes=not-logged context_bytes=not-logged\n",
+		 "AKS verify-secret request: endpoint=7 selector=0x21 tag=3 length=%zu variant=1 options=0x200 password_bytes=not-logged context_bytes=not-logged\n",
 		 request_size);
 	ret = t2sep_wait_intel_message(bar4, response);
 	if (ret)

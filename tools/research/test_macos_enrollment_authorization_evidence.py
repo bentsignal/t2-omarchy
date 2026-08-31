@@ -23,7 +23,8 @@ class EnrollmentAuthorizationEvidenceTests(unittest.TestCase):
     def test_accepts_exact_authorization_path(self):
         result = evidence.inspect(fixture())
         self.assertEqual(result["keybag_selector"], -3)
-        self.assertEqual(result["device_state"], 0)
+        self.assertEqual(result["caller_optional_flags"], 0)
+        self.assertNotIn("device_state", result)
         self.assertEqual(result["post_verify_session_call"], "none")
 
     def test_rejects_wrong_architecture_and_missing_symbols(self):

@@ -96,7 +96,14 @@ prompt_dir=$(mktemp -d)
 prompt_fifo="$prompt_dir/key-serial"
 mkfifo -m 600 "$prompt_fifo"
 exec 9<>"$prompt_fifo"
-xdg-terminal-exec "$module_dir/prompt-password-key.sh" "$prompt_fifo" &
+if command -v ghostty >/dev/null 2>&1; then
+  # Force a distinct GTK process/window so a singleton on another workspace
+  # cannot hide the one-shot password prompt.
+  ghostty --gtk-single-instance=false -e \
+    "$module_dir/prompt-password-key.sh" "$prompt_fifo" &
+else
+  xdg-terminal-exec "$module_dir/prompt-password-key.sh" "$prompt_fifo" &
+fi
 prompt_pid=$!
 IFS= read -r -t 130 serial <&9 || die "password prompt timed out or was closed"
 exec 9>&- 9<&-

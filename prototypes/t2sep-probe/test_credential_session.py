@@ -88,7 +88,7 @@ class CredentialSessionTests(unittest.TestCase):
             6, 3, keybag_handle=aks.SessionKeybagHandle(7),
             selector=aks.SessionKeybagSelector(-4))
         request = state.consume_verification_secrets(
-            identity(), bytearray(b"abc"), device_state_active=False)
+            identity(), bytearray(b"abc"))
         request_view = request.view()
         state.accept_verification(
             bytes.fromhex("07a106000000600000000000"),

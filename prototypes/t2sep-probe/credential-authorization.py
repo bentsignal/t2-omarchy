@@ -150,8 +150,8 @@ class CredentialAuthorizationPlan:
             self._fail(error)
 
     def consume_verification_secrets(
-            self, identity_header: bytes, password: bytearray, *,
-            device_state_active: bool) -> aks.VerifySecretRequest:
+            self, identity_header: bytes,
+            password: bytearray) -> aks.VerifySecretRequest:
         self._active()
         if self._context_response is None or self._verify_request is not None:
             self._fail(CredentialAuthorizationError(
@@ -160,8 +160,7 @@ class CredentialAuthorizationPlan:
             self._context_response)
         try:
             request = self.aks.consume_verify_secret_payload(
-                identity_header, password, context_copy,
-                device_state_active=device_state_active)
+                identity_header, password, context_copy)
         except aks.AKSTransportError as error:
             context_copy[:] = bytes(len(context_copy))
             self._fail(error)

@@ -138,8 +138,7 @@ class AKSTransportTests(unittest.TestCase):
         request = aks.consume_verify_secret_inputs(
             self._identity(2), password, context,
             keybag_handle=aks.SessionKeybagHandle(0x1122334455667788),
-            selector=aks.SessionKeybagSelector(-501),
-            device_state_active=True)
+            selector=aks.SessionKeybagSelector(-501))
         self.assertEqual(password, bytearray(len(original_password)))
         self.assertEqual(context, bytearray(16))
 
@@ -165,7 +164,7 @@ class AKSTransportTests(unittest.TestCase):
             wire[layout.context_data_offset:layout.context_data_offset + 16],
             original_context)
         self.assertEqual(struct.unpack_from(
-            "<Q", wire, layout.device_state_offset)[0], 0x80)
+            "<Q", wire, layout.device_options_offset)[0], 0x200)
         aks.validate_protected_header(bytes(wire[4:0x54]), bytes(wire[0x54:]))
         self.assertNotIn(original_password, repr(request).encode())
         request.close()
@@ -181,11 +180,10 @@ class AKSTransportTests(unittest.TestCase):
             with aks.consume_verify_secret_inputs(
                     self._identity(1), password, context,
                     keybag_handle=aks.SessionKeybagHandle(7),
-                    selector=aks.SessionKeybagSelector(-4),
-                    device_state_active=False) as request:
+                    selector=aks.SessionKeybagSelector(-4)) as request:
                 wire = request.view()
-                offset = aks.verify_secret_layout(9).device_state_offset
-                self.assertEqual(struct.unpack_from("<Q", wire, offset)[0], 0)
+                offset = aks.verify_secret_layout(9).device_options_offset
+                self.assertEqual(struct.unpack_from("<Q", wire, offset)[0], 0x200)
                 raise RuntimeError("stop")
         self.assertIsNotNone(wire)
         self.assertEqual(bytes(wire), bytes(len(wire)))
@@ -194,19 +192,17 @@ class AKSTransportTests(unittest.TestCase):
         metadata = (aks.SessionKeybagHandle(7),
                     aks.SessionKeybagSelector(-4))
         cases = (
-            (b"immutable", bytearray(16), False),
-            (bytearray(b"ok"), bytes(16), False),
-            (bytearray(b"ok"), bytearray(15), False),
-            (bytearray(b"ok"), bytearray(16), 1),
+            (b"immutable", bytearray(16)),
+            (bytearray(b"ok"), bytes(16)),
+            (bytearray(b"ok"), bytearray(15)),
         )
-        for password, context, state in cases:
+        for password, context in cases:
             with self.subTest(password_type=type(password),
-                              context_type=type(context), state=state):
+                              context_type=type(context)):
                 with self.assertRaises(aks.AKSTransportError):
                     aks.consume_verify_secret_inputs(
                         self._identity(2), password, context,
-                        keybag_handle=metadata[0], selector=metadata[1],
-                        device_state_active=state)
+                        keybag_handle=metadata[0], selector=metadata[1])
 
     def test_verify_secret_consumption_scrubs_after_internal_failure(self):
         header = bytearray(self._identity(2))
@@ -217,8 +213,7 @@ class AKSTransportTests(unittest.TestCase):
             aks.consume_verify_secret_inputs(
                 bytes(header), password, context,
                 keybag_handle=aks.SessionKeybagHandle(7),
-                selector=aks.SessionKeybagSelector(-4),
-                device_state_active=False)
+                selector=aks.SessionKeybagSelector(-4))
         self.assertEqual(password, bytearray(9))
         self.assertEqual(context, bytearray(16))
 
@@ -231,8 +226,7 @@ class AKSTransportTests(unittest.TestCase):
             2, 12, keybag_handle=aks.SessionKeybagHandle(7),
             selector=aks.SessionKeybagSelector(-2))
         secret_request = plan.consume_verify_secret_payload(
-            self._identity(), bytearray(12), bytearray(16),
-            device_state_active=False)
+            self._identity(), bytearray(12), bytearray(16))
         secret_request.close()
         body = struct.pack("<IQ", 1, 7)
         header = aks.protect_header(self._identity(), body)
@@ -253,20 +247,18 @@ class AKSTransportTests(unittest.TestCase):
             selector=aks.SessionKeybagSelector(-4))
         with self.assertRaises(aks.AKSTransportError):
             plan.consume_verify_secret_payload(
-                self._identity(1), bytearray(5), bytearray(16),
-                device_state_active=False)
+                self._identity(1), bytearray(5), bytearray(16))
         password = bytearray(b"12345")
         context = bytearray(16)
         request = plan.consume_verify_secret_payload(
-            self._identity(2), password, context, device_state_active=False)
+            self._identity(2), password, context)
         self.assertEqual(len(request.view()),
                          plan.verify_request.payload_length)
         self.assertEqual(password, bytearray(5))
         self.assertEqual(context, bytearray(16))
         with self.assertRaises(aks.AKSTransportError):
             plan.consume_verify_secret_payload(
-                self._identity(2), bytearray(5), bytearray(16),
-                device_state_active=False)
+                self._identity(2), bytearray(5), bytearray(16))
         request.close()
 
     def test_build_identity_header_layout(self):
@@ -547,7 +539,7 @@ class AKSTransportTests(unittest.TestCase):
             context_length_offset=116,
             context_data_offset=120,
             context_padded_end=136,
-            device_state_offset=136))
+            device_options_offset=136))
         for length, expected_total in ((0, 132), (1, 136), (4, 136), (5, 140)):
             with self.subTest(length=length):
                 item = aks.verify_secret_layout(length)
@@ -555,7 +547,7 @@ class AKSTransportTests(unittest.TestCase):
                 self.assertEqual(item.password_padded_end,
                                  item.context_length_offset)
                 self.assertEqual(item.context_padded_end,
-                                 item.device_state_offset)
+                                 item.device_options_offset)
 
     def test_verify_secret_metadata_has_no_defaults_or_truncation(self):
         handle = aks.derive_session_keybag_handle(0x1122334455667780, 8)

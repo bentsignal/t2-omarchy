@@ -26,7 +26,7 @@ stop_index = next(index for index, value in enumerate(lines)
                   if "issued Apple CPU-stop value 5" in value)
 prefix = lines[0].split("temporarily enabled", 1)[0]
 VERIFY_LINES = [
-    prefix + "AKS verify-secret request: endpoint=7 selector=0x21 tag=3 length=144 variant=1 password_bytes=not-logged context_bytes=not-logged",
+    prefix + "AKS verify-secret request: endpoint=7 selector=0x21 tag=3 length=144 variant=1 options=0x200 password_bytes=not-logged context_bytes=not-logged",
     prefix + "AKS verify-secret envelope: raw=0003a107 00600000 00000000 00000000",
     prefix + "AKS verify-secret reply passed strict validation: authorized=yes device_state=not-logged",
 ]

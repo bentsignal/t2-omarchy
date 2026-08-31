@@ -169,6 +169,23 @@ the SKS-state and retained-catacomb comparisons cannot invoke it. Offline
 coverage is 450 tests and the kernel module builds on the running kernel. This
 new sequence is not live-proven until its first password-authorized run.
 
+The first no-touch hardware run validated the new subject and preflight
+framing. Context creation for UID 501 succeeded; preflight returned an exact
+24-byte unsatisfied passcode requirement (type 1, state 1, flags 1, four-byte
+payload); and AKS accepted the password. The committed policy remained
+unsatisfied, so the kernel withheld the context and performed complete
+keybag, ACM, SEP, and DMA teardown. No biometric command or touch occurred.
+
+That result exposed a second concrete codec error. An instruction-level
+re-audit of `_code_ipc_verify_secret` shows that request variant 1 serializes
+the input qword at descriptor offset `0x88`; the reply uses returned device
+state at `0x90`. Selector 42's plaintext-password wrapper always sets the
+third Boolean, giving exact options `0x200`. The prior run sent zero: it could
+verify the bag password but could not satisfy the enrollment policy. The live
+kernel and offline ownership codec now append only canonical `0x200`; the
+journal verifier requires it, 453 tests pass, and the module builds. A second
+no-touch run is required before any supervised enrollment attempt.
+
 This is an experiment boundary, not account authentication. Because the probe
 creates the bag whose secret it then verifies, success establishes that Linux
 can manufacture a fresh ACM credential context; it does not independently

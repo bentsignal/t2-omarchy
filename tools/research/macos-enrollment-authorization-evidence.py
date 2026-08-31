@@ -63,7 +63,9 @@ def inspect(data: bytes) -> dict[str, str | int]:
     return {
         "sha256": hashlib.sha256(data).hexdigest(),
         "keybag_selector": -3,
-        "device_state": 0,
+        # This wrapper proves only the two caller-visible optional flags are
+        # clear. Selector 42 independently contributes canonical option 0x200.
+        "caller_optional_flags": 0,
         "post_verify_session_call": "none",
     }
 
@@ -78,7 +80,7 @@ def main() -> None:
         raise SystemExit("Settings extension SHA-256 does not match the pinned x86_64 slice")
     print("verified enrollment authorization path: "
           f"sha256={result['sha256']} selector={result['keybag_selector']} "
-          f"device_state={result['device_state']} "
+          f"caller_optional_flags={result['caller_optional_flags']} "
           f"post_verify_session_call={result['post_verify_session_call']}")
 
 
