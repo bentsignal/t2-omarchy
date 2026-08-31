@@ -3520,6 +3520,32 @@ operations, zero identities, and no mutation. The next supervised run remains
 Linux-only and is the first one expected to reach command 3 and the explicit
 human touch gate.
 
+That run crossed the complete setup transaction and reached the human gate,
+but command 3 then returned synchronous status 22 with no service event. The
+failure toast was generic; the T2 never evaluated the presented finger. The
+journal completed reconciliation and persistence bookkeeping with zero
+identities, no unfinished operation, and no persistent identity delta.
+
+This isolates a previously untested device-side credential-lifetime boundary.
+The setup coordinator had copied one opaque ACM external form into
+`SetProtectedConfig` and then replayed it in command 3. Static ACM evidence says
+enrollment authority remains a property of the live host credential-set object,
+but explicitly leaves bridgeOS/SEP one-shot consumer behavior unresolved. A
+successful setup consumer followed by status 22 on replay is therefore evidence
+for separation, not permission to retry the same credential.
+
+External GPL commit `7d55f8a` retains the exact Bridge lease, generation,
+journal, and staged setup notifications while splitting authorization into two
+fresh contexts. The first context is created, password-bound, policy-1007
+authorized, used only for protected setup, and mandatorily deleted. Only after
+that deletion does Linux create and authorize a second context used solely by
+command 3 and finalization. The diagnostic run consequently requires two
+visible password entries; no password is stored. All 305 tests pass, the
+changed coordinator byte-matches the installed runtime, compilation succeeds,
+and status plus no-touch hardware preflight remain clean. The next supervised
+Linux run tests this one variable and should touch only after the second
+authorization and explicit `TOUCH NOW` gate.
+
 ## Useful baseline commands
 
 ```bash

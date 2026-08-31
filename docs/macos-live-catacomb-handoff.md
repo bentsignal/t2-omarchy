@@ -289,3 +289,14 @@ still fail closed. All 305 tests pass, the installed modules byte-match, and
 status plus no-touch hardware preflight are clean. The next supervised action
 is Linux-only and may reach the explicit touch gate; macOS has no requested
 work.
+
+The next Linux run completed setup and reached the explicit human gate, but
+command 3 synchronously returned status 22 without a service event; the sensor
+did not evaluate the touch. Reconciliation completed with zero identities and
+zero unfinished operations. That run reused the setup credential in command 3,
+which is exactly the device-side replay/one-shot behavior static ACM evidence
+could not settle. External GPL commit `7d55f8a` now keeps the same Bridge lease
+but uses two separately created, password-authorized, mandatorily deleted ACM
+contexts: setup-only, then enrollment-only. All 305 tests and no-touch gates
+pass. The next Linux-only supervised run asks for two password entries and
+tests only this authorization-lifetime distinction; macOS still has no work.
