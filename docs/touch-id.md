@@ -3369,6 +3369,43 @@ capacity, stable inventory, a verified evolved local store, and no mutation.
 The next action is one supervised retry with the exact version-2 built-in-group
 request. No macOS reboot or additional unsupervised mutation is required.
 
+That exact built-in-group retry also returned synchronous status 22 before the
+T2 emitted any service event. The operator's placement and brief tap/retap were
+therefore not inputs to the rejection; repeated finger attempts can become
+useful only after command 3 returns status zero and starts asynchronous capture.
+
+The remaining request-context difference was then found in this repository's
+already recovered fresh-database transaction. Apple's first-enrollment path
+does not send command 3 immediately after ACM authorization. On the same Bridge
+connection it first sends `NoCatacomb` (`0x31`, version 1) for the global UID
+and UID 501, sends `SetProtectedConfig` (`0x2f`, version 1) with policy
+`(1,1,1,0)` and the same mode-0 16-byte ACM external form, and verifies the
+32-byte result of `GetProtectedConfig` (`0x2e`, version 1). Earlier Linux
+prototypes exercised that prefix separately, but the current GPL enrollment
+coordinator had never composed it with the now-proven policy-1007 authorization
+and corrected version-2 command-3 request.
+
+External GPL commit `7f3c8a1` adds that exact four-command setup transaction.
+It is allowed only for a stable zero-identity/absent-SEP-Catacomb baseline,
+runs inside the authorized ACM consumer on the enrollment lease, journals
+intent before mutation, verifies the policy readback before any touch cue, and
+scrubs its protected-policy request. Synchronous setup rejection is terminal
+and reconcilable; malformed replies, events, generation changes, or uncertain
+dispatch become a durable outcome-unknown state and invalidate the lease. The
+complete dependency-enabled suite now passes 297 tests and all Python files
+compile. The three changed runtime modules byte-match the installed root-owned
+copies. A fresh real no-touch preflight again passed with zero identities,
+available capacity, verified local state, stable same-connection inventory,
+and `mutation_performed=false`; both reset-capable services were then returned
+to inactive state and the temporary runtime marker was removed.
+
+The next action remains entirely in the Linux thread: one password-authorized
+supervised run of this newly composed setup-plus-enrollment path. The terminal
+must not ask for a finger until all four setup commands have succeeded and
+command 3 is about to be sent. If command 3 starts successfully, subsequent
+placement/reposition events can be tested repeatedly within that one run. No
+macOS reboot is needed.
+
 ## Useful baseline commands
 
 ```bash

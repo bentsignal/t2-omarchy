@@ -223,3 +223,15 @@ record, and its full 68-byte request matches the independent MIT-repository
 serializer byte for byte with a dummy credential. All 292 tests and a fresh
 no-touch hardware preflight pass. Linux is ready for one supervised retry; the
 macOS thread has no work to perform.
+
+The exact built-in-group retry still returned synchronous status 22 before any
+service event, ruling out finger placement. Linux then found that the GPL
+coordinator omitted the fresh-database setup already recovered here: global
+and UID-501 `NoCatacomb`, mode-0 `SetProtectedConfig` for policy `(1,1,1,0)`,
+and exact `GetProtectedConfig` readback, all on the authorized enrollment
+connection before command 3. External GPL commit `7f3c8a1` composes and
+journals that sequence, scrubs its authorization-bearing request, and fails
+closed on every ambiguous result. The dependency-complete suite passes 297
+tests, the changed runtime files are installed, and a no-touch hardware
+preflight passed without mutation. The next supervised run is Linux-only; do
+not reboot to macOS unless a later Linux finding explicitly requests it.
