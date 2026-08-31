@@ -243,3 +243,10 @@ operations. External GPL commit `4df6e98` corrects the parser's treatment of a
 nonzero getter with nil output and adds privacy-safe status/length/policy-shape
 diagnostics; all 299 tests pass and the installed module matches. The next
 classification run remains Linux-only.
+
+Its first relaunch stopped before password entry because the evolved-state gate
+counted two equivalent E3 journal proofs as two distinct states. No journal or
+biometric operation was created. External GPL commit `d93a60d` now requires one
+distinct matching snapshot digest while accepting duplicate attestations of
+that digest. All 299 tests and a real no-touch evolved-state preflight pass;
+the next classification run remains Linux-only.

@@ -3425,6 +3425,23 @@ root-owned runtime, and the status audit reports zero unfinished operations.
 One more password-authorized Linux run is required to classify the readback;
 no touch should occur unless that readback verifies and command 3 is ready.
 
+The first attempt to launch that classification run exited before password
+entry with `evolved local Catacomb has no unique prior E3 attestation`. Foot
+itself did not crash: systemd still showed the held terminal alive, no core dump
+or OOM event existed, and no enrollment journal was created. The retry gate was
+counting matching journal files rather than distinct attested states. The
+outcome-unknown reconciliation above had legitimately added another proof of
+the same unchanged E3 snapshot, making a single state appear non-unique.
+
+External GPL commit `d93a60d` now collects the canonical snapshot digests from
+all histories that independently verify against current host/SEP state and
+requires exactly one distinct matching digest. Duplicate proofs of that one
+digest are accepted; zero or distinct matching digests still fail closed. All
+299 tests pass, the checkout, root-owned source, and installed CLI byte-match,
+and the real no-touch preflight now crosses the evolved-state gate successfully
+with zero identities and no mutation. The next run can again proceed to the
+password-authorized policy-readback classification entirely in Linux.
+
 ## Useful baseline commands
 
 ```bash
