@@ -3352,6 +3352,23 @@ next action is one supervised version-2 enrollment retry after the user returns.
 It requires no macOS reboot. PAM remains disabled until enrollment, persistence,
 post-reboot verification, and matching all succeed.
 
+That version-2 retry also accepted the password and satisfied policy 1007, but
+its 68-byte request returned synchronous status 22 before any sensor event. The
+operator's brief tap/retap therefore could not have affected the result. Review
+against this repository's independently recovered current serializer exposed a
+second exact bug: the request's final 20-byte built-in device-group record was
+zero, while current macOS requires group type 1 followed by the canonical zero
+UUID. The external branch commit `7175f54` now writes that field and its complete
+68-byte dummy-credential request is byte-identical to the pinned serializer in
+`prototypes/t2sep-probe/biometric-command.py`.
+
+The corrected external suite still passes all 292 tests and Python compilation.
+The changed protocol module is installed in the root-owned runtime, and another
+real no-touch hardware preflight passed with zero identities, available
+capacity, stable inventory, a verified evolved local store, and no mutation.
+The next action is one supervised retry with the exact version-2 built-in-group
+request. No macOS reboot or additional unsupervised mutation is required.
+
 ## Useful baseline commands
 
 ```bash

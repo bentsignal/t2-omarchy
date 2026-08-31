@@ -214,3 +214,12 @@ runtime passed another real no-touch preflight with zero identities, available
 capacity, stable same-connection inventory, and the evolved store matched to
 the prior E3. The next action remains in the Linux thread: one supervised
 version-2 enrollment retry. No additional macOS work or reboot is required.
+
+The first corrected-length version-2 retry still returned synchronous status
+22 before any sensor event. Its last 20 bytes were zero, which contradicted the
+already pinned current-macOS serializer: built-in enrollment requires group type
+1 followed by a zero UUID. External GPL commit `7175f54` now emits the exact
+record, and its full 68-byte request matches the independent MIT-repository
+serializer byte for byte with a dummy credential. All 292 tests and a fresh
+no-touch hardware preflight pass. Linux is ready for one supervised retry; the
+macOS thread has no work to perform.
