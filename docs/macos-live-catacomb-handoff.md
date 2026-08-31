@@ -278,3 +278,14 @@ event payload or credential. All 304 tests and Python compilation pass, the
 installed runtime modules byte-match the checkout, and a fresh no-touch
 hardware preflight passes without mutation. The next step remains a single
 Linux-only password run to classify the setup callback precisely.
+
+That run classified the callback's embedded Apple UID as zero. It again
+stopped before command 3 and reconciled to zero identities with no persistent
+delta. External GPL commit `0a13de0` treats only a fully validated UID-zero SKS
+record received during fresh setup as system-scoped setup state and consumes
+it before the UID-501 enrollment reducer exists. UID 501 remains ordered into
+the reducer; every other UID and any UID-zero record during active enrollment
+still fail closed. All 305 tests pass, the installed modules byte-match, and
+status plus no-touch hardware preflight are clean. The next supervised action
+is Linux-only and may reach the explicit touch gate; macOS has no requested
+work.

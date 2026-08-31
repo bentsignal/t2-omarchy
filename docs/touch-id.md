@@ -3500,6 +3500,26 @@ operations. One Linux-only password-authorized run is now required to classify
 the already-observed callback precisely; no finger should be presented unless
 the later command-3 gate explicitly reaches `TOUCH NOW`.
 
+The classified callback carried numeric Apple UID zero. Password binding still
+succeeded, but the first staging rule treated every non-501 SKS record as a
+cross-user event and stopped before command 3. Fresh reconciliation again
+proved zero identities, no persistent delta, and no unfinished operation. UID
+zero is the setup-scoped system notification emitted by this fresh-policy
+sequence; it is not a UID-501 enrollment transition and must not be inserted
+into the user-pinned reducer.
+
+External GPL commit `0a13de0` now validates the UID-zero record's exact Bridge
+framing, version-1 header, and six-byte minimum, then consumes it at the
+pre-command-3 setup boundary. A UID-501 setup notification is still preserved
+in order for the enrollment reducer. Any other UID, type, version, malformed
+shape, generation change, or UID-zero SKS event received after enrollment has
+started remains fail-closed. The complete suite passes 305 tests, the two
+changed runtime modules byte-match the checkout, compilation succeeds, and
+fresh status plus no-touch hardware preflight report zero unfinished
+operations, zero identities, and no mutation. The next supervised run remains
+Linux-only and is the first one expected to reach command 3 and the explicit
+human touch gate.
+
 ## Useful baseline commands
 
 ```bash
