@@ -3459,6 +3459,29 @@ the checkout. One further password run is needed to identify the callback; only
 after it is shown to be a normal auxiliary event may it be preserved into the
 enrollment transport rather than treated as failure.
 
+That run identified the callback as version-1 `0xe3ff800a`, ordinal zero, with
+a 22-byte payload. This is the matching daemon's already recovered SKS
+lock-state notification. Its current contract requires at least six bytes,
+decodes the first four as Apple UID and the next two as lock state, and permits
+trailing data. It may trigger template synchronization, bio-lockout saving,
+unlock-match cancellation, notifications, and analytics according to state
+bits, but it does not start, advance, continue, complete, or cancel enrollment.
+The 22-byte shape is therefore not an unknown fingerprint event.
+
+External GPL commit `696c7aa` now mirrors macOS's connection behavior without
+blindly dropping the callback. The setup adapter passes interleaved callbacks
+to the already-owned enrollment transport; that transport accepts only bounded
+Bridge service framing whose type is exactly SKS lock state, version is 1,
+payload is at least six bytes, and embedded UID equals the operation's pinned
+UID 501. It queues the untouched record before command-3 callbacks so the
+existing enrollment reducer validates and consumes it as auxiliary state. Any
+other type, version, shape, UID, generation change, or staging order poisons
+the adapter and requires reconciliation. The complete suite passes 303 tests,
+the three changed runtime modules byte-match their root-owned copies, and a
+fresh real no-touch preflight passes with no mutation. The next supervised
+Linux run should now cross policy readback and reach command 3; only a successful
+start may produce the human touch cue.
+
 ## Useful baseline commands
 
 ```bash

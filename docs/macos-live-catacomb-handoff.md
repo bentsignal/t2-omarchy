@@ -258,3 +258,12 @@ External GPL commit `3362f5a` now reports only validated public callback-header
 metadata (type, version, ordinal, payload length) without payload bytes. All 300
 tests pass. A Linux-only password run must identify that callback before it can
 be safely queued or ignored.
+
+The callback is version-1 SKS lock state (`0xe3ff800a`), ordinal zero, with a
+22-byte payload. Matching-daemon code accepts at least the six-byte UID/state
+prefix and permits trailing data; the event does not advance enrollment.
+External GPL commit `696c7aa` now validates its exact Bridge framing, version,
+minimum shape, and UID 501, then preserves the untouched callback in order for
+the existing enrollment reducer. All other setup-time callbacks fail closed.
+All 303 tests and a no-touch preflight pass. The next supervised attempt remains
+Linux-only and may proceed to command 3.
