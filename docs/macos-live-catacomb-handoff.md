@@ -311,3 +311,18 @@ GPL commit `e714986` restores that ordinary request while retaining strict
 terminal-result group validation. All 305 tests and no-touch gates pass. The
 next Linux-only run uses one password and tests only this request-shape
 difference; macOS still has no requested work.
+
+The ordinary zero-group run still returned synchronous command-3 status 22
+without any service event. It reconciled cleanly with zero identities and no
+unfinished operation, so the request group is not the missing prerequisite and
+the presented finger was not evaluated. Linux will move the human touch cue
+behind confirmed command-3 acceptance before any further supervised run.
+
+The next Linux-only discriminator is the final Bridge lease's initialization
+history. Older experiments performed exact same-session sensor/accessory
+initialization but still used the incomplete authorization path that returned
+status 261. The current policy-1007 plus fresh-setup coordinator performs its
+sensor warm-up on a separate, discarded Bridge connection. Linux will first
+run a password-free exact initialization diagnostic on the retained lease,
+classify any callbacks, and then combine that sequence with the proven
+authorization/setup path. The macOS thread has no requested work.

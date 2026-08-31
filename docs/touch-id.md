@@ -3571,6 +3571,29 @@ and no-touch hardware preflight are clean. The next supervised Linux run tests
 one request-shape variable with one password entry. A touch is relevant only if
 command 3 returns zero and emits an enrollment event after `TOUCH NOW`.
 
+That ordinary zero-group run also accepted the password, completed protected
+setup, and then received synchronous command-3 status 22 with no service event.
+The zero-group suffix is therefore retained because it matches the recovered
+ordinary Settings serializer, but it is not the missing prerequisite. The
+journal reconciled cleanly with zero identities, no persistent identity delta,
+and no unfinished operation. The current human gate is also misleading: it
+prints `TOUCH NOW` before command 3 is dispatched, so the operator is asked to
+touch even when start is rejected synchronously. The gate must move behind a
+zero start status before another supervised run.
+
+The next evidence-backed Linux comparison recombines two paths that have only
+been tested separately. Earlier same-connection sensor initialization still
+left the old, incomplete enrollment authorization at status 261. The current
+policy-1007/fresh-setup coordinator instead warms the sensor on a short-lived
+Bridge connection and opens a different connection for inventory, setup, and
+command 3. It has never performed readiness, provisioning, corrected reset,
+post-reset cancellation, sensor info, calibration-present info, the built-in
+device list, system protected configuration, catacomb state, group state, and
+xART availability on that final authorized lease. Linux will first exercise
+that exact initialization as a password-free diagnostic, classify any bounded
+callbacks, and only then integrate it and justify another password-authorized
+enrollment attempt.
+
 ## Useful baseline commands
 
 ```bash
