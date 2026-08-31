@@ -39,6 +39,12 @@ class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
         self.assertIn('apple_authorize_enrollment_policy="$authorize_policy"', SOURCE)
         self.assertIn('--require-enrollment-policy', SOURCE)
 
+    def test_policy_authorization_has_a_no_touch_diagnostic(self):
+        self.assertIn(
+            "I_UNDERSTAND_THIS_AUTHORIZES_ENROLLMENT_POLICY_WITHOUT_TOUCH",
+            SOURCE)
+        self.assertIn("policy-authorization-no-touch-client.py", SOURCE)
+
     def test_authorized_catacomb_load_is_distinct_and_scrubs_handoff(self):
         self.assertIn(
             "I_UNDERSTAND_THIS_LOADS_RETAINED_MACOS_CATACOMBS_WITH_AN_AUTHORIZED_BAG",
@@ -65,7 +71,7 @@ class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
         sks_case = SOURCE[SOURCE.index(
             "I_UNDERSTAND_THIS_ONLY_READS_SKS_LOCK_STATE_WITH_AN_AUTHORIZED_BAG"):
             SOURCE.index(
-                "I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY")]
+                "I_UNDERSTAND_THIS_AUTHORIZES_ENROLLMENT_POLICY_WITHOUT_TOUCH")]
         self.assertNotIn("authorize_policy=1", sks_case)
 
 

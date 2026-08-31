@@ -30,6 +30,11 @@ case $confirmation in
     client_name=authorized-sks-lock-state-client.py
     client_confirmation=$confirmation
     ;;
+  I_UNDERSTAND_THIS_AUTHORIZES_ENROLLMENT_POLICY_WITHOUT_TOUCH)
+    client_name=policy-authorization-no-touch-client.py
+    client_confirmation=$confirmation
+    authorize_policy=1
+    ;;
   I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY)
     client_name=authorized-enrollment-client.py
     client_confirmation=$confirmation
