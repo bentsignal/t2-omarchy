@@ -3663,6 +3663,22 @@ printing output, then send `0x0c` and clean up. Only a matching preflight
 justifies integrating it before another enrollment attempt. This is a proven
 macOS/Linux sequence difference, not yet proof that `0x54` causes status 22.
 
+The first post-enrollment Linux boot then captured the T2 before any sensor
+reset: command `0x42` returned status zero, 40 bytes, and two structurally valid
+identity records. After Linux's normal sensor initialization/reset, version-0
+Catacomb and group state were again absent. This directly proves that the new
+macOS identity state survives the reboot but is removed from the active sensor
+session by Linux's reset-without-reload lifecycle.
+
+The bounded cold-state `0x54` discriminator returned status zero and an exact
+83-byte payload, but the required first-byte accessory-present flag was zero;
+no response bytes were printed or persisted. Linux must not promote that query
+into enrollment yet. The next controlled comparison is the same read-only
+`0x52`/`0x54`/`0x0c` sequence on the next macOS-warmed Linux boot, explicitly
+without `warm_sensor` or any reset-capable service. That result will distinguish
+a warm Catacomb/accessory lifecycle prerequisite from another missing command
+earlier in macOS's successful initialization window.
+
 ## Useful baseline commands
 
 ```bash

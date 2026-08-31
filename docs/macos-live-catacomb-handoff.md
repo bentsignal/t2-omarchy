@@ -450,3 +450,32 @@ send the already recovered `0x0c` cancellation and run the existing cleanup.
 Only if this preflight matches macOS should Linux integrate the sequence and
 justify one supervised enrollment retry. The live ordering difference is
 proven; whether it causes the status-22 rejection is not yet proven.
+
+### 2026-08-31 Linux return result and warm-state discriminator
+
+The first boot-time capture after the successful macOS enrollment completed
+before any Linux reset-capable service. Its privacy-safe result reported status
+zero, 40 returned identity-record bytes, and two structurally valid records.
+This proves that macOS's newly enrolled state was visible across the reboot;
+the macOS settings result was not merely host-side metadata. The capture took
+several connection retries because the link-local interface was not initially
+ready, but eventually completed successfully without resetting the sensor.
+
+Linux then implemented the bounded `0x52`/`0x54`/`0x0c` discriminator in the
+external GPL checkout. On a normally initialized (and therefore reset) sensor,
+`0x54` returned synchronous status zero and an exact 83-byte output, but the
+required first-byte accessory-present flag was zero. The bytes were neither
+printed nor persisted. A separate strict session diagnostic then confirmed
+that version-0 Catacomb and group state were absent after reset. Inserting
+`0x54` into enrollment is therefore not yet justified: the command shape is
+accepted, but its semantic prerequisite is missing in the reset Linux state.
+
+The next discriminator is a no-reset `0x54` query immediately after another
+macOS-to-Linux warm transition. It must run before `warm_sensor`, sensor-session
+initialization, fprintd, or the biometric-readiness service. Compare only the
+public status, returned length, and first-byte-present Boolean, then cancel. If
+the flag is nonzero only in the macOS-warmed state, the remaining enrollment
+gap is the Catacomb/accessory-load lifecycle before command 3, not the `0x54`
+serializer itself. If it remains zero, recover an earlier prerequisite from
+the sanitized successful macOS command window before any further enrollment
+attempt.
