@@ -343,3 +343,49 @@ inventory, a verified local store, and no persistent mutation. Cleanup left
 zero unfinished operations, both reset-capable services inactive, and no
 temporary marker. The next action remains in the Linux thread: one supervised
 password-authorized enrollment run. macOS has no requested work.
+
+That combined Linux run accepted the password, satisfied policy 1007, completed
+fresh protected setup, and still received synchronous command-3 status 22 with
+no service event. The corrected human gate emitted no touch instruction, so no
+finger was evaluated. Reconciliation is complete with zero identities and no
+unfinished operation; cleanup left both reset-capable services inactive and no
+temporary marker. Retained-lease initialization is therefore disproved.
+
+The next cross-OS task is now macOS-side evidence collection rather than another
+Linux password retry. Capture one tightly bounded Add Fingerprint attempt on
+only the T2 network interface, keep the raw pcap private, and produce a sanitized
+Bridge transcript containing command order, public command/version/value,
+input/output lengths, synchronous status, and redacted structural checks. Do
+not commit raw credential, UUID, Catacomb, fingerprint, or packet material.
+
+### Next macOS pass: one private Add Fingerprint trace
+
+The macOS thread should fetch `main`, read this section and the cross-OS skill,
+then run the checked-in collector from the repository root with a new private
+directory:
+
+```bash
+tools/research/capture-macos-enrollment-bridge.sh \
+  "$HOME/t2-enrollment-private-$(date +%Y%m%d-%H%M%S)"
+```
+
+While its 120-second window is active, Shawn should open Touch ID settings,
+begin Add Fingerprint with a finger not already enrolled, complete at least the
+first accepted scan, and then cancel if he does not want to finish adding it.
+The goal is an unquestionably accepted macOS command 3 and its immediate
+predecessors, not another permanent identity.
+
+The collector restricts tcpdump to `ac:de:48` T2 interfaces and generates one
+`*-sanitized-enrollment.json` per pcap. Review those summaries locally. If they
+report zero connections, debug the sanitizer against the private pcap without
+printing or committing raw objects. Compare the real macOS command order and
+the redacted command-3 structure with Linux's path: wrapper version/value,
+input length, output capacity, flags, numeric UID, mode, credential length and
+padding, optional device-group representation, synchronous status, and callback
+headers. Never print the 16-byte credential, UUIDs, addresses, ports, packet
+bytes, or callback payloads. Keep the entire private directory out of Git.
+
+Commit and push only tooling fixes, tests, and a prose conclusion that states
+the first proven difference (or byte-structural equality) and the exact next
+Linux discriminator. The macOS thread should then tell Shawn to return to the
+Linux thread; it must not imply that this Linux thread ran concurrently.

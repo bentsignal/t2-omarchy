@@ -3617,6 +3617,26 @@ temporary marker is absent. One password-authorized Linux run is now justified
 to test the combined initialization, policy-1007, fresh setup, and ordinary v2
 start path. A touch cue will appear only if the T2 accepts command 3.
 
+The combined retained-session run accepted the macOS login password, satisfied
+policy 1007, completed the fresh global/user protected setup, and still received
+synchronous command-3 status 22 without a service event. Because the operator
+gate now follows successful start, it correctly emitted no touch instruction;
+the sensor never began capture and no finger was evaluated. The 17-record
+journal reached reconciled phase with terminal status 22, complete persistence
+bookkeeping, no event sequence, zero identities, and no unfinished operation.
+Both reset-capable services are inactive and the temporary marker is absent.
+This disproves retained-lease initialization as the missing prerequisite.
+
+Linux has now exhausted the evidence-backed host-side variants that can be
+distinguished by another blind password retry: request version/length, optional
+group representation, fresh global/user setup, one versus two ACM contexts,
+setup callback handling, and exact retained-session initialization. The next
+discriminator is an actual macOS Add Fingerprint Bridge trace. Its raw pcap is
+private because it can contain credential and biometric payloads; a bounded
+offline analyzer must emit only command order, public command/version/value,
+input/output lengths, status, and redacted structural checks. Linux will compare
+that sanitized transcript with its own path before asking for another password.
+
 ## Useful baseline commands
 
 ```bash

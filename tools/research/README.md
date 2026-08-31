@@ -210,6 +210,27 @@ SHA-256 plus the dyld-cached BiometricSupport UUID and `__TEXT,__text`
 SHA-256, including the exact 44-byte built-in accessory/device-group record
 construction. It reads only installed executable code through `dyld_info`.
 
+`capture-macos-enrollment-bridge.sh` is the narrow cross-OS discriminator for
+the remaining pre-touch command-3 rejection. On macOS it captures only network
+interfaces whose Ethernet address is in the T2 `ac:de:48` range during one
+bounded Add Fingerprint ceremony. The output directory is private and may
+contain a live ACM external form, identifiers, and biometric service payloads;
+never commit or copy its raw pcaps or logs. The script automatically runs
+`sanitize-macos-enrollment-pcap.py` on each pcap. That offline sanitizer
+reassembles bounded IPv6/TCP streams, validates BridgeXPC and binary-plist
+framing, and emits only command order, public command/version/value, lengths,
+synchronous status, callback-header metadata, and redacted structural checks.
+It never emits raw credential, UUID, callback, address, port, or packet bytes.
+
+```bash
+tools/research/capture-macos-enrollment-bridge.sh \
+  "$HOME/t2-enrollment-private-$(date +%Y%m%d-%H%M%S)"
+```
+
+Review only the resulting `*-sanitized-enrollment.json` through the macOS
+thread. Keep the entire private directory out of Git even after sanitization;
+commit only reproducible tooling and prose conclusions.
+
 `capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
 the transient network interface using binary `usbmon7`. It accepts only the
 exact private output path, requires the exact bound `7-1:1.0` function, and
