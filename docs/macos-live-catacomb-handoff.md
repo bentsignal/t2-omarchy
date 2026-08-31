@@ -31,6 +31,12 @@ root-only `/var/lib/t2-touchid/warm-transition-identity.json`; UUIDs, identity
 records, peer identifiers, and biometric bytes are never persisted. This
 removes the need to race to launch Codex after selecting Linux.
 
+Both reset-capable units also have a temporary condition requiring the absent
+runtime marker `/run/t2-touchid/allow-reset-capable-services`. This prevents a
+D-Bus activation from bypassing their disabled state after the capture and
+resetting a potentially usable warm identity before the supervised comparison.
+Do not create that marker during the handoff.
+
 ## Safety boundary
 
 - Do not enroll or delete a fingerprint.

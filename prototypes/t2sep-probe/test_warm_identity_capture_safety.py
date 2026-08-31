@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent
 SCRIPT = (ROOT / "t2-warm-identity-capture.sh").read_text()
 UNIT = (ROOT / "t2-warm-identity-capture.service").read_text()
+GUARD = (ROOT / "t2-warm-transition-guard.conf").read_text()
 
 
 class WarmIdentityCaptureSafetyTests(unittest.TestCase):
@@ -29,6 +30,7 @@ class WarmIdentityCaptureSafetyTests(unittest.TestCase):
         self.assertIn("systemctl is-enabled --quiet", SCRIPT)
         self.assertIn("systemctl is-active --quiet", SCRIPT)
         self.assertIn("fprintd.service t2-biometric-ready.service", SCRIPT)
+        self.assertIn("allow-reset-capable-services", SCRIPT)
 
     def test_persisted_result_excludes_raw_identity_and_peer_fields(self):
         persisted = SCRIPT.split("jq -e", 1)[1].split("' \"$RAW\"", 1)[0]
@@ -41,6 +43,12 @@ class WarmIdentityCaptureSafetyTests(unittest.TestCase):
         self.assertIn(
             "Before=t2-biometric-ready.service fprintd.service",
             UNIT,
+        )
+
+    def test_dbus_activation_requires_explicit_runtime_override(self):
+        self.assertIn(
+            "ConditionPathExists=/run/t2-touchid/allow-reset-capable-services",
+            GUARD,
         )
 
 

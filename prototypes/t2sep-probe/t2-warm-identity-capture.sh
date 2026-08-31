@@ -24,6 +24,10 @@ trap cleanup EXIT HUP INT TERM
 
 [[ $EUID -eq 0 ]] || { echo "warm identity capture requires root" >&2; exit 1; }
 [[ -r $CONFIG_FILE ]] || { echo "Touch ID configuration is unavailable" >&2; exit 1; }
+[[ ! -e /run/t2-touchid/allow-reset-capable-services ]] || {
+  echo "reset-capable service override is present" >&2
+  exit 1
+}
 
 for unit in fprintd.service t2-biometric-ready.service; do
   if systemctl is-enabled --quiet "$unit" || systemctl is-active --quiet "$unit"; then
