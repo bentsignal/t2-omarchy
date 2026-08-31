@@ -70,15 +70,29 @@ class EnrollmentLogSanitizerTests(unittest.TestCase):
             command_exit(0),
             command_entry(0x03, 2, 0, 68),
             command_exit(0),
+            command_entry(0x04, 1, 1, 112),
+            command_exit(0),
             record(sanitizer.ENROLL_EXIT_TEMPLATE,
                    "enroll:forUser:withOptions:withClient: -> err:0x0"),
         ]
         with tempfile.TemporaryDirectory() as temporary:
             result = sanitizer.sanitize(self.write_private(temporary, lines))
-        self.assertEqual(result["total_commands"], 4)
+        self.assertEqual(result["total_commands"], 5)
         self.assertEqual(
             [item["command"] for item in result["command_3_windows"][0]["commands"]],
-            ["0x52", "0x54", "0x0c", "0x03"],
+            ["0x52", "0x54", "0x0c", "0x03", "0x04"],
+        )
+        self.assertEqual(result["command_4_windows"][0]["command_4_index"], 4)
+        self.assertEqual(
+            result["command_4_windows"][0]["commands"][-1],
+            {
+                "relative_index": 0,
+                "command": "0x04",
+                "version": 1,
+                "value": 1,
+                "input_length": 112,
+                "status": 0,
+            },
         )
         self.assertEqual(result["enrollment_calls"], [
             {"mode": 1, "user_id": 501, "status": 0}
@@ -98,6 +112,7 @@ class EnrollmentLogSanitizerTests(unittest.TestCase):
             result = sanitizer.sanitize(self.write_private(temporary, lines))
         self.assertEqual(result["total_commands"], 0)
         self.assertEqual(result["command_3_windows"], [])
+        self.assertEqual(result["command_4_windows"], [])
 
     def test_rejects_symlink_and_exposed_permissions(self):
         with tempfile.TemporaryDirectory() as temporary:

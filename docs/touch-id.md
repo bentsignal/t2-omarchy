@@ -3679,6 +3679,35 @@ without `warm_sensor` or any reset-capable service. That result will distinguish
 a warm Catacomb/accessory lifecycle prerequisite from another missing command
 earlier in macOS's successful initialization window.
 
+That warm comparison is now complete and supersedes the proposed next step:
+`0x54` again returned status zero and 83 bytes, but the accessory-present byte
+remained zero despite two live identities and a present warm Catacomb. Linux
+then accepted command 4 and captured the enrolled finger with the upstream
+counted-identity shape, the exact 68-byte macOS shape, processed flags zero and
+one, and genuine bridgeOS FDR calibration loaded on the same connection. Every
+run emitted sensor status/statistics traffic and no terminal match-result event
+`0xe3ff8002`; cancellation succeeded. Repeating those scans is not useful.
+
+The current upstream `t2-touchid-linux` implementation at `624bebe` passes all
+482 tests and documents successful verification plus one Linux-native
+enrollment on MacBookPro16,2/bridgeOS `23P1072`. This investigation's machine
+is MacBookPro16,1/bridgeOS `23P6068`. The local experimental branch already
+inherits upstream's core protocol and has now reproduced its reset,
+calibration, identity selection, match start, and sensor-capture stages. The
+remaining difference is after capture: this firmware does not emit the
+terminal match result under those request/state combinations. Upstream's
+newer enrollment/event-management work should be integrated selectively after
+this build-specific boundary is explained, rather than reimplementing it.
+
+The next step is no longer another Linux touch. Capture one successful macOS
+lock-screen fingerprint unlock with
+`tools/research/capture-macos-match-log.sh`, keeping its owner-only raw output
+outside Git. The strict sanitizer now emits a bounded `command_4_windows`
+summary. Compare the known-good command-4 version/value/input length/status and
+immediate predecessors with Linux, then use static macOS inspection to recover
+the processed flags and identity-selection serializer that unified logging
+cannot safely reveal.
+
 ## Useful baseline commands
 
 ```bash

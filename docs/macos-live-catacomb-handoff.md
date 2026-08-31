@@ -479,3 +479,48 @@ gap is the Catacomb/accessory-load lifecycle before command 3, not the `0x54`
 serializer itself. If it remains zero, recover an earlier prerequisite from
 the sanitized successful macOS command window before any further enrollment
 attempt.
+
+### 2026-08-31 warm matching result and macOS match discriminator
+
+The no-reset warm `0x54` comparison also returned status zero and exactly 83
+bytes while its first-byte accessory-present flag remained zero. Warm versus
+cold state therefore does not explain that flag. The same pre-reset session
+reported two valid identity records, a present version-0 Catacomb, and stable
+per-user/global identity inventories. No reset-capable service ran before the
+comparison.
+
+Four explicitly supervised Linux matches then isolated the current boundary.
+Command 4 was accepted synchronously after the T2 reported two identities and
+the sensor emitted capture/status/statistics callbacks for the enrolled finger.
+The tested request variants were the upstream counted identity appendix,
+macOS's fixed 68-byte request, and the fixed request with processed flags zero
+or one. A final run loaded the genuine 61,407-byte bridgeOS FDR calibration on
+the same connection before matching. Calibration succeeded and emitted status
+94, but none of the runs emitted terminal service event `0xe3ff8002`. Each run
+was cancelled successfully after its bounded observation window. These are
+real sensor captures, not operator timing failures; do not request more blind
+Linux scans with the same shapes.
+
+Jessica Murthick's current `t2-touchid-linux` upstream at `624bebe` was fetched
+and tested in a separate clean worktree: all 482 tests and its privacy check
+pass. This investigation was already based on that project, but the local
+experimental branch had forked at `936a980`. Current upstream proves matching
+and one Linux-native enrollment on a MacBookPro16,2 running bridgeOS `23P1072`.
+This machine is a MacBookPro16,1 running bridgeOS `23P6068`. Upstream matching
+uses the counted identity appendix, sensor reset, and FDR calibration. On this
+machine that reset removes the warm Catacomb/identity state, while retaining
+the warm state plus upstream's match shape and calibration still produces no
+terminal result. Do not replace the local branch wholesale; integrate current
+upstream after resolving this model/build-specific lifecycle difference.
+
+The next evidence-backed discriminator is one known-successful macOS
+lock-screen fingerprint unlock, captured with the owner-only unified-log tool
+`tools/research/capture-macos-match-log.sh`. The first login after boot must use
+the password; then lock the already-unlocked session and unlock exactly once
+with the enrolled finger. Review only `sanitized-match-log.json`. Compare the
+accepted command-4 version, value, input length, synchronous status, and its
+immediate command predecessors with Linux. On macOS, also statically recover
+the current `performMatchCommand:` processed flags and identity-selection
+serializer because the strict log intentionally cannot expose raw input bytes.
+Never commit the private directory, identity records, UUIDs, credential data,
+or biometric callback payloads.

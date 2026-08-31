@@ -244,6 +244,24 @@ Review only the resulting sanitized enrollment JSON through the macOS thread.
 Keep the entire private directory out of Git even after sanitization; commit
 only reproducible tooling and prose conclusions.
 
+`capture-macos-match-log.sh` is the narrower follow-up for one known-good
+macOS lock-screen Touch ID match. It deliberately omits packet capture because
+both tested macOS 26 BPF paths produced empty pcaps. Run it only after logging
+in with the password once after boot. The script starts an owner-only unified
+log, asks the operator to lock the screen and unlock exactly once with the
+enrolled finger, then applies the same strict sanitizer. It succeeds only when
+the sanitized output contains a command-4 window. The raw log can contain
+private biometric-service values; never commit or copy the output directory.
+
+```bash
+tools/research/capture-macos-match-log.sh \
+  "$HOME/t2-match-private-$(date +%Y%m%d-%H%M%S)"
+```
+
+The sanitizer emits only bounded command order, public command/version/value,
+input length, and synchronous status. It does not expose selected identity
+records, UUIDs, pointers, credentials, callback payloads, or timestamps.
+
 `capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
 the transient network interface using binary `usbmon7`. It accepts only the
 exact private output path, requires the exact bound `7-1:1.0` function, and

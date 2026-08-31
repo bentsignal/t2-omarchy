@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract a privacy-safe enrollment command window from a private macOS log."""
+"""Extract privacy-safe enrollment and match windows from a private macOS log."""
 
 from __future__ import annotations
 
@@ -151,21 +151,24 @@ def sanitize(path: Path) -> dict[str, object]:
                         match.group(1)
                     )
 
-    windows: list[dict[str, object]] = []
-    for index, command in enumerate(commands):
-        if command["command"] != "0x03":
-            continue
-        start = max(0, index - WINDOW_RADIUS)
-        end = min(len(commands), index + WINDOW_RADIUS + 1)
-        windows.append(
-            {
-                "command_3_index": index,
-                "commands": [
-                    {"relative_index": position - index, **commands[position]}
-                    for position in range(start, end)
-                ],
-            }
-        )
+    def command_windows(command_number: int) -> list[dict[str, object]]:
+        target = f"0x{command_number:02x}"
+        windows: list[dict[str, object]] = []
+        for index, command in enumerate(commands):
+            if command["command"] != target:
+                continue
+            start = max(0, index - WINDOW_RADIUS)
+            end = min(len(commands), index + WINDOW_RADIUS + 1)
+            windows.append(
+                {
+                    f"command_{command_number}_index": index,
+                    "commands": [
+                        {"relative_index": position - index, **commands[position]}
+                        for position in range(start, end)
+                    ],
+                }
+            )
+        return windows
 
     return {
         "schema_version": 1,
@@ -174,7 +177,8 @@ def sanitize(path: Path) -> dict[str, object]:
         "output_capacity_observed": False,
         "total_commands": len(commands),
         "enrollment_calls": enrollment_calls,
-        "command_3_windows": windows,
+        "command_3_windows": command_windows(3),
+        "command_4_windows": command_windows(4),
     }
 
 
