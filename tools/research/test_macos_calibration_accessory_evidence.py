@@ -17,7 +17,8 @@ def fixture():
     header = struct.pack("<IIIIIIII", evidence.MH_MAGIC_64,
                          evidence.CPU_TYPE_X86_64, 3, 2, 0, 0, 0, 0)
     patterns = (evidence.EEPROM_METHOD, evidence.FDR_METHOD,
-                evidence.BIO_DEVICE_LIST, evidence.BUILTIN_RECORD_PREFIX,
+                evidence.BIO_DEVICE_LIST, evidence.ACCESSORY_INFO_INPUT,
+                evidence.ACCESSORY_INFO_COMMAND, evidence.BUILTIN_RECORD_PREFIX,
                 evidence.BUILTIN_RECORD_GROUP, evidence.BUILTIN_RECORD_FLAGS,
                 evidence.SENSOR_INFO, evidence.SENSOR_INFO_STORE,
                 evidence.SENSOR_TYPE_GETTER)
@@ -32,6 +33,9 @@ class CalibrationAccessoryEvidenceTests(unittest.TestCase):
         self.assertEqual(result["fdr_method"], 11)
         self.assertEqual(result["bio_device_command"], 0x52)
         self.assertEqual(result["bio_device_record_size"], 44)
+        self.assertEqual(result["accessory_info_command"], 0x54)
+        self.assertEqual(result["accessory_info_input_size"], 20)
+        self.assertEqual(result["accessory_info_output_size"], 83)
 
     def test_rejects_wrong_architecture_uuid_and_support(self):
         support = evidence.SUPPORT_CACHE_PROLOGUE + evidence.SUPPORT_RECORD_ALLOCATION
@@ -47,7 +51,8 @@ class CalibrationAccessoryEvidenceTests(unittest.TestCase):
     def test_rejects_each_daemon_pattern_mutation(self):
         support = evidence.SUPPORT_CACHE_PROLOGUE + evidence.SUPPORT_RECORD_ALLOCATION
         patterns = (evidence.EEPROM_METHOD, evidence.FDR_METHOD,
-                    evidence.BIO_DEVICE_LIST, evidence.BUILTIN_RECORD_PREFIX,
+                    evidence.BIO_DEVICE_LIST, evidence.ACCESSORY_INFO_INPUT,
+                    evidence.ACCESSORY_INFO_COMMAND, evidence.BUILTIN_RECORD_PREFIX,
                     evidence.BUILTIN_RECORD_GROUP, evidence.BUILTIN_RECORD_FLAGS,
                     evidence.SENSOR_INFO, evidence.SENSOR_INFO_STORE,
                     evidence.SENSOR_TYPE_GETTER)

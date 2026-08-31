@@ -24,6 +24,7 @@ REQUIRED = (
     b"loadCalibrationData\0",
     b"performGetBiometrickitdInfoCommand:\0",
     b"performGetBioDeviceListCommand:\0",
+    b"accessoryInfo:\0",
     b"getSensorType\0",
     b'{?="version"I"structSize"I"sensorType"I}\0',
 )
@@ -39,6 +40,16 @@ FDR_METHOD = bytes.fromhex(
 # the exact 44-byte bio-device record size.
 BIO_DEVICE_LIST = bytes.fromhex(
     "488b359b420f004c89f7ba5200000031c94531c04531c941545041ffd7")
+
+# accessoryInfo: initializes an 83-byte output and the 20-byte input as type 2
+# followed by 16 UUID bytes. It then sends command 0x54 v1/value zero and
+# requires status zero plus an exact 83-byte reply before inspecting byte zero.
+ACCESSORY_INFO_INPUT = bytes.fromhex(
+    "418364244f00488d85f8feffff48c7005300000041c746fc02000000")
+ACCESSORY_INFO_COMMAND = bytes.fromhex(
+    "488b3544de06006a545a4c8d45bc6a1441594889df31c9"
+    "488d85f8feffff5041544c89eb41ffd54883c41085c00f8534010000"
+    "4883bdf8feffff530f85bc01000080bd60ffffff000f8446020000")
 
 # The compatibility record is accessory type 1 + zero UUID, group type 1 +
 # zero UUID, and flags 6. uuid_clear calls lie between these stores.
@@ -72,6 +83,7 @@ def inspect(daemon: bytes, support_text: bytes, support_uuid: str) -> dict[str, 
         raise EvidenceError("daemon is not a thin x86_64 Mach-O")
     missing = [item.rstrip(b"\0").decode() for item in REQUIRED if item not in daemon]
     patterns = (EEPROM_METHOD, FDR_METHOD, BIO_DEVICE_LIST,
+                ACCESSORY_INFO_INPUT, ACCESSORY_INFO_COMMAND,
                 BUILTIN_RECORD_PREFIX, BUILTIN_RECORD_GROUP,
                 BUILTIN_RECORD_FLAGS, SENSOR_INFO, SENSOR_INFO_STORE,
                 SENSOR_TYPE_GETTER)
@@ -88,6 +100,9 @@ def inspect(daemon: bytes, support_text: bytes, support_uuid: str) -> dict[str, 
         "fdr_method": 11,
         "bio_device_command": 0x52,
         "bio_device_record_size": 44,
+        "accessory_info_command": 0x54,
+        "accessory_info_input_size": 20,
+        "accessory_info_output_size": 83,
         "sensor_info_size": 12,
     }
 
@@ -123,6 +138,9 @@ def main() -> None:
           f"methods={result['eeprom_method']},{result['fdr_method']} "
           f"bio_device_command=0x{result['bio_device_command']:x} "
           f"record_size={result['bio_device_record_size']} "
+          f"accessory_info_command=0x{result['accessory_info_command']:x} "
+          f"accessory_info_io={result['accessory_info_input_size']}/"
+          f"{result['accessory_info_output_size']} "
           f"sensor_info_size={result['sensor_info_size']}")
 
 

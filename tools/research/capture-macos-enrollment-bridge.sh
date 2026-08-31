@@ -14,8 +14,9 @@ capture_dir=$1
 duration_seconds=120
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd -P)
 sanitizer=$script_dir/sanitize-macos-enrollment-pcap.py
-if [[ ! -f $sanitizer ]]; then
-  echo "The enrollment pcap sanitizer is missing." >&2
+log_sanitizer=$script_dir/sanitize-macos-enrollment-log.py
+if [[ ! -f $sanitizer || ! -f $log_sanitizer ]]; then
+  echo "An enrollment sanitizer is missing." >&2
   exit 2
 fi
 if [[ -e $capture_dir ]]; then
@@ -64,13 +65,11 @@ for interface_name in $t2_interfaces; do
   case "$interface_name" in
     *[!A-Za-z0-9._-]*) echo "unsafe interface name" >&2; exit 2 ;;
   esac
-  capture_interface=$interface_name
-  link_type_args=()
-  if ! sudo tcpdump -i "$interface_name" -L >/dev/null 2>&1; then
-    capture_interface="pktap,$interface_name"
-    link_type_args=(-y RAW)
-  fi
-  sudo tcpdump -i "$capture_interface" "${link_type_args[@]}" -n -s 0 -U -w \
+  # Direct BPF attachment can succeed on AppleUSBNCMData while silently
+  # producing an empty DLT_RAW pcap. pktap remains scoped to this exact T2
+  # interface, and RAW output strips pktap metadata from the evidence file.
+  capture_interface="pktap,$interface_name"
+  sudo tcpdump -i "$capture_interface" -y RAW -n -s 0 -U -w \
     "$capture_dir/$interface_name.pcap" \
     >"$capture_dir/$interface_name-tcpdump.txt" 2>&1 &
   pids="$pids $!"
@@ -109,16 +108,34 @@ sudo chown "$(id -u):$(id -g)" "$capture_dir"/*.pcap
 chmod 600 "$capture_dir"/*.pcap "$capture_dir"/*.txt "$capture_dir"/*.ndjson
 
 sanitized_count=0
+sanitized_connections=0
 for pcap_path in "$capture_dir"/*.pcap; do
   interface_name=$(basename "$pcap_path" .pcap)
   python3 "$sanitizer" "$pcap_path" \
     >"$capture_dir/$interface_name-sanitized-enrollment.json"
   chmod 600 "$capture_dir/$interface_name-sanitized-enrollment.json"
+  connection_count=$(python3 -c \
+    'import json,sys; print(json.load(open(sys.argv[1]))["connection_count"])' \
+    "$capture_dir/$interface_name-sanitized-enrollment.json")
+  sanitized_connections=$((sanitized_connections + connection_count))
   sanitized_count=$((sanitized_count + 1))
 done
 if (( sanitized_count == 0 )); then
   echo "No pcap was produced." >&2
   exit 5
+fi
+python3 "$log_sanitizer" "$capture_dir/unified-log.ndjson" \
+  >"$capture_dir/sanitized-enrollment-log.json"
+chmod 600 "$capture_dir/sanitized-enrollment-log.json"
+log_command_3_count=$(python3 -c \
+  'import json,sys; print(len(json.load(open(sys.argv[1]))["command_3_windows"]))' \
+  "$capture_dir/sanitized-enrollment-log.json")
+if (( sanitized_connections == 0 && log_command_3_count == 0 )); then
+  echo "No complete Bridge connection or logged command 3 was recovered." >&2
+  exit 6
+fi
+if (( sanitized_connections == 0 )); then
+  echo "Packet capture was empty; a sanitized command-3 log window was recovered." >&2
 fi
 
 find "$capture_dir" -type f ! -name capture-sha256.txt \
@@ -126,4 +143,4 @@ find "$capture_dir" -type f ! -name capture-sha256.txt \
 chmod 600 "$capture_dir/capture-sha256.txt"
 
 echo "Capture complete. Keep every file private: $capture_dir"
-echo "The *-sanitized-enrollment.json files are safe summaries for Codex review."
+echo "The sanitized enrollment JSON files are safe summaries for Codex review."

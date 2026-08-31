@@ -205,10 +205,12 @@ catacomb data.
 
 `macos-calibration-accessory-evidence.py` pins the current calibration
 retrieval methods 5/11, the three-field 12-byte sensor-info cache, and the
-generation-3 read-only bio-device-list command `0x52`. It checks the daemon
-SHA-256 plus the dyld-cached BiometricSupport UUID and `__TEXT,__text`
-SHA-256, including the exact 44-byte built-in accessory/device-group record
-construction. It reads only installed executable code through `dyld_info`.
+generation-3 read-only bio-device-list command `0x52`. It also pins the
+read-only `accessoryInfo:` command `0x54`, its type-2 plus UUID 20-byte input,
+and its exact 83-byte output validation. It checks the daemon SHA-256 plus the
+dyld-cached BiometricSupport UUID and `__TEXT,__text` SHA-256, including the
+exact 44-byte built-in accessory/device-group record construction. It reads
+only installed executable code through `dyld_info`.
 
 `capture-macos-enrollment-bridge.sh` is the narrow cross-OS discriminator for
 the remaining pre-touch command-3 rejection. On macOS it captures only network
@@ -222,14 +224,25 @@ framing, and emits only command order, public command/version/value, lengths,
 synchronous status, callback-header metadata, and redacted structural checks.
 It never emits raw credential, UUID, callback, address, port, or packet bytes.
 
+On macOS 26, direct BPF attachment to the AppleUSBNCMData interface can
+succeed while producing only a pcap header. Exact-interface `pktap` is no
+better on the tested host: tcpdump reports zero received packets. The
+collector therefore also applies `sanitize-macos-enrollment-log.py` to its
+private unified log. That strict fallback accepts only exact biometrickitd
+command/enrollment templates and emits command/version/value/input length,
+synchronous status, and a bounded command-3 window. It never emits options,
+pointers, UUIDs, credentials, paths, timestamps, or raw log values. A run is
+useful if either a complete Bridge connection or a logged command 3 is found;
+it fails closed if neither is present.
+
 ```bash
 tools/research/capture-macos-enrollment-bridge.sh \
   "$HOME/t2-enrollment-private-$(date +%Y%m%d-%H%M%S)"
 ```
 
-Review only the resulting `*-sanitized-enrollment.json` through the macOS
-thread. Keep the entire private directory out of Git even after sanitization;
-commit only reproducible tooling and prose conclusions.
+Review only the resulting sanitized enrollment JSON through the macOS thread.
+Keep the entire private directory out of Git even after sanitization; commit
+only reproducible tooling and prose conclusions.
 
 `capture-t2ncm-usb-startup.sh` captures one bounded Linux rebind from below
 the transient network interface using binary `usbmon7`. It accepts only the

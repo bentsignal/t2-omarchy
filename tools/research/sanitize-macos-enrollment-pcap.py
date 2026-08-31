@@ -304,6 +304,25 @@ def _messages(frames: list[tuple[int, bytes]]) -> list[object]:
     return result
 
 
+def _message_role(frames: list[tuple[int, bytes]]) -> str | None:
+    """Infer one direction without retaining or emitting endpoint identifiers."""
+    host = False
+    t2 = False
+    for envelope in _messages(frames):
+        if type(envelope) is not list or len(envelope) != 4 or envelope[0] != 1:
+            continue
+        if envelope[1] is True and type(envelope[2]) is str:
+            t2 = True
+        elif envelope[1] is False:
+            if _command_summary(envelope[3]) is not None:
+                host = True
+            if _event_summary(envelope[3]) is not None:
+                t2 = True
+    if host == t2:
+        return None
+    return "host" if host else "t2"
+
+
 def sanitize(path: Path) -> dict[str, object]:
     directed = {
         key: _bridge_frames(_reassemble(segments))
@@ -315,7 +334,7 @@ def sanitize(path: Path) -> dict[str, object]:
         source = (key[0], key[1])
         destination = (key[2], key[3])
         connection = connections.setdefault(frozenset((source, destination)), {})
-        role = _helo_role(frames)
+        role = _helo_role(frames) or _message_role(frames)
         if role is not None:
             connection[role] = frames
 

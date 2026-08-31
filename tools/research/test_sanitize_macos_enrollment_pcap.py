@@ -108,6 +108,34 @@ class EnrollmentPcapSanitizerTests(unittest.TestCase):
         self.assertNotIn(reply_id, rendered)
         self.assertNotIn("fe80", rendered)
 
+    def test_infers_directions_when_helo_predates_capture(self):
+        reply_id = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+        secret = b"DO-NOT-LEAK-1234"
+        enrollment = struct.pack("<4I", 0, 501, 0, 16) + secret + bytes(16)
+        inner = struct.pack("<HHHH", 0x4D42, 3, 1, 0) + enrollment
+        host_stream = bridge_frame(2, [1, False, reply_id, [3, 0, inner, 0]])
+        t2_stream = bridge_frame(
+            2,
+            [1, True, reply_id, [0, sanitizer.NIL_OUTPUT_SENTINEL]],
+        )
+        capture = pcap(
+            [
+                tcp_packet(HOST, T2, 49152, 59602, 100, host_stream),
+                tcp_packet(T2, HOST, 59602, 49152, 900, t2_stream),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "private.pcap"
+            path.write_bytes(capture)
+            result = sanitizer.sanitize(path)
+        self.assertEqual(result["connection_count"], 1)
+        command = result["connections"][0]["commands"][0]
+        self.assertEqual(command["reply_status"], 0)
+        rendered = repr(result)
+        self.assertNotIn(secret.decode(), rendered)
+        self.assertNotIn(reply_id, rendered)
+        self.assertNotIn("fe80", rendered)
+
     def test_rejects_disagreeing_tcp_retransmission(self):
         capture, _secret, _reply_id = self.fixture()
         with tempfile.TemporaryDirectory() as temporary:

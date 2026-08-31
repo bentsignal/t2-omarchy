@@ -3637,6 +3637,32 @@ offline analyzer must emit only command order, public command/version/value,
 input/output lengths, status, and redacted structural checks. Linux will compare
 that sanitized transcript with its own path before asking for another password.
 
+That macOS pass first revealed that Touch ID settings contained no enrolled
+fingerprints. The earlier zero-identity Catacomb and live identity list were
+therefore accurate; there had been no template Linux could match. Shawn then
+completed a new macOS enrollment, and the UI now definitely contains one
+finger. The older encrypted Catacomb transfer predates this enrollment and is
+stale for matching the new finger.
+
+Both bounded enrollment pcaps were empty because macOS 26 delivered no packets
+through either direct BPF or exact-interface pktap. A strict privacy-safe
+unified-log sanitizer nevertheless recovered two accepted starts without
+retaining options, pointers, credentials, identifiers, paths, timestamps, or
+raw values. The complete enrollment used mode 1, Apple UID 501, command `0x03`
+version 2/value zero/input length 68, and synchronous status zero. Its immediate
+predecessors were successful `0x52` (no input), `0x54` (20-byte input), and
+`0x0c` (no input), followed after start by repeated `0x08`/`0x0e` progress.
+
+The first proven ordering difference is `0x54`, which Linux omitted from its
+otherwise retained initialization sequence. Current biometrickitd code maps it
+to the read-only `accessoryInfo:` query with version 1, value zero, a 20-byte
+type-2 plus accessory-UUID input, and an exact 83-byte output whose first byte
+must be nonzero. Linux should test it once after `0x52` using the canonical
+built-in zero UUID, validate only status/length/first-byte shape without
+printing output, then send `0x0c` and clean up. Only a matching preflight
+justifies integrating it before another enrollment attempt. This is a proven
+macOS/Linux sequence difference, not yet proof that `0x54` causes status 22.
+
 ## Useful baseline commands
 
 ```bash

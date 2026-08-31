@@ -389,3 +389,64 @@ Commit and push only tooling fixes, tests, and a prose conclusion that states
 the first proven difference (or byte-structural equality) and the exact next
 Linux discriminator. The macOS thread should then tell Shawn to return to the
 Linux thread; it must not imply that this Linux thread ran concurrently.
+
+### 2026-08-31 macOS enrollment result and next Linux discriminator
+
+Before either trace, the Touch ID settings UI showed **no enrolled fingers**.
+That was unexpected to Shawn, who remembered enrolling one during macOS setup,
+but it confirms that the earlier empty live identity list and zero-identity
+Catacomb represented the real machine state. The absence explains why matching
+could not possibly succeed; it does not explain Linux's synchronous command-3
+status 22, which occurs before any finger is evaluated.
+
+During the first private trace Shawn completed a new fingerprint enrollment.
+The macOS UI now definitely contains one enrolled finger. This state change is
+important: the previously transferred Catacomb/CMS was captured while there
+were zero identities and is now stale for any attempt to match the newly
+enrolled finger. Do not describe or load that older archive as current macOS
+identity state. A future matching experiment needs a fresh privacy-preserving
+export, while a deliberate Linux first-enrollment baseline may still choose to
+retain zero identities.
+
+Both private T2 pcaps contained only their 24-byte headers. A second trace with
+exact-interface `pktap` also reported zero captured, received, and dropped
+packets. This is the already documented macOS 26 BPF/pktap limitation, not
+evidence that Bridge traffic was absent. Do not request another enrollment
+ceremony solely to repeat packet capture. The first run captured the complete
+successful enrollment in the private unified log; the second captured a
+separate first accepted scan followed by cancellation. Both raw directories
+remain outside Git with owner-only permissions.
+
+The checked-in strict log sanitizer recovered the same accepted start from
+both runs (137 generic commands in the complete run and 151 in the partial
+run). The complete enrollment records `enroll` mode 1 for Apple UID 501 with
+status zero. Its command 3 is version 2, value zero, has 68 input bytes, and
+returns synchronous status zero. The three immediate predecessors are:
+
+1. `0x52`, version 1, value zero, zero input bytes, status zero;
+2. `0x54`, version 1, value zero, 20 input bytes, status zero;
+3. `0x0c`, version 1, value zero, zero input bytes, status zero.
+
+After the accepted start, the log shows the expected repeated `0x08`/`0x0e`
+progress traffic. The private log format does not expose the Bridge wrapper's
+output-capacity argument, credential flags/padding, or optional group bytes;
+those remain established only by the existing static serializer evidence, not
+by this runtime log.
+
+The first proven live ordering difference is command `0x54`. Linux's retained
+enrollment lease performs the built-in device-list command `0x52`, but has not
+performed `0x54` before command 3. Current biometrickitd static evidence maps
+`0x54` to its read-only `accessoryInfo:` query: version 1, value zero, a 20-byte
+input consisting of type 2 plus the built-in accessory UUID, and an 83-byte
+output. The method requires status zero, exactly 83 returned bytes, and a
+nonzero first output byte.
+
+The next Linux discriminator is therefore one bounded, read-only `0x54` on the
+final retained enrollment lease immediately after `0x52`. For the built-in
+accessory, serialize little-endian type 2 followed by the canonical zero UUID;
+allocate exactly 83 output bytes; validate only status zero, returned length
+83, and first byte nonzero; never print or persist the returned bytes. Then
+send the already recovered `0x0c` cancellation and run the existing cleanup.
+Only if this preflight matches macOS should Linux integrate the sequence and
+justify one supervised enrollment retry. The live ordering difference is
+proven; whether it causes the status-22 rejection is not yet proven.
