@@ -22,6 +22,15 @@ reenable or manually start either biometric service on macOS or during the
 first Linux boot. Their disabled state is intentional and reversible after
 the immediate identity-list comparison.
 
+Linux also installed and enabled `t2-warm-identity-capture.service`. It runs
+before either reset-capable unit, refuses to proceed unless both remain
+disabled and inactive, and sends only Bridge version negotiation plus
+read-only UID-501 identity-list command `0x42`. It atomically stores only the
+reply status, output length, record count, and structural-validity Boolean in
+root-only `/var/lib/t2-touchid/warm-transition-identity.json`; UUIDs, identity
+records, peer identifiers, and biometric bytes are never persisted. This
+removes the need to race to launch Codex after selecting Linux.
+
 ## Safety boundary
 
 - Do not enroll or delete a fingerprint.
@@ -88,10 +97,11 @@ the immediate identity-list comparison.
 
 ## Linux return plan
 
-Before resetting the sensor or loading a catacomb, Linux will query the fresh
-identity list once. If the warm transition preserved an enrolled identity,
-the first match test will be supervised and will stop for explicit user
-readiness before exactly one touch attempt. If the list is empty, Linux will
+Before resetting the sensor or loading a catacomb, Linux will inspect the
+automatic fresh identity-list capture. If the warm transition preserved an
+enrolled identity, the first match test will be supervised and will stop for
+explicit user readiness before exactly one touch attempt. If the list is
+empty, Linux will
 decrypt and validate the fresh CMS archive only inside a mode-0700 directory
 on the LUKS volume, load the full current catacomb through the bounded probe,
 and query again. Boot-scoped ASIDs or process identities will not be replayed
@@ -100,4 +110,5 @@ across operating-system boots.
 No successful enrollment, matching, or PAM integration is claimed by this
 handoff. The encrypted EFI copies should remain as recovery artifacts until
 the Linux validation is complete. After the comparison, Linux may reenable
-the two biometric services only when doing so cannot overwrite evidence.
+the two biometric services and disable the temporary capture service only when
+doing so cannot overwrite evidence.

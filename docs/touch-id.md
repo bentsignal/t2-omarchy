@@ -3196,6 +3196,15 @@ handoff while leaving transport, genuine-keybag load, and credential unlock
 enabled. They remain deliberately disabled until the immediate identity-list
 comparison is complete.
 
+A temporary boot-time one-shot now closes the remaining observation race.
+`t2-warm-identity-capture.service` runs before both reset-capable units and
+fails closed unless they remain disabled and inactive. It negotiates the
+Bridge version and sends only read-only UID-501 identity-list command `0x42`.
+The root-only result retains only status, output length, record count, and a
+structural-validity Boolean; peer identifiers, identity records, UUIDs, and
+biometric bytes are discarded. Static safety tests and the complete 457-test
+probe suite pass.
+
 ## Useful baseline commands
 
 ```bash
