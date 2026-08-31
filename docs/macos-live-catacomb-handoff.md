@@ -11,6 +11,17 @@ same time. GitHub `main` is the handoff boundary. The macOS agent must commit
 and push its sanitized report before the final reboot; it must not claim that
 the Linux agent continues while macOS is active.
 
+## Linux preflight completed
+
+Before this handoff, Linux disabled `fprintd.service` and
+`t2-biometric-ready.service`. Both had been enabled for `multi-user.target`,
+and the readiness service performs sensor initialization that would destroy
+the evidence before the first post-macOS query. The SEP transport, genuine
+keybag load, and encrypted-credential unlock services remain enabled. Do not
+reenable or manually start either biometric service on macOS or during the
+first Linux boot. Their disabled state is intentional and reversible after
+the immediate identity-list comparison.
+
 ## Safety boundary
 
 - Do not enroll or delete a fingerprint.
@@ -88,4 +99,5 @@ across operating-system boots.
 
 No successful enrollment, matching, or PAM integration is claimed by this
 handoff. The encrypted EFI copies should remain as recovery artifacts until
-the Linux validation is complete.
+the Linux validation is complete. After the comparison, Linux may reenable
+the two biometric services only when doing so cannot overwrite evidence.

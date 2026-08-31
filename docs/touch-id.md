@@ -3189,6 +3189,13 @@ export plus a warm transition with `biometrickitd` frozen, documented in
 `docs/macos-live-catacomb-handoff.md`. Boot-scoped AKS caller identities will
 not be blindly replayed across the operating-system transition.
 
+The installed `fprintd.service` and `t2-biometric-ready.service` were both
+enabled at boot, which would have run sensor initialization before Linux's
+first post-macOS observation. Linux disabled those two units before the warm
+handoff while leaving transport, genuine-keybag load, and credential unlock
+enabled. They remain deliberately disabled until the immediate identity-list
+comparison is complete.
+
 ## Useful baseline commands
 
 ```bash
