@@ -3482,6 +3482,24 @@ fresh real no-touch preflight passes with no mutation. The next supervised
 Linux run should now cross policy readback and reach command 3; only a successful
 start may produce the human touch cue.
 
+That supervised run accepted the macOS password but again stopped during
+policy readback before command 3 or a touch cue. Reconciliation proved zero
+identities, no persistent delta, and no unfinished operation. The setup layer
+had replaced the enrollment transport's controlled staging rejection with the
+same generic outcome-unknown message, so the transcript could not distinguish
+a setup callback for a different Apple UID from another validation failure.
+
+External GPL commit `64f01b4` preserves a privacy-safe controlled diagnostic
+through the staging, setup, and coordinator boundaries. For an SKS UID
+mismatch it reports only the numeric embedded and expected Apple UIDs; it never
+prints the callback payload, ACM form, credential, or biometric material. All
+304 tests pass, the three changed modules byte-match the installed root-owned
+runtime, Python compilation passes, and a real no-touch preflight again reports
+zero identities and no mutation. The journal audit reports zero unfinished
+operations. One Linux-only password-authorized run is now required to classify
+the already-observed callback precisely; no finger should be presented unless
+the later command-3 gate explicitly reaches `TOUCH NOW`.
+
 ## Useful baseline commands
 
 ```bash

@@ -267,3 +267,14 @@ minimum shape, and UID 501, then preserves the untouched callback in order for
 the existing enrollment reducer. All other setup-time callbacks fail closed.
 All 303 tests and a no-touch preflight pass. The next supervised attempt remains
 Linux-only and may proceed to command 3.
+
+That attempt accepted the password but failed safely during callback staging,
+still before command 3 or any touch cue. Reconciliation again proved zero
+identities, no persistent delta, and zero unfinished operations. A generic
+setup boundary had hidden the transport's controlled reason. External GPL
+commit `64f01b4` now carries that privacy-safe reason through the coordinator;
+for an SKS user mismatch it exposes only the numeric Apple UIDs and never the
+event payload or credential. All 304 tests and Python compilation pass, the
+installed runtime modules byte-match the checkout, and a fresh no-touch
+hardware preflight passes without mutation. The next step remains a single
+Linux-only password run to classify the setup callback precisely.
