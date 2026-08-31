@@ -95,3 +95,26 @@ and the temporary wrappers were removed. The EFI public certificate and final
 CMS ciphertext remain for Linux. No candidate paths or bytes were printed or
 committed, no source keybag was changed, and no BiometricKit or fingerprint
 operation was performed.
+
+## Linux validation result
+
+Linux matched the CMS recipient certificate, decrypted the archive only under
+a mode-0700 directory on the LUKS-encrypted home, and validated 67 regular
+files with no permission violations. It found 28 anonymized candidates and
+two byte-identical `user.kb` candidates. One 1,572-byte copy was installed as
+`/var/lib/t2-touchid/user.kb`, owned by root with mode 0600; all decrypted
+staging copies were then removed. The encrypted EFI CMS remains as a recovery
+artifact.
+
+The independent GPL reference transport loaded that genuine keybag with SEP
+status zero and created its special `-501` alias. A visible, bounded password
+run returned status zero for both normal and special unlock. A separate policy
+run returned `verify-password-acm: status=0`, proving the entered password and
+the positive runtime keybag handle were accepted, but enrollment policy 1007
+remained unsatisfied and released no credential. No biometric command or
+fingerprint touch occurred in either policy run.
+
+This rules out candidate selection and keybag identity as the sole missing
+enrollment prerequisite. The remaining discriminator is daemon-owned
+catacomb/session state or platform caller identity, addressed by
+`docs/macos-live-catacomb-handoff.md`.

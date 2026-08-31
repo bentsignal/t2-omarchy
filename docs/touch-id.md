@@ -3153,6 +3153,42 @@ structure parsing. All plaintext and temporary macOS files were removed, no
 source keybag changed, and no biometric operation occurred. Linux may now run
 the policy-only genuine-keybag comparison described in the dedicated handoff.
 
+Linux validated that CMS privately, found two byte-identical 1,572-byte
+`user.kb` candidates, installed one with root-only permissions, and removed
+the decrypted staging tree. The GPL reference transport loaded the genuine
+bag and its `-501` alias with status zero; a visible password run then unlocked
+both with status zero. Its ACM policy client initially failed before password
+entry because it allocated a `0x1000`-byte response for opcode `0x03`, while
+the kernel transport correctly requires `0x4000`. A local one-line correction
+to the separate GPL checkout made all 172 upstream tests pass and allowed the
+policy request to complete. Password verification against the genuine runtime
+handle returned status zero, but policy 1007 still remained unsatisfied. The
+genuine keybag therefore is necessary infrastructure, not the missing policy
+input by itself.
+
+The reference matching stack was then integrated without copying GPL source
+into this repository. The T2 iBridge peer is reachable over a dedicated
+link-local NetworkManager profile; transport, keybag load, biometric readiness,
+and the custom fprintd service all reached their expected healthy states.
+`fprintd-list` reported the macOS-enrolled `right-index-finger`, but this was
+only local configuration metadata. The one supervised verification attempt
+returned `verify-unknown-error` before evaluating the user's touch. A direct
+privacy-safe trace explained why: bridge version negotiation, sensor reset,
+cancel, and FDR calibration all returned status zero, while identity-list
+command `0x42` returned status zero with no identity records. The client
+therefore never issued match command `0x04`; the result says nothing about the
+finger presented.
+
+The current bridge advertises biometric protocol version 1, so the reference
+inventory command's attested-version-2 enrollment gate also remains closed.
+Previously captured global and UID-501 catacomb blobs still returned status
+257 when loaded with the genuine unlocked keybag, including after the bounded
+`NoCatacomb` initialization. Those older blobs cannot establish a current
+daemon session. The next controlled discriminator is a fresh macOS catacomb
+export plus a warm transition with `biometrickitd` frozen, documented in
+`docs/macos-live-catacomb-handoff.md`. Boot-scoped AKS caller identities will
+not be blindly replayed across the operating-system transition.
+
 ## Useful baseline commands
 
 ```bash

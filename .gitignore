@@ -6,5 +6,8 @@ t2-runtime-summary.json
 
 # Private Touch ID/keybag transfer artifacts. These must never enter Git.
 *.kb
+*.cat
 t2-keybags.tar.gz
 t2-keybags.cms
+t2-touchid-catacomb.tar.gz
+t2-touchid-catacomb.cms
