@@ -3122,6 +3122,28 @@ the successful AKS reply. All 450 offline tests pass and the kernel module
 builds; hardware acceptance remains deliberately unclaimed until the next
 password-authorized run.
 
+Two bounded no-touch hardware runs then evaluated that exact policy sequence.
+Both created the context with UID 501 and parsed the 24-byte preflight as
+unsatisfied requirement type 1, state 1, flags `0x1`, payload length 4. The
+first used the initially inferred zero trailing option; a corrected static
+audit and an independent upstream correction established that selector 42's
+canonical plaintext-secret option is `0x200`. The second run sent only
+`0x200`. In both cases AKS reported `authorized=yes`, ruling out password
+entry failure, but the committed policy returned the identical unsatisfied
+requirement and no credential was released. All bags and the ACM context were
+then independently torn down, DMA was scrubbed, and the module was removed.
+No BiometricKit command or fingerprint touch occurred.
+
+The exact option is therefore necessary but not sufficient. The strongest
+remaining discriminator is subject keybag identity: Linux authorizes a newly
+created type-0 bag that it promotes to `-501`, while macOS caller handle `-3`
+resolves through the established UID-501 login session. A filesystem audit
+found no exported `user.kb`, other `*.kb`, or private keybag archive on Linux,
+and the encrypted 128 GiB APFS container is not mountable by the existing
+Linux APFS path. The next controlled step is the encrypted macOS export in
+`docs/macos-keybag-export-handoff.md`, followed by a policy-only comparison
+with the genuine bag. Enrollment and touch remain gated off.
+
 ## Useful baseline commands
 
 ```bash

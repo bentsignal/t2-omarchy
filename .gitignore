@@ -3,3 +3,8 @@ __pycache__/
 t2-static-capture/
 t2-runtime-capture/
 t2-runtime-summary.json
+
+# Private Touch ID/keybag transfer artifacts. These must never enter Git.
+*.kb
+t2-keybags.tar.gz
+t2-keybags.cms
