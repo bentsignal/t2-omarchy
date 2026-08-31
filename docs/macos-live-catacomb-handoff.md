@@ -180,3 +180,10 @@ zero-identity archive passes the new offline codec path. The next Linux gates
 are a read-only preflight, one reboot to activate the latest ACM
 externalization-capable kernel transport, then a password-authorized policy-only
 control before any supervised touch or enrollment.
+
+That read-only preflight has now passed with zero identities, available
+capacity, stable same-connection inventory, a verified local store, and no
+mutation. The temporary service marker was removed, both reset-capable services
+are disabled/inactive again, and the enrollment-journal audit is empty. The
+next action is the single Linux reboot needed to replace the boot-pinned old
+transport with the already-staged ACM-externalization-capable module.

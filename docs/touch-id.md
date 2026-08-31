@@ -3277,6 +3277,18 @@ those gates pass may one explicitly supervised enrollment begin. PAM remains
 out of scope until enrollment, durable readback, reboot persistence, and match
 all succeed.
 
+The protocol-1 checkpoint was then installed into the root-owned runtime and
+its bounded live preflight passed on this T2: zero identities, available
+capacity, verified local three-component store, stable same-connection
+inventory, and `mutation_performed=false`. No journal was created and the
+status-only audit still reports zero unfinished operations. The temporary
+reset-service marker was removed and both `fprintd.service` and
+`t2-biometric-ready.service` were returned to disabled/inactive state. The
+latest on-disk kernel module byte-matches the externalization-capable build;
+only the already-loaded, boot-pinned older module remains in memory. The next
+required action is therefore one Linux reboot, followed by a password-authorized
+policy-only control before any fingerprint enrollment or touch.
+
 ## Useful baseline commands
 
 ```bash
