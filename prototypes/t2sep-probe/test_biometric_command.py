@@ -91,6 +91,18 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         self.assertEqual(command.catacomb_uuid_fields(user_id=501),
                          (0x38, 0, 0, b"\xf5\x01\0\0", 16))
 
+    def test_sks_lock_state_query_and_decoder(self):
+        self.assertEqual(command.sks_lock_state_fields(user_id=501, version=1),
+                         (0x27, 1, 0, b"\xf5\x01\0\0", 4))
+        self.assertEqual(command.decode_sks_lock_state(
+            struct.pack("<I", 0x12345678)), 0x12345678)
+        for version in (-1, 3, True):
+            with self.assertRaises(command.BiometricCommandError):
+                command.sks_lock_state_fields(user_id=501, version=version)
+        for output in (b"", bytes(3), bytes(5), bytearray(4)):
+            with self.assertRaises(command.BiometricCommandError):
+                command.decode_sks_lock_state(output)
+
     def test_current_catacomb_save_and_load_codecs(self):
         context = struct.pack("<II16s", 501, 1, bytes(16))
         self.assertEqual(command.builtin_catacomb_save_context(user_id=501), context)

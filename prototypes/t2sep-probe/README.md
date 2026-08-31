@@ -137,6 +137,38 @@ no additional Bridge command. This is evidence for a remaining protected-data
 or keybag-readiness boundary, not permission to fabricate a first-unlock wire
 message or proof that the host and SEP status namespaces are identical.
 
+A read-only command-`0x27` comparison then queried secure-key-store lock state
+with versions 0, 1, and 2. Only version 1 was accepted and returned the exact
+four-byte state `0x15`. Repeating the query while the temporary system bag was
+password-verified produced the same state. The password was conclusively
+accepted (`authorized=yes`), no touch was requested, and full teardown passed.
+This rules out a simple command-`0x27` lock-state transition as the missing
+enrollment prerequisite.
+
+The independent
+[`jmurth1234/t2-touchid-linux`](https://github.com/jmurth1234/t2-touchid-linux)
+T2 Touch ID implementation published on 2026-08-30 exposed a
+more direct authorization gap in this prototype. Its shipped path already
+matches macOS-enrolled identities on Linux; its still-unshipped enrollment
+research reconstructs a UID-bound ACM context and the fixed policy-1007
+sequence. Comparing that sequence against this probe showed two concrete
+differences: the context-create payload must carry the target UID instead of
+zero, and password binding must be followed by a committed ACM command `3`
+for `TouchIdEnrollment` before BiometricKit consumes the context. The exact
+51-byte command is a `DRCS` command-3 header, the 16-byte context, the
+NUL-terminated policy name, a preflight Boolean, and two absent-option words.
+
+The bounded handoff now implements the complete order: create a UID-bound
+context; require a preflight response that is unsatisfied with passcode
+requirement type 1; bind the password through AKS; require the committed policy
+response to be satisfied; and only then expose the context to command `0x03`.
+Policy response lengths, Boolean result, requirement header/type, and payload
+length are strictly checked without logging requirement bytes. The policy
+mutation is enabled only for the two explicitly confirmed enrollment modes;
+the SKS-state and retained-catacomb comparisons cannot invoke it. Offline
+coverage is 450 tests and the kernel module builds on the running kernel. This
+new sequence is not live-proven until its first password-authorized run.
+
 This is an experiment boundary, not account authentication. Because the probe
 creates the bag whose secret it then verifies, success establishes that Linux
 can manufacture a fresh ACM credential context; it does not independently

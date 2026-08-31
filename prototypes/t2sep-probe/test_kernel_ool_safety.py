@@ -230,6 +230,26 @@ class KernelOolSafetyTests(unittest.TestCase):
         self.assertLess(publish, wait)
         self.assertLess(wait, unload)
 
+    def test_enrollment_handoff_requires_uid_bound_policy_authorization(self):
+        for fragment in (
+                "static bool apple_authorize_enrollment_policy;",
+                "put_unaligned_le32(subject_uid, send + 8)",
+                'static const char policy[] = "TouchIdEnrollment"',
+                "send[4] = 3;", "send[42] = preflight;",
+                "requirement_type != 1", "else if (!satisfied)",
+                "t2sep_probe_acm_enrollment_policy("):
+            self.assertIn(fragment, SOURCE)
+        start = SOURCE.index("static int t2sep_probe_ephemeral_keybag_authorization_run")
+        promote = SOURCE.index("t2sep_probe_aks_make_system_keybag(", start)
+        preflight = SOURCE.index("t2sep_probe_acm_enrollment_policy(", promote)
+        verify = SOURCE.index("t2sep_probe_aks_verify_password(", preflight)
+        commit = SOURCE.index("t2sep_probe_acm_enrollment_policy(", preflight + 1)
+        handoff = SOURCE.index("t2sep_probe_authorized_enrollment_wait(", commit)
+        self.assertLess(promote, preflight)
+        self.assertLess(preflight, verify)
+        self.assertLess(verify, commit)
+        self.assertLess(commit, handoff)
+
     def test_stop_precedes_scrub_and_free(self) -> None:
         function = SOURCE.index("static int t2sep_apple_start_cpu_probe")
         stop = SOURCE.index("iowrite32(5, bar4 + T2SEP_INTEL_CPU_STOP)", function)

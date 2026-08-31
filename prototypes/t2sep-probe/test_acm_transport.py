@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import struct
 import sys
 import unittest
 
@@ -100,6 +101,34 @@ class ACMTransportTests(unittest.TestCase):
         acm.scrub_context_material(response, command)
         self.assertEqual(response, bytearray(17))
         self.assertEqual(command, bytearray(24))
+
+    def test_uid_bound_context_and_enrollment_policy_are_exact(self):
+        self.assertEqual(
+            acm.current_context_create_command(501),
+            b"DRCS\x24\0\x04\x01\xf5\x01\0\0")
+        context = bytes(range(16))
+        preflight = acm.enrollment_policy_command(context, preflight=True)
+        committed = acm.enrollment_policy_command(context, preflight=False)
+        self.assertEqual(len(preflight), 51)
+        self.assertEqual(preflight[:24], b"DRCS\x03\0\0\x01" + context)
+        self.assertEqual(preflight[24:], b"TouchIdEnrollment\0\x01" + bytes(8))
+        self.assertEqual(committed[42], 0)
+
+    def test_enrollment_policy_reply_is_strictly_typed(self):
+        requirement = struct.pack("<IIII", 1, 0, 1, 4) + b"test"
+        self.assertEqual(
+            acm.decode_policy_response(struct.pack("<I", 0) + requirement),
+            acm.PolicyResult(False, True, 20, 1, 0, 1, 4))
+        self.assertEqual(
+            acm.decode_policy_response(struct.pack("<I", 1)),
+            acm.PolicyResult(True, False, 0, None, None, None, None))
+        for response in (
+                b"", struct.pack("<I", 2), bytes(5),
+                struct.pack("<I", 0) + struct.pack("<IIII", 4, 0, 0, 0),
+                struct.pack("<I", 0) + struct.pack("<IIII", 1, 0, 0, 1)):
+            with self.subTest(length=len(response)):
+                with self.assertRaises(acm.ACMTransportError):
+                    acm.decode_policy_response(response)
 
     def test_context_plan_rejects_failed_or_reordered_replies(self):
         plan = acm.ContextCreatePlan()

@@ -3081,6 +3081,44 @@ is therefore online, and neither absent xART nor omission of the daemon's
 availability-cache read explains the enrollment rejection. The temporary AKS
 and ACM lifecycle again passed complete teardown and scrub verification.
 
+The next read-only comparison recovered `performGetSKSLockStateCommand:` as
+command `0x27`. Versions 0 and 2 returned `kIOReturnBadArgument`; version 1
+returned status zero, four bytes, and state `0x15`. The exact same value was
+returned while the temporary UID-501 system bag had passed password
+verification. The transcript reported `authorized=yes`, so a password typo is
+ruled out; no enrollment or touch occurred and teardown passed. Command
+`0x27` therefore does not expose a simple missing lock-state transition for
+this lifecycle. Static driver analysis separately shows that asynchronous
+`sbio` lock-state records can invoke a `passcodeValidated` callback when bit
+`0x20` is set, but that does not establish command-`0x27` bit `0x08` or the
+observed `0x15` as an enrollment gate.
+
+A comparison with the independently developed
+[`jmurth1234/t2-touchid-linux`](https://github.com/jmurth1234/t2-touchid-linux)
+project then found the first direct omission in
+our enrollment-authorization sequence. That project has live Linux matching
+for an already-enrolled macOS identity, while its Linux enrollment code remains
+research-only. Its recovered authorization path creates the ACM tracking
+context for the explicit Apple numeric UID, observes policy 1007 preflight,
+binds the password to that context through AKS selector 42, evaluates the
+committed `TouchIdEnrollment` policy, and passes the context to exactly one
+consumer only after the policy reports satisfied. Our prior sequence created
+the context with subject zero and treated successful selector-42 password
+binding as sufficient; it never evaluated the enrollment policy. That is a
+much stronger explanation for synchronous status 261 than further catacomb or
+sensor initialization guesses.
+
+The live probe now independently encodes that exact 51-byte ACM command and
+strict response parser. Enrollment-only runs create the context with UID 501,
+require the preflight result to be unsatisfied with requirement type 1, perform
+the already-proven password binding, require the committed policy result to be
+satisfied, and only then release the 16-byte external form to BiometricKit.
+The SKS-state and catacomb-load modes leave policy evaluation disabled. An
+independent journal verifier requires both policy evaluations in order around
+the successful AKS reply. All 450 offline tests pass and the kernel module
+builds; hardware acceptance remains deliberately unclaimed until the next
+password-authorized run.
+
 ## Useful baseline commands
 
 ```bash

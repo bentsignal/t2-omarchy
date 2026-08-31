@@ -25,6 +25,7 @@ COMMAND_REMOVE_IDENTITY = 0x0D
 COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PROVISIONING_STATE = 0x10
 COMMAND_PRESENCE_DETECT = 0x26
+COMMAND_GET_SKS_LOCK_STATE = 0x27
 COMMAND_GET_BIOMETRICKITD_INFO = 0x28
 COMMAND_GET_PROTECTED_CONFIG = 0x2E
 COMMAND_SET_PROTECTED_CONFIG = 0x2F
@@ -232,6 +233,20 @@ def provisioning_state_fields():
     """Encode the current four-byte, read-only provisioning-state query."""
     return (COMMAND_PROVISIONING_STATE, COMMAND_VERSION, 0,
             b"", PROVISIONING_STATE_SIZE)
+
+
+def sks_lock_state_fields(*, user_id: int, version: int = 0):
+    """Encode Catalina's read-only per-user Secure Key Store lock-state query."""
+    if isinstance(version, bool) or version not in (0, 1, 2):
+        raise BiometricCommandError("SKS lock-state version must be 0, 1, or 2")
+    return (COMMAND_GET_SKS_LOCK_STATE, version, 0,
+            struct.pack("<I", _u32(user_id, "user ID")), 4)
+
+
+def decode_sks_lock_state(output: bytes) -> int:
+    if not isinstance(output, bytes) or len(output) != 4:
+        raise BiometricCommandError("SKS lock state must be exactly four bytes")
+    return struct.unpack("<I", output)[0]
 
 
 def decode_provisioning_state(output: bytes) -> int:

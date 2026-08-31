@@ -209,6 +209,11 @@ module_param(apple_probe_authorized_enrollment_handoff, bool, 0400);
 MODULE_PARM_DESC(apple_probe_authorized_enrollment_handoff,
 	"Authorize an ephemeral context and expose its enrollment form once through root-only sysfs");
 
+static bool apple_authorize_enrollment_policy;
+module_param(apple_authorize_enrollment_policy, bool, 0400);
+MODULE_PARM_DESC(apple_authorize_enrollment_policy,
+	"Evaluate the fixed TouchIdEnrollment ACM policy before an authorized handoff");
+
 static ulong authorized_enrollment_confirmation;
 module_param(authorized_enrollment_confirmation, ulong, 0400);
 MODULE_PARM_DESC(authorized_enrollment_confirmation,
@@ -265,6 +270,8 @@ struct t2sep_irq_probe {
 #define T2SEP_ACM_CONTEXT_RESPONSE_SIZE 17
 #define T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE 21
 #define T2SEP_ACM_CONTEXT_SIZE 16
+#define T2SEP_ACM_ENROLLMENT_POLICY_REQUEST_SIZE 51
+#define T2SEP_ACM_POLICY_RESPONSE_MAX 0x1000
 #define T2SEP_ENROLLMENT_HANDOFF_TIMEOUT (5 * 60 * HZ)
 #define T2SEP_SBIO_IN_SIZE (T2SEP_SBIO_IN_PAGES * PAGE_SIZE)
 #define T2SEP_SBIO_OUT_SIZE (T2SEP_SBIO_OUT_PAGES * PAGE_SIZE)
@@ -1116,6 +1123,7 @@ static int t2sep_probe_acm_context_create(struct pci_dev *pdev,
 					   void __iomem *bar4,
 					   void *send_buffer,
 					   void *receive_buffer,
+					   u32 subject_uid,
 					   u8 context[T2SEP_ACM_CONTEXT_SIZE])
 {
 	u8 *send = send_buffer;
@@ -1155,10 +1163,11 @@ static int t2sep_probe_acm_context_create(struct pci_dev *pdev,
 	send[5] = 0;
 	send[6] = sizeof(u32);
 	send[7] = 1;
-	memset(send + 8, 0, sizeof(u32));
+	put_unaligned_le32(subject_uid, send + 8);
 	dma_wmb();
 	dev_info(&pdev->dev,
-		 "ACM context-create request: endpoint=10 message_type=1 selector=36 length=12 domain=0 expected_reply=21\n");
+		 "ACM context-create request: endpoint=10 message_type=1 selector=36 length=12 subject_uid=%u expected_reply=21\n",
+		 subject_uid);
 	ret = t2sep_acm_create_exchange(
 		pdev, bar4, 0x24, 12,
 		T2SEP_ACM_CURRENT_CONTEXT_RESPONSE_SIZE, true);
@@ -1171,7 +1180,8 @@ static int t2sep_probe_acm_context_create(struct pci_dev *pdev,
 		send[4] = 1;
 		dma_wmb();
 		dev_info(&pdev->dev,
-			 "ACM context-create fallback request: endpoint=10 message_type=1 selector=1 length=12 domain=0 expected_reply=17\n");
+			 "ACM context-create fallback request: endpoint=10 message_type=1 selector=1 length=12 subject_uid=%u expected_reply=17\n",
+			 subject_uid);
 		ret = t2sep_acm_create_exchange(
 			pdev, bar4, 1, 12,
 			T2SEP_ACM_CONTEXT_RESPONSE_SIZE, false);
@@ -1187,6 +1197,112 @@ static int t2sep_probe_acm_context_create(struct pci_dev *pdev,
 		 context_response_size);
 	memcpy(context, receive, T2SEP_ACM_CONTEXT_SIZE);
 	return 0;
+}
+
+static bool t2sep_acm_requirement_type_supported(u32 type)
+{
+	return type == 1 || type == 2 || type == 3 || type == 6 ||
+	       (type >= 8 && type <= 15) || (type >= 18 && type <= 28);
+}
+
+static int t2sep_probe_acm_enrollment_policy(
+	struct pci_dev *pdev, void __iomem *bar4,
+	void *send_buffer, void *receive_buffer,
+	const u8 context[T2SEP_ACM_CONTEXT_SIZE], bool preflight)
+{
+	static const char policy[] = "TouchIdEnrollment";
+	u8 *send = send_buffer;
+	u8 *receive = receive_buffer;
+	u32 request[3] = {
+		T2SEP_ACM_ENDPOINT | 1 << 8 |
+		T2SEP_ACM_ENROLLMENT_POLICY_REQUEST_SIZE << 16,
+		0,
+		0,
+	};
+	u32 response[4];
+	u32 satisfied;
+	u32 requirement_type = 0;
+	u32 requirement_state = 0;
+	u32 requirement_flags = 0;
+	u32 requirement_payload_length = 0;
+	u16 reply_length;
+	bool requirement_present;
+	int ret;
+
+	memset(send, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+	memset(receive, 0, T2SEP_CREDENTIAL_OOL_SIZE);
+	memcpy(send, "DRCS", 4);
+	send[4] = 3;
+	send[7] = 1;
+	memcpy(send + 8, context, T2SEP_ACM_CONTEXT_SIZE);
+	memcpy(send + 24, policy, sizeof(policy));
+	send[42] = preflight;
+	dma_wmb();
+	dev_info(&pdev->dev,
+		 "ACM enrollment-policy request: endpoint=10 message_type=1 selector=3 length=51 policy=TouchIdEnrollment preflight=%s context_bytes=not-logged\n",
+		 preflight ? "yes" : "no");
+	ret = t2sep_send_intel_message(bar4, request);
+	if (ret)
+		goto out_scrub;
+	ret = t2sep_wait_intel_message(bar4, response);
+	if (ret)
+		goto out_scrub;
+	reply_length = response[0] >> 16;
+	dev_info(&pdev->dev,
+		 "ACM enrollment-policy envelope reply: endpoint=%u message_type=%u length=%u status=%d\n",
+		 response[0] & 0xff, (response[0] >> 8) & 0xff,
+		 reply_length, (s32)response[1]);
+	if ((response[0] & 0xff) != T2SEP_ACM_ENDPOINT ||
+	    ((response[0] >> 8) & 0xff) != 1 || response[1] != 0 ||
+	    response[2] != 0 ||
+	    (response[3] & (T2SEP_INTEL_MSG_ERROR | T2SEP_INTEL_MSG_FATAL)) ||
+	    reply_length < sizeof(u32) ||
+	    reply_length > T2SEP_ACM_POLICY_RESPONSE_MAX) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
+	dma_rmb();
+	satisfied = get_unaligned_le32(receive);
+	if (satisfied > 1) {
+		ret = -EPROTO;
+		goto out_scrub;
+	}
+	requirement_present = reply_length > sizeof(u32);
+	if (requirement_present) {
+		if (reply_length < 5 * sizeof(u32)) {
+			ret = -EPROTO;
+			goto out_scrub;
+		}
+		requirement_type = get_unaligned_le32(receive + 4);
+		requirement_state = get_unaligned_le32(receive + 8);
+		requirement_flags = get_unaligned_le32(receive + 12);
+		requirement_payload_length = get_unaligned_le32(receive + 16);
+		if (!t2sep_acm_requirement_type_supported(requirement_type) ||
+		    requirement_payload_length != reply_length - 20) {
+			ret = -EPROTO;
+			goto out_scrub;
+		}
+	}
+	if (preflight) {
+		if (satisfied || !requirement_present || requirement_type != 1) {
+			ret = -EACCES;
+			goto out_scrub;
+		}
+	} else if (!satisfied) {
+		ret = -EACCES;
+		goto out_scrub;
+	}
+	dev_info(&pdev->dev,
+		 "ACM enrollment-policy reply passed strict validation: preflight=%s satisfied=%s requirement_present=%s requirement_type=%u requirement_state=%u requirement_flags=%#x requirement_payload_length=%u\n",
+		 preflight ? "yes" : "no", satisfied ? "yes" : "no",
+		 requirement_present ? "yes" : "no", requirement_type,
+		 requirement_state, requirement_flags, requirement_payload_length);
+	ret = 0;
+
+out_scrub:
+	memzero_explicit(send, T2SEP_CREDENTIAL_OOL_SIZE);
+	memzero_explicit(receive, T2SEP_CREDENTIAL_OOL_SIZE);
+	return ret;
 }
 
 static int t2sep_probe_acm_context_delete(struct pci_dev *pdev,
@@ -1223,7 +1339,7 @@ static int t2sep_probe_acm_context_lifecycle(struct pci_dev *pdev,
 	int ret;
 
 	ret = t2sep_probe_acm_context_create(
-		pdev, bar4, send_buffer, receive_buffer, context);
+		pdev, bar4, send_buffer, receive_buffer, 0, context);
 	if (!ret)
 		ret = t2sep_probe_acm_context_delete(
 			pdev, bar4, send_buffer, context);
@@ -1988,7 +2104,7 @@ static int t2sep_probe_password_authorization(
 	if (ret)
 		goto out_revoke;
 	ret = t2sep_probe_acm_context_create(
-		pdev, bar4, acm_send, acm_receive, context);
+		pdev, bar4, acm_send, acm_receive, macos_session_uid, context);
 	if (ret)
 		goto out_revoke;
 	verify_ret = t2sep_probe_aks_verify_password(
@@ -2067,7 +2183,9 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 	bool created = false;
 	bool promoted = false;
 	int promote_ret = -ECANCELED;
+	int preflight_ret = -ECANCELED;
 	int verify_ret = -ECANCELED;
+	int policy_ret = -ECANCELED;
 	int system_absent_ret = -ECANCELED;
 	int absent_ret = -ECANCELED;
 	u8 teardown_tag = 8;
@@ -2086,7 +2204,7 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 	if (ret)
 		goto out_revoke;
 	ret = t2sep_probe_acm_context_create(
-		pdev, bar4, acm_send, acm_receive, context);
+		pdev, bar4, acm_send, acm_receive, macos_session_uid, context);
 	if (ret)
 		goto out_revoke;
 	ret = t2sep_probe_aks_create_device_keybag(
@@ -2136,10 +2254,20 @@ static int t2sep_probe_ephemeral_keybag_authorization_run(
 		goto out_unload;
 	}
 	promoted = true;
+	if (enrollment_handoff && apple_authorize_enrollment_policy) {
+		preflight_ret = t2sep_probe_acm_enrollment_policy(
+			pdev, bar4, acm_send, acm_receive, context, true);
+		if (preflight_ret)
+			goto out_unload;
+	}
 	verify_ret = t2sep_probe_aks_verify_password(
 		pdev, bar4, aks_send, aks_receive, version, context,
 		keybag_handle, system_selector);
-	if (!verify_ret && enrollment_handoff)
+	if (!verify_ret && enrollment_handoff && apple_authorize_enrollment_policy)
+		policy_ret = t2sep_probe_acm_enrollment_policy(
+			pdev, bar4, acm_send, acm_receive, context, false);
+	if (!verify_ret && enrollment_handoff &&
+	    (!apple_authorize_enrollment_policy || !policy_ret))
 		handoff_ret = t2sep_probe_authorized_enrollment_wait(pdev, context);
 out_unload:
 	system_absent_ret = t2sep_probe_aks_ensure_keybag_absent(
@@ -2157,16 +2285,21 @@ out_delete:
 	memzero_explicit(bag_blob, T2SEP_CREDENTIAL_OOL_SIZE);
 	kfree(bag_blob);
 	dev_info(&pdev->dev,
-		 "ephemeral keybag authorization completed: created=%s promoted=%s promote=%d authorized=%s system_absent_proof=%d source_absent_proof=%d context_delete=%d secret_bytes=not-logged\n",
+		 "ephemeral keybag authorization completed: created=%s promoted=%s promote=%d authorized=%s system_absent_proof=%d source_absent_proof=%d context_delete=%d policy_required=%s policy_preflight=%d enrollment_policy=%d secret_bytes=not-logged\n",
 		 created ? "yes" : "no", promoted ? "yes" : "no", promote_ret,
 		 verify_ret ? "no" : "yes", system_absent_ret, absent_ret,
-		 delete_ret);
+		 delete_ret, apple_authorize_enrollment_policy ? "yes" : "no",
+		 preflight_ret, policy_ret);
 	if (delete_ret)
 		return delete_ret;
 	if (ret)
 		return ret;
 	if (promote_ret)
 		return promote_ret;
+	if (enrollment_handoff && apple_authorize_enrollment_policy && preflight_ret)
+		return preflight_ret;
+	if (enrollment_handoff && apple_authorize_enrollment_policy && policy_ret)
+		return policy_ret;
 	if (system_absent_ret)
 		return system_absent_ret;
 	if (absent_ret)
@@ -2674,6 +2807,12 @@ static int t2sep_probe(struct pci_dev *pdev,
 			"authorized enrollment handoff requires start/MSI/NOP, a temporary key, macOS UID, and confirmation 0x%lx\n",
 			T2SEP_AUTHORIZED_ENROLLMENT_CONFIRMATION);
 		t2sep_revoke_password_key();
+		return -EINVAL;
+	}
+	if (apple_authorize_enrollment_policy &&
+	    !apple_probe_authorized_enrollment_handoff) {
+		dev_err(&pdev->dev,
+			"enrollment policy authorization requires the bounded authorized handoff mode\n");
 		return -EINVAL;
 	}
 	if (apple_capture_ool_acks + apple_capture_credential_ool_acks +

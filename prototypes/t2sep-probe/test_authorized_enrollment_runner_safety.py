@@ -5,6 +5,7 @@ import unittest
 SOURCE = Path(__file__).with_name("run-authorized-enrollment-probe.sh").read_text()
 CLIENT = Path(__file__).with_name("authorized-enrollment-client.py").read_text()
 LOAD_CLIENT = Path(__file__).with_name("authorized-catacomb-load-client.py").read_text()
+SKS_CLIENT = Path(__file__).with_name("authorized-sks-lock-state-client.py").read_text()
 
 
 class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
@@ -34,6 +35,9 @@ class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
             "I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY",
             SOURCE)
         self.assertIn("authorized-policy-enrollment-client.py", SOURCE)
+        self.assertIn('authorize_policy=1', SOURCE)
+        self.assertIn('apple_authorize_enrollment_policy="$authorize_policy"', SOURCE)
+        self.assertIn('--require-enrollment-policy', SOURCE)
 
     def test_authorized_catacomb_load_is_distinct_and_scrubs_handoff(self):
         self.assertIn(
@@ -49,6 +53,20 @@ class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
         prompt = SOURCE.index("prompt_dir=$(mktemp -d)")
         self.assertLess(preflight, prompt)
         self.assertIn("password was not requested", SOURCE)
+
+    def test_authorized_sks_comparison_cannot_enroll(self):
+        self.assertIn(
+            "I_UNDERSTAND_THIS_ONLY_READS_SKS_LOCK_STATE_WITH_AN_AUTHORIZED_BAG",
+            SOURCE)
+        self.assertIn("authorized-sks-lock-state-client.py", SOURCE)
+        self.assertIn("sks-lock-state-probe.py", SKS_CLIENT)
+        self.assertNotIn("authorized_enroll_fields", SKS_CLIENT)
+        self.assertIn("credential[:] = bytes(len(credential))", SKS_CLIENT)
+        sks_case = SOURCE[SOURCE.index(
+            "I_UNDERSTAND_THIS_ONLY_READS_SKS_LOCK_STATE_WITH_AN_AUTHORIZED_BAG"):
+            SOURCE.index(
+                "I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY")]
+        self.assertNotIn("authorize_policy=1", sks_case)
 
 
 if __name__ == "__main__":

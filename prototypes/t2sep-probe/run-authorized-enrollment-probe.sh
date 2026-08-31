@@ -20,19 +20,26 @@ client_confirmation=
 catacomb_path=
 global_input=
 user_input=
+authorize_policy=0
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] || die "run as the desktop user"
 sudo -n true || die "passwordless sudo is unavailable"
 case $confirmation in
+  I_UNDERSTAND_THIS_ONLY_READS_SKS_LOCK_STATE_WITH_AN_AUTHORIZED_BAG)
+    client_name=authorized-sks-lock-state-client.py
+    client_confirmation=$confirmation
+    ;;
   I_UNDERSTAND_THIS_CREATES_ONE_FINGERPRINT_IDENTITY)
     client_name=authorized-enrollment-client.py
     client_confirmation=$confirmation
+    authorize_policy=1
     ;;
   I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY)
     client_name=authorized-policy-enrollment-client.py
     client_confirmation=$confirmation
     catacomb_path="/var/lib/t2-touchid/$session_uid.catacomb"
+    authorize_policy=1
     ;;
   I_UNDERSTAND_THIS_LOADS_RETAINED_MACOS_CATACOMBS_WITH_AN_AUTHORIZED_BAG)
     client_name=authorized-catacomb-load-client.py
@@ -100,6 +107,7 @@ sudo -n insmod "$module" apple_start_cpu_probe=1 apple_start_with_msi=1 \
   apple_send_control_nop=1 password_key_serial="$serial" \
   macos_session_uid="$session_uid" \
   apple_probe_authorized_enrollment_handoff=1 \
+  apple_authorize_enrollment_policy="$authorize_policy" \
   authorized_enrollment_confirmation=0x41555448454e5231 &
 insmod_pid=$!
 
@@ -149,7 +157,10 @@ insmod_pid=
 
 log=$(sudo -n journalctl -k --after-cursor "$before" --no-pager)
 printf '%s\n' "$log"
-python3 "$module_dir/verify-authorized-enrollment-handoff-log.py" <<<"$log" ||
+verifier_args=()
+(( authorize_policy )) && verifier_args+=(--require-enrollment-policy)
+python3 "$module_dir/verify-authorized-enrollment-handoff-log.py" \
+  "${verifier_args[@]}" <<<"$log" ||
   die "kernel handoff transcript failed independent verification"
 (( load_status == 0 )) || die "kernel handoff returned status $load_status"
 (( client_status == 0 )) || die "BiometricKit enrollment client returned status $client_status"

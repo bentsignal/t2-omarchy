@@ -17,6 +17,7 @@ COMMAND_MAGIC = b"DRCS"
 CONTEXT_CREATE_SELECTOR = 1
 CURRENT_CONTEXT_CREATE_SELECTOR = 0x24
 CONTEXT_DELETE_SELECTOR = 2
+VERIFY_POLICY_SELECTOR = 3
 COMMAND_VERSION = 1
 CONTEXT_RESPONSE_SIZE = 17
 CURRENT_CONTEXT_RESPONSE_SIZE = 21
@@ -24,6 +25,10 @@ CONTEXT_RESPONSE_SIZES = (CONTEXT_RESPONSE_SIZE, CURRENT_CONTEXT_RESPONSE_SIZE)
 CONTEXT_EXTERNAL_FORM_SIZE = 16
 CONTEXT_DOMAIN_SIZE = 4
 CONTEXT_DELETE_COMMAND_SIZE = 8 + CONTEXT_EXTERNAL_FORM_SIZE
+ENROLLMENT_POLICY = b"TouchIdEnrollment"
+ENROLLMENT_POLICY_COMMAND_SIZE = 51
+POLICY_RESPONSE_CAPACITY = 0x1000
+SIMPLE_REQUIREMENT_TYPES = frozenset({1, 2, 3, 6, *range(8, 16), *range(18, 29)})
 
 
 class ACMTransportError(ValueError):
@@ -35,6 +40,17 @@ class ACMEnvelope:
     message_type: int
     payload_length: int
     value: int
+
+
+@dataclass(frozen=True)
+class PolicyResult:
+    satisfied: bool
+    requirement_present: bool
+    requirement_length: int
+    requirement_type: int | None
+    requirement_state: int | None
+    requirement_flags: int | None
+    requirement_payload_length: int | None
 
 
 def _integer(value: int, maximum: int, label: str) -> int:
@@ -101,16 +117,51 @@ def scrd_initialization_envelope() -> tuple[bytes, bytes]:
     return encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0), payload
 
 
-def context_create_command() -> bytes:
+def context_create_command(user_id: int = 0) -> bytes:
+    user_id = _integer(user_id, 0xffffffff, "context subject UID")
     return (COMMAND_MAGIC +
             bytes((CONTEXT_CREATE_SELECTOR, 0, CONTEXT_DOMAIN_SIZE,
-                   COMMAND_VERSION)) + struct.pack("<I", 0))
+                   COMMAND_VERSION)) + struct.pack("<I", user_id))
 
 
-def current_context_create_command() -> bytes:
+def current_context_create_command(user_id: int = 0) -> bytes:
+    user_id = _integer(user_id, 0xffffffff, "context subject UID")
     return (COMMAND_MAGIC +
             bytes((CURRENT_CONTEXT_CREATE_SELECTOR, 0, CONTEXT_DOMAIN_SIZE,
-                   COMMAND_VERSION)) + struct.pack("<I", 0))
+                   COMMAND_VERSION)) + struct.pack("<I", user_id))
+
+
+def enrollment_policy_command(context: bytes | bytearray, *, preflight: bool) -> bytes:
+    if not isinstance(context, (bytes, bytearray)) or len(context) != CONTEXT_EXTERNAL_FORM_SIZE:
+        raise ACMTransportError("policy context must be exactly 16 bytes")
+    if not isinstance(preflight, bool):
+        raise ACMTransportError("policy preflight flag must be boolean")
+    command = (COMMAND_MAGIC + bytes((VERIFY_POLICY_SELECTOR, 0, 0, COMMAND_VERSION)) +
+               bytes(context) + ENROLLMENT_POLICY + b"\0" + bytes((int(preflight),)) +
+               bytes(8))
+    if len(command) != ENROLLMENT_POLICY_COMMAND_SIZE:
+        raise AssertionError("enrollment policy command size changed")
+    return command
+
+
+def decode_policy_response(payload: bytes | bytearray) -> PolicyResult:
+    if not isinstance(payload, (bytes, bytearray)) or not 4 <= len(payload) <= POLICY_RESPONSE_CAPACITY:
+        raise ACMTransportError("policy response length is invalid")
+    satisfied = struct.unpack_from("<I", payload)[0]
+    if satisfied not in (0, 1):
+        raise ACMTransportError("policy result is not boolean")
+    requirement = payload[4:]
+    if not requirement:
+        return PolicyResult(bool(satisfied), False, 0, None, None, None, None)
+    if len(requirement) < 16:
+        raise ACMTransportError("policy requirement is shorter than its header")
+    kind, state, flags, data_length = struct.unpack_from("<IIII", requirement)
+    if kind not in SIMPLE_REQUIREMENT_TYPES:
+        raise ACMTransportError("policy requirement type is unsupported")
+    if data_length != len(requirement) - 16:
+        raise ACMTransportError("policy requirement payload length is inconsistent")
+    return PolicyResult(bool(satisfied), True, len(requirement), kind, state,
+                        flags, data_length)
 
 
 def context_delete_command_into(context_response: bytearray,
@@ -166,7 +217,8 @@ def validate_context_create_response_length(length: int) -> None:
 class ContextCreatePlan:
     """Order SCRD init and one create/delete lifecycle without storing a handle."""
 
-    def __init__(self) -> None:
+    def __init__(self, user_id: int = 0) -> None:
+        self.user_id = _integer(user_id, 0xffffffff, "context subject UID")
         self.initialization_request: ACMEnvelope | None = None
         self.initialized = False
         self.context_create_request: ACMEnvelope | None = None
@@ -193,7 +245,7 @@ class ContextCreatePlan:
         if (not self.initialized or self.context_create_request is not None or
                 self.context_created):
             raise ACMTransportError("context creation is out of order")
-        payload = context_create_command()
+        payload = context_create_command(self.user_id)
         envelope = encode_envelope(COMMAND_MESSAGE_TYPE, len(payload), 0)
         self.context_create_request = decode_envelope(envelope)
         return envelope, payload
@@ -231,8 +283,8 @@ class ContextCreatePlan:
 class CurrentContextCreatePlan(ContextCreatePlan):
     """Model Apple's command-0x24-first create with exact -3 fallback."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, user_id: int = 0) -> None:
+        super().__init__(user_id)
         self._create_mode: str | None = None
         self._fallback_pending = False
 
@@ -240,11 +292,11 @@ class CurrentContextCreatePlan(ContextCreatePlan):
         if not self.initialized or self.context_created:
             raise ACMTransportError("context creation is out of order")
         if self.context_create_request is None and self._create_mode is None:
-            payload = current_context_create_command()
+            payload = current_context_create_command(self.user_id)
             self._create_mode = "current"
         elif (self.context_create_request is None and
               self._create_mode == "current" and self._fallback_pending):
-            payload = context_create_command()
+            payload = context_create_command(self.user_id)
             self._create_mode = "legacy"
             self._fallback_pending = False
         else:

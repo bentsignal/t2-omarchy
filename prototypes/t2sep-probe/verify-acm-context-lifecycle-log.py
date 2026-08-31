@@ -42,12 +42,12 @@ MARKERS = {
         ("ping-success", ("status=0", "length=0")),
     "ACM context-create request:":
         ("current-request", ("endpoint=10", "message_type=1", "selector=36",
-                             "length=12", "domain=0", "expected_reply=21")),
+                             "length=12", "subject_uid=", "expected_reply=21")),
     "ACM current context-create returned -3; applying Apple legacy fallback":
         ("fallback", ()),
     "ACM context-create fallback request:":
         ("legacy-request", ("endpoint=10", "message_type=1", "selector=1",
-                            "length=12", "domain=0", "expected_reply=17")),
+                            "length=12", "subject_uid=", "expected_reply=17")),
     "ACM context-create reply passed strict validation:":
         ("create-success", ("status=0", "context_bytes=not-logged")),
     "ACM context-delete request:":
@@ -100,6 +100,7 @@ def verify_service(text: str) -> None:
         raise VerificationError("ACM context transcript must be text")
     events = []
     stopped = False
+    subject_uid = None
     for line in text.splitlines():
         if "t2sep_probe 0000:04:00.2:" not in line:
             continue
@@ -123,6 +124,14 @@ def verify_service(text: str) -> None:
             name, fields = found[0]
             if not all(field in line for field in fields):
                 raise VerificationError(f"malformed ACM stage: {name}")
+            if name in ("current-request", "legacy-request"):
+                uid_match = re.search(r"subject_uid=([0-9]+)(?:\s|$)", line)
+                if not uid_match or int(uid_match[1]) > 0xffffffff:
+                    raise VerificationError("ACM context subject UID is malformed")
+                if subject_uid is None:
+                    subject_uid = int(uid_match[1])
+                elif subject_uid != int(uid_match[1]):
+                    raise VerificationError("ACM context subject UID changed during fallback")
             if name == "create-success":
                 expected_length = ("length=21" if events and events[-1] ==
                                    envelope_event(
