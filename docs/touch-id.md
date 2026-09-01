@@ -3786,3 +3786,14 @@ fprintd, and still fails closed if either consumer is already active; enabled
 but ordered consumers are now permitted so the captured warm state can proceed
 directly into authentication. This does not claim cold-boot restoration: the
 readiness gate requires a nonempty, structurally valid live identity list.
+
+The installed no-reset readiness unit subsequently passed with two live
+identities, and the custom fprintd D-Bus service started successfully.
+`fprintd-list shawn` reported the Apple T2 device and one configured finger.
+A supervised positive control through the unmodified `fprintd-verify` client
+returned `verify-match (done)` and exit status zero for the macOS-enrolled
+finger. The backend fires its desktop cue only after the final command-4 start
+is accepted and accepts only a version-2 terminal result containing a UUID
+from the scoped UID-501 inventory. PAM was deliberately left unchanged until
+an unenrolled-finger negative control can prove rejection through this same
+fprintd path.

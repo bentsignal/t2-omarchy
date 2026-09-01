@@ -627,3 +627,13 @@ warm capture remains ordered before readiness and fprintd and rejects either
 consumer if already active, but it no longer rejects them merely for being
 enabled. This preserves the boot observation while allowing the proven warm
 state to flow into authentication without a manual marker.
+
+The no-reset fprintd backend was then installed and started without changing
+PAM. Its readiness unit completed with the two warm identities still present,
+and `fprintd-list shawn` exposed one configured finger on `Apple T2 Touch ID`.
+In the first supervised positive control, the ordinary `fprintd-verify shawn`
+client received the post-acceptance desktop cue, the enrolled finger produced
+the same attested terminal result, and fprintd reported `verify-match (done)`
+with exit status zero. This proves the successful protocol is integrated
+through the standard fprintd D-Bus ABI, not only through the research probe.
+PAM remains unchanged pending an unenrolled-finger negative control.
