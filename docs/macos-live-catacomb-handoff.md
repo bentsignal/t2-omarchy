@@ -524,3 +524,57 @@ the current `performMatchCommand:` processed flags and identity-selection
 serializer because the strict log intentionally cannot expose raw input bytes.
 Never commit the private directory, identity records, UUIDs, credential data,
 or biometric callback payloads.
+
+### 2026-08-31 known-good macOS lock-screen match result
+
+The owner-only match capture completed successfully. Its strict sanitized log
+contains 118 generic commands and two accepted command-4 starts. Both use
+version 1, value zero, exactly 68 input bytes, and synchronous status zero.
+The raw log and its private capture directory remain outside Git.
+
+This is a decisive identity-selection result: neither known-good command has
+bytes after the 68-byte base, so macOS supplied no selected-identity appendix
+for this lock-screen unlock. Current static code confirms that
+`performMatchCommand:` would append `selectedIdentitiesBlob` unchanged if it
+were present. That blob's current format is an 8-byte header with count at
+offset zero followed by 20-byte identity records at offset eight. The older
+upstream counted-identity request is valid for an explicitly selected set, but
+it is not the request macOS used here.
+
+Current BiometricSupport and biometrickitd also establish the processed-flag
+mapping. The ordinary 68-byte base begins with processed flags and user ID.
+`forUnlock` contributes flag `0x01`; `forPreArm` contributes `0x100`; selected
+identity presence contributes `0x4000`. `stopOnSuccess` contributes `0x80` in
+the host operation, but biometrickitd clears that bit before sending command 4.
+All other 60 base bytes remain zero outside the separately gated privileged
+modes. Linux's fixed 68-byte/flag-one attempt therefore matches the observed
+length and statically recovered unlock flag, but it did not reproduce macOS's
+preceding pre-arm lifecycle. The log cannot expose word one's user ID. Current
+static code proves it is derived from `BKFilterUserID` when that filter key is
+present and otherwise remains `0xffffffff`; the Linux thread must audit the
+user-ID choice rather than claim byte-for-byte equality from this log.
+
+The first macOS command 4 occurs after successful command `0x57`, version 1,
+value one, with no input or output. Static code maps `0x57` to
+`systemSleepStateChanged:` and proves that its Boolean argument is forwarded as
+the command value. The surrounding lock/wake/cancel order and the static flag
+mapping identify the first start as the pre-arm stage. macOS later sends `0x57`
+value zero, cancels the earlier operation, and issues a second successful
+68-byte command 4 for the actual unlock. Both stages were recorded during the
+one known-good lock/unlock ceremony. This two-stage lifecycle is the first
+material macOS behavior Linux has not tested; another single command-4 scan is
+not useful.
+
+The next Linux discriminator should reproduce only that bounded lifecycle on
+one retained, calibrated, warm-identity connection: send `0x57` value one;
+start a 68-byte command 4 with pre-arm flags `0x100`, the operation's explicitly
+pinned user ID, and a zero 60-byte tail; observe only bounded status callbacks;
+send `0x57` value zero and cancel; then start the 68-byte unlock request with
+flags one and the same pinned user ID. The Linux implementation must state
+whether it is testing current Apple UID 501 or the no-filter default
+`0xffffffff`; do not silently change that word. Present the enrolled finger
+only after the second start is accepted and the existing human gate prints
+`TOUCH NOW`. Require terminal event `0xe3ff8002`, cancel on timeout, and retain
+all existing privacy, generation, cleanup, and reconciliation gates. This is a
+justified discriminator, not yet a claim that pre-arm will fix the missing
+terminal result.

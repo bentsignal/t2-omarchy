@@ -3708,6 +3708,33 @@ immediate predecessors with Linux, then use static macOS inspection to recover
 the processed flags and identity-selection serializer that unified logging
 cannot safely reveal.
 
+That known-good lock-screen capture produced two accepted command-4 starts in
+118 generic commands. Both were version 1, value zero, exactly 68 input bytes,
+and synchronous status zero. The absent suffix proves macOS did not send a
+selected-identity appendix for this unlock. Current static code confirms that
+an explicit selection would be appended unchanged after the 68-byte base as an
+8-byte header followed by 20-byte identity records.
+
+The current superclass maps `forUnlock` to processed flag one and `forPreArm`
+to `0x100`; biometrickitd copies those flags into word zero and clears the host
+`stopOnSuccess` bit `0x80` before command 4. The first captured match followed
+successful no-input command `0x57` value one, statically identified as
+`systemSleepStateChanged:`. macOS later sent `0x57` value zero, cancelled the
+pre-arm operation, and issued the second 68-byte match for the actual unlock.
+The generic log cannot expose the request's user-ID word. Current static code
+shows that word comes from `BKFilterUserID` when present and defaults to
+`0xffffffff` only when absent, so the Linux run must record whether it pins UID
+501 or deliberately tests the no-filter default.
+
+Linux already tested the second request's exact length and flag one in
+isolation. It has not tested the preceding pre-arm lifecycle. The next bounded
+experiment is therefore `0x57` value one plus command 4 flags `0x100`, followed
+by `0x57` value zero and cancellation, then the 68-byte flag-one unlock on the
+same warm, calibrated, retained connection and with one explicitly pinned user
+ID across both stages. The enrolled finger is presented only after the second
+start succeeds and the explicit touch gate opens. A terminal `0xe3ff8002`
+remains the only match-success criterion.
+
 ## Useful baseline commands
 
 ```bash

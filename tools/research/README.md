@@ -209,7 +209,11 @@ generation-3 read-only bio-device-list command `0x52`. It also pins the
 read-only `accessoryInfo:` command `0x54`, its type-2 plus UUID 20-byte input,
 and its exact 83-byte output validation. It checks the daemon SHA-256 plus the
 dyld-cached BiometricSupport UUID and `__TEXT,__text` SHA-256, including the
-exact 44-byte built-in accessory/device-group record construction. It reads
+exact 44-byte built-in accessory/device-group record construction. The same
+current-binary verifier pins match command 4's 68-byte base, processed-flags
+mask, unchanged selected-identity append, and the selected blob's 8-byte header
+plus 20-byte records. It also pins the superclass flag mapping for unlock and
+pre-arm operations and the Boolean-valued sleep-state command `0x57`. It reads
 only installed executable code through `dyld_info`.
 
 `capture-macos-enrollment-bridge.sh` is the narrow cross-OS discriminator for
