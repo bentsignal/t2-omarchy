@@ -619,3 +619,11 @@ UUID attestation, add positive and negative hardware controls, and then wire
 the verified result into fprintd/PAM. Cold Linux boot still needs a safe way to
 reload persisted Catacomb identity state; the present proof relies on the
 macOS-warm transition and must not be represented as cold-boot persistence.
+
+The fprintd integration now contains no sensor reset and refuses readiness
+unless the live identity list is nonempty and structurally valid. Accordingly,
+the earlier temporary `allow-reset-capable-services` condition is cleared. The
+warm capture remains ordered before readiness and fprintd and rejects either
+consumer if already active, but it no longer rejects them merely for being
+enabled. This preserves the boot observation while allowing the proven warm
+state to flow into authentication without a manual marker.

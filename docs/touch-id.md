@@ -3773,3 +3773,16 @@ journalctl -k -b --no-pager | grep -Ei 't2|bce|secure enclave|sep'
 
 Re-check the PCI address after firmware or hardware changes rather than
 assuming it will always remain `04:00.2`.
+
+### 2026-08-31 no-reset fprintd integration guard
+
+After the first successful Linux match, the external GPL fprintd backend and
+readiness service were changed to use the proven no-reset pre-arm/all-users
+path. The old temporary systemd condition named
+`allow-reset-capable-services` is therefore obsolete and misleading. Its
+drop-in now explicitly clears that condition for upgrades from the guarded
+research setup. The warm capture service still runs before readiness and
+fprintd, and still fails closed if either consumer is already active; enabled
+but ordered consumers are now permitted so the captured warm state can proceed
+directly into authentication. This does not claim cold-boot restoration: the
+readiness gate requires a nonempty, structurally valid live identity list.
