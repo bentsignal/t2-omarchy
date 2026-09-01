@@ -578,3 +578,44 @@ only after the second start is accepted and the existing human gate prints
 all existing privacy, generation, cleanup, and reconciliation gates. This is a
 justified discriminator, not yet a claim that pre-arm will fix the missing
 terminal result.
+
+### 2026-08-31 first successful Linux T2 Touch ID match
+
+Linux reproduced the known-good two-stage macOS lifecycle on one retained
+warm-identity connection. A zero-touch rehearsal first proved status-zero
+completion for FDR calibration, `0x57` value one, the 68-byte pre-arm command 4
+with flags `0x100`, `0x57` value zero, cancellation, and the 68-byte unlock
+command 4 with flags one. Two identity records remained visible throughout.
+
+The first supervised run pinned both command-4 stages to Apple UID 501. The T2
+accepted every command and captured the enrolled finger, including status 89,
+but emitted no terminal match result. That rules out pre-arm alone and confirms
+that the command's user word is semantically significant.
+
+The second supervised run changed only that word to the statically established
+no-filter default `0xffffffff`. It succeeded. The T2 emitted service event
+`0xe3ff8002`, version 2, with a 3,268-byte payload. The privacy-safe parser
+found an identity UUID from the already scoped UID-501 identity list inside the
+terminal result and reported `matched: true` plus
+`matches_enrolled_identity: true`; no UUID or biometric payload was printed or
+persisted. The final cancellation returned status zero. This is the first
+proven successful Touch ID identity match from Linux on this MacBookPro16,1
+running bridgeOS `23P6068`.
+
+The exact proven match recipe is therefore: retain the macOS-warm identity
+state; negotiate bridge API v2; cancel stale work; load genuine bridgeOS FDR
+calibration; obtain the UID-501 identity list only for result attestation; send
+`0x57(1)`; start command 4 with a zero-tailed 68-byte input whose words are
+`flags=0x100,user=0xffffffff`; observe bounded callbacks; send `0x57(0)` and
+cancel; then start another zero-tailed 68-byte command 4 with
+`flags=1,user=0xffffffff`. Accept authentication only from terminal event
+`0xe3ff8002` containing one of the previously scoped identity UUIDs.
+
+The next engineering step is integration, not another protocol scan. The
+current fprintd facade still resets the sensor and sends the historical
+selected-identity request, so it must not yet be enabled. Port the proven
+no-reset pre-arm/all-users sequence into that backend, preserve fail-closed
+UUID attestation, add positive and negative hardware controls, and then wire
+the verified result into fprintd/PAM. Cold Linux boot still needs a safe way to
+reload persisted Catacomb identity state; the present proof relies on the
+macOS-warm transition and must not be represented as cold-boot persistence.

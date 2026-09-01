@@ -3735,6 +3735,32 @@ ID across both stages. The enrolled finger is presented only after the second
 start succeeds and the explicit touch gate opens. A terminal `0xe3ff8002`
 remains the only match-success criterion.
 
+That discriminator succeeded. With both stages pinned to UID 501, Linux still
+captured the enrolled finger but received no terminal verdict. Repeating the
+same lifecycle with only the command-4 user word changed to the current
+no-filter default `0xffffffff` produced service event `0xe3ff8002`, version 2,
+length 3,268. The privacy-safe parser found one of the previously scoped
+UID-501 identity UUIDs in the terminal result and reported both `matched: true`
+and `matches_enrolled_identity: true`. No identifier or biometric payload was
+emitted. This is a proven successful Linux Touch ID match on this
+MacBookPro16,1/bridgeOS `23P6068`.
+
+The successful sequence is: preserve warm identities; negotiate bridge API
+v2; cancel stale work; load bridgeOS FDR calibration; read UID-501 identities
+for result attestation; send `0x57(1)`; issue a zero-tailed 68-byte pre-arm
+command 4 with flags `0x100` and user `0xffffffff`; send `0x57(0)` and cancel;
+then issue a zero-tailed 68-byte unlock command 4 with flags one and the same
+all-users word. Authentication succeeds only when terminal event
+`0xe3ff8002` contains a UUID from the scoped identity list.
+
+Do not enable the current fprintd facade unchanged: it still resets this
+machine's active identity state and uses the historical selected-identity
+request. Port the proven no-reset lifecycle into the backend, retain strict
+UUID attestation, and validate both an enrolled-finger positive control and an
+unenrolled-finger negative control before PAM integration. This result proves
+warm Linux matching, not yet cold-boot Catacomb restoration or Linux-native
+enrollment.
+
 ## Useful baseline commands
 
 ```bash
