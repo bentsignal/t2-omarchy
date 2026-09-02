@@ -101,3 +101,10 @@ gate. The complete dependency-aware suite passes 343 tests. This checkpoint
 has not been installed or activated on the live machine, so it has not loaded
 the known-stale zero-identity local store or disturbed the working warm T2
 state.
+
+The host-encrypted unattended credential was reprovisioned after discovery
+that the prior credential file was absent. Its mode is root-only, host-key
+decryption succeeds, and the real `t2-credential-unlock.service` successfully
+validated and unlocked both loaded keybags. No password or credential bytes are
+recorded here. This closes the pre-Catacomb cold-boot prerequisite without
+changing the live biometric state.
