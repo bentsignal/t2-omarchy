@@ -20,6 +20,11 @@ complete `/Library/Catacomb` backing store, encrypt it to the existing Linux
 transfer certificate, and return immediately to Linux. This is preservation,
 not enrollment or matching research.
 
+Linux has already prepared the disabled, offline restore implementation in the
+external GPL worktree at commit `826a86e`; all 343 dependency-aware tests pass.
+It is intentionally not installed or activated yet. The macOS thread does not
+need to modify or push that implementation branch during this pass.
+
 ## Safety boundary
 
 - Confirm in macOS Touch ID settings that the enrolled fingerprint is still

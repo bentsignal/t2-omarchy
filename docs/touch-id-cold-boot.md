@@ -79,3 +79,25 @@ bytes or biometric identifiers.
 
 The bounded acquisition procedure is recorded in
 [the current-Catacomb macOS handoff](macos-current-catacomb-cold-boot-handoff.md).
+
+## Offline restore implementation
+
+The external GPL worktree now has a clean local checkpoint at commit `826a86e`
+on branch `t2-v1-first-enrollment`. It adds an explicitly gated cold-restore
+service and a same-connection restore primitive that:
+
+1. strictly validates an exact three-component local store;
+2. rejects the store before dispatch if its selected-user identity set is
+   empty;
+3. loads master, selected-user, and biolockout components in that order;
+4. stops on the first nonzero Bridge status; and
+5. requires two byte-identical, structurally valid, nonempty selected-user
+   identity replies before declaring success.
+
+The service is disabled by configuration unless
+`T2_TOUCHID_ENABLE_COLD_RESTORE=1`; the default is zero. Biometric readiness is
+ordered after it and independently retains its own nonempty no-reset identity
+gate. The complete dependency-aware suite passes 343 tests. This checkpoint
+has not been installed or activated on the live machine, so it has not loaded
+the known-stale zero-identity local store or disturbed the working warm T2
+state.
