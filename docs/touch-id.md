@@ -3797,3 +3797,42 @@ is accepted and accepts only a version-2 terminal result containing a UUID
 from the scoped UID-501 inventory. PAM was deliberately left unchanged until
 an unenrolled-finger negative control can prove rejection through this same
 fprintd path.
+
+### 2026-09-02 Omarchy lock-screen and Polkit integration
+
+The supervised negative fprintd control is now complete. An unenrolled finger
+returned `verify-no-match (done)` through the stock `fprintd-verify` client,
+while the enrolled-finger control continued to return `verify-match (done)`.
+Both outcomes therefore traverse the ordinary fprintd D-Bus interface and are
+not classifications made only by the research probe.
+
+PAM integration was then installed in independently reversible stages. The
+Omarchy lock screen retains its original password service and uses a separate
+fingerprint service backed by `pam_fprintd`; exact prior files or created-file
+markers are stored root-only under `/var/lib/t2-touchid/pam-backups`. A real
+Omarchy lock/unlock ceremony succeeded with the macOS-enrolled finger. The
+request and success desktop hooks are now no-ops, while a rejected scan emits
+only a silent `Fingerprint not recognized` notification.
+
+The same staged installer placed the local Polkit PAM override without
+changing sudo. A harmless logged-in `pkexec /usr/bin/true` positive control was
+authorized by the enrolled finger. A second control presented an unenrolled
+finger twice and then the enrolled finger. The first two attempts were
+rejected; the third recovered successfully within pam_fprintd's default
+three-attempt window, and the journal confirms that Polkit opened the root
+session and executed `/usr/bin/true`. The lack of a success toast or sound is
+intentional, so the disappearing authorization dialog is the visible success
+signal.
+
+The fprintd facade was also aligned with current fprintd signal semantics:
+`VerifyFingerSelected` is emitted only for a client request of `any`, not when
+pam_fprintd already supplied the concrete enrolled finger. This removes the
+otherwise harmless `Unexpected VerifyFingerSelected` PAM warning. The external
+GPL implementation passes 335 tests after this change (local commit
+`66779b1`).
+
+This proves warm-transition matching through fprintd, the Omarchy lock screen,
+and Polkit. It does **not** yet prove cold-Linux-boot identity restoration or
+Linux-native enrollment. `fprintd.service` and `t2-biometric-ready.service`
+remain active but not boot-enabled during this research stage, and the sudo PAM
+profile remains unchanged.

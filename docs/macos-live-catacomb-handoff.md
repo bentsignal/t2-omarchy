@@ -637,3 +637,27 @@ the same attested terminal result, and fprintd reported `verify-match (done)`
 with exit status zero. This proves the successful protocol is integrated
 through the standard fprintd D-Bus ABI, not only through the research probe.
 PAM remains unchanged pending an unenrolled-finger negative control.
+
+### 2026-09-02 Linux desktop integration result
+
+The unenrolled-finger fprintd control subsequently returned
+`verify-no-match (done)`, while the enrolled-finger control remained positive.
+PAM was then staged with root-only exact rollback state. The Omarchy lock
+screen successfully unlocked from the macOS-enrolled finger, and a harmless
+logged-in Polkit request (`pkexec /usr/bin/true`) was also authorized by Touch
+ID. A follow-up Polkit run rejected two unenrolled-finger scans and accepted
+the enrolled finger on the third attempt; the system journal confirms that the
+command executed only after that successful authentication.
+
+Request and success feedback are intentionally silent. Rejection produces one
+notification with no sound. The local GPL fprintd facade now emits
+`VerifyFingerSelected` only for `VerifyStart("any")`, which removes pam_fprintd's
+compatibility warning when it starts verification with a concrete finger. Its
+335-test suite passes and the deployed file matches the tested source (local
+implementation commit `66779b1`).
+
+The sudo PAM profile has not been installed. The two biometric services are
+active but not boot-enabled, and the present result still depends on retained
+macOS-warm identity state. Cold Linux boot restoration and Linux-native
+enrollment remain the outstanding milestones; no macOS handoff is needed for
+the already proven desktop-authentication paths.
