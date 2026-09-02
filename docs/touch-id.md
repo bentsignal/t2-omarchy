@@ -3827,12 +3827,23 @@ signal.
 The fprintd facade was also aligned with current fprintd signal semantics:
 `VerifyFingerSelected` is emitted only for a client request of `any`, not when
 pam_fprintd already supplied the concrete enrolled finger. This removes the
-otherwise harmless `Unexpected VerifyFingerSelected` PAM warning. The external
-GPL implementation passes 335 tests after this change (local commit
-`66779b1`).
+otherwise harmless `Unexpected VerifyFingerSelected` PAM warning. The signal
+is deferred until after the `VerifyStart` method reply so current pam_fprintd
+does not receive it prematurely. The external GPL implementation passes 335
+tests after these changes (local commits `66779b1` and `8d73e26`).
+
+The sudo PAM profile was then installed with an exact root-only backup. Because
+this development machine intentionally retains a temporary
+`NOPASSWD: ALL` research rule, a later sudoers entry forced authentication only
+for `/usr/bin/true` during the control. `visudo` accepted both the global and
+test configurations, the enrolled finger authorized the real `sudo` PAM path,
+and the root command completed successfully. The narrow test override was then
+removed; the tested PAM profile remains installed, while ordinary sudo will
+continue to bypass authentication until the separate research exception is
+retired.
 
 This proves warm-transition matching through fprintd, the Omarchy lock screen,
-and Polkit. It does **not** yet prove cold-Linux-boot identity restoration or
-Linux-native enrollment. `fprintd.service` and `t2-biometric-ready.service`
-remain active but not boot-enabled during this research stage, and the sudo PAM
-profile remains unchanged.
+Polkit, and sudo. It does **not** yet prove cold-Linux-boot identity restoration
+or Linux-native enrollment. `fprintd.service` and
+`t2-biometric-ready.service` remain active but not boot-enabled during this
+research stage.

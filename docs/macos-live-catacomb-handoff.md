@@ -652,12 +652,19 @@ command executed only after that successful authentication.
 Request and success feedback are intentionally silent. Rejection produces one
 notification with no sound. The local GPL fprintd facade now emits
 `VerifyFingerSelected` only for `VerifyStart("any")`, which removes pam_fprintd's
-compatibility warning when it starts verification with a concrete finger. Its
-335-test suite passes and the deployed file matches the tested source (local
-implementation commit `66779b1`).
+compatibility warning when it starts verification with a concrete finger. The
+signal is also deferred until after the method reply, preventing the same
+warning from premature delivery. Its 335-test suite passes and the deployed
+file matches the tested source (local implementation commits `66779b1` and
+`8d73e26`).
 
-The sudo PAM profile has not been installed. The two biometric services are
-active but not boot-enabled, and the present result still depends on retained
+The sudo PAM profile is now installed with an exact root-only backup. A narrow
+temporary sudoers override forced authentication for `/usr/bin/true` despite
+the machine's development-only `NOPASSWD: ALL` rule; the enrolled finger
+authorized the real sudo PAM path and the command succeeded. The override was
+removed immediately afterward, so ordinary sudo still bypasses authentication
+until the research exception is retired. The two biometric services are active
+but not boot-enabled, and the present result still depends on retained
 macOS-warm identity state. Cold Linux boot restoration and Linux-native
 enrollment remain the outstanding milestones; no macOS handoff is needed for
 the already proven desktop-authentication paths.
