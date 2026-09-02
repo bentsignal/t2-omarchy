@@ -48,16 +48,27 @@ The following services are enabled and active:
 not boot-enabled. The readiness service performs no sensor reset and succeeds
 only when a live, structurally valid, nonempty identity list already exists.
 
-The root-only local Catacomb store contains the expected encrypted master,
-selected-user, and biolockout components. Their contents and hashes are not
+The root-only local Catacomb store contains structurally valid encrypted
+master, selected-user, and biolockout components. A private semantic check
+performed after this checkpoint proved that both this store and its retained
+backup are the older zero-identity baseline: the selected-user wrapper reports
+zero identities. They predate the fingerprint now enrolled in macOS and must
+not be loaded as the current cold-boot state. Their contents and hashes are not
 recorded here because they are private biometric state.
+
+The live T2, by contrast, reports two structurally valid identity records and
+continues to match the enrolled finger. Until a fresh current Catacomb is
+exported, that live T2 state is the only known-good enrolled copy visible from
+Linux. Do not reboot, reset the sensor, invoke a reset-capable readiness path,
+or dispatch the stale local components during this interval.
 
 ## Cold-boot boundary
 
 Keybag loading and encrypted-credential unlock already run unattended. The
-missing transition is restoring the encrypted Catacomb components into the T2
-BiometricKit session after those keybags are unlocked and before the no-reset
-readiness check. Readiness must remain fail-closed; fprintd must not start until
+missing transition is first acquiring the current encrypted Catacomb from the
+macOS backing store, then restoring its components into the T2 BiometricKit
+session after those keybags are unlocked and before the no-reset readiness
+check. Readiness must remain fail-closed; fprintd must not start until
 restoration is complete and a stable nonempty identity inventory has been
 verified.
 
@@ -65,3 +76,6 @@ The first implementation must therefore be independently reversible, preserve
 password login and PAM rollback, avoid sensor reset, reject stale or malformed
 Catacomb state before dispatch, and never print or journal private component
 bytes or biometric identifiers.
+
+The bounded acquisition procedure is recorded in
+[the current-Catacomb macOS handoff](macos-current-catacomb-cold-boot-handoff.md).
