@@ -98,6 +98,18 @@ need to modify or push that implementation branch during this pass.
    reboot to Linux. If reboot scheduling fails, resume the daemon before doing
    anything else. Select Linux/Omarchy at startup.
 
+The macOS thread prepared
+`tools/research/export-current-macos-catacomb.sh` to perform steps 3 through 6
+as one fail-closed transaction after the human confirms the enrolled finger in
+System Settings. It requires the absolute external GPL checkout path, validates
+that checkout is clean, keeps checker output inside the root-only temporary
+directory, resumes `biometrickitd` immediately after the snapshot, promotes
+the CMS ciphertext only after semantic and CMS validation, and removes all
+plaintext before printing one sanitized result line. It deliberately does not
+perform the final freeze/reboot, because the sanitized result must be committed
+and pushed first. Its static safety-contract tests and the external checker's
+five fixture tests pass on macOS.
+
 ## Linux return plan
 
 On return, the Linux thread will first fetch the sanitized report and verify
