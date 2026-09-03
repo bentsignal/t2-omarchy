@@ -21,11 +21,17 @@ class ColdRestoreDeploymentTests(unittest.TestCase):
 
     def test_unit_is_ordered_and_explicitly_armed(self):
         self.assertIn("Requires=t2-credential-unlock.service", UNIT)
+        self.assertIn("After=t2-credential-unlock.service t2-warm-identity-capture.service", UNIT)
         self.assertIn("Before=t2-biometric-ready.service fprintd.service", UNIT)
         self.assertIn(
             "ConditionPathExists=/var/lib/t2-touchid/cold-restore-enabled", UNIT
         )
         self.assertIn("NoNewPrivileges=yes", UNIT)
+        self.assertIn(
+            "/usr/bin/flock --exclusive --timeout 30 --no-fork "
+            "/run/t2-touchid/operation.lock",
+            UNIT,
+        )
         self.assertNotIn("reset", UNIT.lower().replace("cold-boot restore", ""))
 
     def test_readiness_requires_successful_restore_when_armed(self):
