@@ -4,7 +4,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: sudo $0 /absolute/path/to/t2-touchid-linux" >&2
+  echo "Usage: sudo $0" >&2
   exit 2
 }
 
@@ -15,23 +15,13 @@ fail() {
 
 [[ $(uname -s) == Darwin ]] || fail "this exporter must run on macOS"
 [[ $EUID -eq 0 ]] || fail "administrator privileges are required"
-[[ $# -eq 1 ]] || usage
+[[ $# -eq 0 ]] || usage
 
-gpl_checkout=$1
-[[ $gpl_checkout == /* ]] || fail "the GPL checkout path must be absolute"
-checker="$gpl_checkout/src/t2-catacomb-fixture-check.py"
-[[ -f $checker ]] || fail "the external GPL fixture checker is unavailable"
-
-git_bin=$(command -v git) || fail "git is unavailable"
+script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+checker="$script_dir/validate-current-macos-catacomb.py"
+[[ -f $checker && ! -L $checker ]] || fail "the in-repo Catacomb validator is unavailable"
 python_bin=$(command -v python3) || fail "python3 is unavailable"
 openssl_bin=$(command -v openssl) || fail "openssl is unavailable"
-
-git_safe=("$git_bin" -c "safe.directory=$gpl_checkout" -C "$gpl_checkout")
-"${git_safe[@]}" diff --quiet -- || fail "the external GPL checkout is dirty"
-"${git_safe[@]}" diff --cached --quiet -- || fail "the external GPL checkout is dirty"
-gpl_commit=$("${git_safe[@]}" rev-parse --verify HEAD) \
-  || fail "the external GPL commit cannot be resolved"
-[[ $gpl_commit =~ ^[0-9a-f]{40}$ ]] || fail "the external GPL commit is invalid"
 
 efi_device=/dev/disk0s1
 efi_mount=/Volumes/EFI
@@ -114,11 +104,11 @@ with open(sys.argv[1], "r", encoding="utf-8") as stream:
     result = json.load(stream)
 identity_count = result.get("identity_count")
 required_true = (
-    "original_schemas_valid",
-    "independent_oracle_readback",
+    "schemas_valid",
+    "foundation_readback",
     "semantic_round_trip_equal",
-    "opaque_secure_envelopes_preserved",
-    "account_and_keybag_bindings_preserved",
+    "secure_envelopes_valid",
+    "account_and_keybag_bindings_present",
     "identifiers_redacted",
 )
 valid = (
@@ -150,4 +140,4 @@ cms_bytes=$(stat -f '%z' "$destination") \
 macos_build=$(sw_vers -buildVersion)
 
 remove_private || fail "private plaintext cleanup failed"
-echo "current Catacomb transfer complete: macos_build=$macos_build upstream=$gpl_commit cms_bytes=$cms_bytes components=exact identity_nonzero=yes cms_parse=yes plaintext_removed=yes"
+echo "current Catacomb transfer complete: macos_build=$macos_build validator=in-repo cms_bytes=$cms_bytes components=exact identity_nonzero=yes cms_parse=yes plaintext_removed=yes"

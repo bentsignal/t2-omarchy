@@ -108,3 +108,10 @@ decryption succeeds, and the real `t2-credential-unlock.service` successfully
 validated and unlocked both loaded keybags. No password or credential bytes are
 recorded here. This closes the pre-Catacomb cold-boot prerequisite without
 changing the live biometric state.
+
+## Repository ownership correction
+
+The external `t2-touchid-linux` checkout is reference-only. The prototype
+recorded above at commit `826a86e` is not accepted project implementation and
+must not be modified, installed, pushed, or treated as the durable handoff.
+All cold-restore implementation and tests must be created in this repository.

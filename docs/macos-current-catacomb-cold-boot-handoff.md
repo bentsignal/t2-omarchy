@@ -20,10 +20,11 @@ complete `/Library/Catacomb` backing store, encrypt it to the existing Linux
 transfer certificate, and return immediately to Linux. This is preservation,
 not enrollment or matching research.
 
-Linux has already prepared the disabled, offline restore implementation in the
-external GPL worktree at commit `826a86e`; all 343 dependency-aware tests pass.
-It is intentionally not installed or activated yet. The macOS thread does not
-need to modify or push that implementation branch during this pass.
+An earlier Linux checkpoint recorded an offline restore prototype at external
+GPL commit `826a86e`. That checkout is reference-only, so the prototype is not
+accepted project implementation and must not be modified, installed, or pushed.
+After this handoff, Linux must implement and test the restore path in this
+repository before enabling it.
 
 ## Safety boundary
 
@@ -50,13 +51,12 @@ need to modify or push that implementation branch during this pass.
 2. Confirm the fingerprint is present in Touch ID settings, then close System
    Settings. Do not touch the sensor again during this pass.
 3. Mount EFI if needed and verify that the public transfer certificate exists.
-4. Locate the existing external GPL `t2-touchid-linux` checkout used by the
-   macOS thread. Do not copy GPL source into this MIT repository. Use its
-   privacy-safe fixture checker to validate the captured full archive as Apple
-   user 501. Validation must establish all three required components and a
-   nonzero selected-user identity count without printing identifiers or archive
-   members. If the checker cannot establish a nonzero current archive, stop;
-   do not overwrite any EFI artifact.
+4. Use `tools/research/validate-current-macos-catacomb.py` from this repository
+   to validate the captured full archive as Apple user 501. Validation must
+   establish all three required components, Apple Foundation and Python parser
+   agreement, a stable semantic round trip, and a nonzero selected-user identity
+   count without printing identifiers or archive members. If validation fails,
+   stop; do not overwrite any EFI artifact.
 5. Perform the snapshot and encryption with this fail-closed lifecycle:
 
    - set `umask 077` and create a root-owned mode-0700 temporary directory on
@@ -65,8 +65,8 @@ need to modify or push that implementation branch during this pass.
      the freeze succeeded;
    - archive the complete `/Library/Catacomb` into that private directory;
    - send `SIGCONT` immediately after the snapshot is closed;
-   - run the external GPL privacy-safe fixture checker against the private
-     archive and require success plus a nonzero selected-user identity count;
+   - run the in-repo privacy-safe validator against the private archive and
+     require success plus a nonzero selected-user identity count;
    - encrypt the archive using the existing certificate:
 
      ```sh
@@ -88,7 +88,7 @@ need to modify or push that implementation branch during this pass.
      immediate reboot below.
 
 6. Append a sanitized result to this document and push it to `main`. Record
-   only success/failure, the macOS build, external GPL commit, CMS byte length,
+   only success/failure, the macOS build, in-repo validator, CMS byte length,
    whether exactly the required component classes were validated, whether the
    selected-user identity count was nonzero, whether CMS parsing passed, and
    whether all plaintext was removed. Do not record the identity count itself,
@@ -101,21 +101,22 @@ need to modify or push that implementation branch during this pass.
 The macOS thread prepared
 `tools/research/export-current-macos-catacomb.sh` to perform steps 3 through 6
 as one fail-closed transaction after the human confirms the enrolled finger in
-System Settings. It requires the absolute external GPL checkout path, validates
-that checkout is clean, keeps checker output inside the root-only temporary
-directory, resumes `biometrickitd` immediately after the snapshot, promotes
-the CMS ciphertext only after semantic and CMS validation, and removes all
-plaintext before printing one sanitized result line. It deliberately does not
-perform the final freeze/reboot, because the sanitized result must be committed
-and pushed first. Its static safety-contract tests and the external checker's
-five fixture tests pass on macOS.
+System Settings. It uses only the in-repo validator, keeps validator output
+inside the root-only temporary directory, resumes `biometrickitd` immediately
+after the snapshot, promotes the CMS ciphertext only after semantic and CMS
+validation, and removes all plaintext before printing one sanitized result
+line. It deliberately does not perform the final freeze/reboot, because the
+sanitized result must be committed and pushed first. The exporter safety tests
+and eight in-repo validator tests pass on macOS, including a synthetic archive
+whose two identities share the same entity number as the current Apple archive.
 
 ## Linux return plan
 
 On return, the Linux thread will first fetch the sanitized report and verify
 the new CMS envelope exists without decrypting it to a persistent path. It
 will decrypt and strictly validate the archive only inside a root-owned
-mode-0700 temporary directory on the LUKS volume. It will then implement a
+mode-0700 temporary directory on the LUKS volume. It will then implement in
+this repository a
 reversible, fail-closed restore service ordered after credential unlock and
 before biometric readiness. The first actual cold shutdown will happen only
 after that service, its rollback path, and the no-reset verification gate are
@@ -129,4 +130,22 @@ sudo checks. Password fallback must remain available throughout.
 
 ## macOS return result
 
-Pending.
+The current Catacomb export completed on macOS build `25G83` using only the
+in-repo validator. The exact master, selected-user, and bio-lockout components
+passed strict keyed-archive schemas, independent Apple Foundation/Python
+property-list agreement, semantic binary-plist round trips, secure-envelope
+type checks, and account/keybag binding checks. The selected-user identity set
+is nonempty. Identifiers, identity count, archive member paths, hashes, and
+component bytes were not printed or recorded.
+
+The first two guarded attempts failed closed before encryption because the
+reference-only validator incorrectly required identity entity numbers to be
+unique. Both attempts resumed `biometrickitd`, removed their private plaintext
+and staging directories, and created no CMS artifact. The in-repo validator
+instead preserves Apple's observed multi-identity structure while retaining
+unique identity UUIDs and strict user, class, accessory, and object-graph gates.
+
+The successful run produced a 63,674-byte AES-256 CMS DER envelope at the new
+EFI destination. CMS parsing passed, all plaintext and temporary files were
+removed before success was reported, and the older zero-identity baseline
+artifact remained untouched.

@@ -17,6 +17,7 @@ class CurrentCatacombExportSafetyTests(unittest.TestCase):
     def test_is_bounded_to_macos_and_root(self) -> None:
         self.assertIn("[[ $(uname -s) == Darwin ]]", self.source)
         self.assertIn("[[ $EUID -eq 0 ]]", self.source)
+        self.assertIn("[[ $# -eq 0 ]]", self.source)
 
     def test_does_not_replace_the_baseline_artifact(self) -> None:
         self.assertIn("t2-touchid-catacomb-current.cms", self.source)
@@ -38,6 +39,12 @@ class CurrentCatacombExportSafetyTests(unittest.TestCase):
         self.assertIn('result.get("component_count") == 3', self.source)
         self.assertIn("identity_count > 0", self.source)
         self.assertNotIn('cat "$validation"', self.source)
+
+    def test_validation_uses_only_the_in_repo_checker(self) -> None:
+        self.assertIn('checker="$script_dir/validate-current-macos-catacomb.py"', self.source)
+        self.assertIn("validator=in-repo", self.source)
+        self.assertNotIn("gpl_checkout", self.source)
+        self.assertNotIn("t2-touchid-linux", self.source)
 
     def test_encryption_is_validated_before_atomic_promotion(self) -> None:
         encrypt = self.source.index("cms -encrypt -binary -aes-256-cbc")

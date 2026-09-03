@@ -7,6 +7,10 @@ The repository began as a reproducible internal-speaker setup. It now also
 records model-specific power-management findings, including how to choose
 between AMD performance mode and an Intel-only battery mode at boot.
 
+All project implementation, tests, tooling, and documentation live in this
+repository. Other source checkouts are read-only references and must not be
+modified, committed to, pushed, or used as hidden project worktrees.
+
 ## Guides
 
 - [Power management and dual boot modes](docs/power-management.md)
