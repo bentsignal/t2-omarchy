@@ -11,6 +11,7 @@ import plistlib
 import stat
 import subprocess
 import tarfile
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
@@ -35,6 +36,23 @@ CLASS_CHAINS = {
 
 class ValidationError(ValueError):
     pass
+
+
+@dataclass(frozen=True, repr=False)
+class ValidatedCatacomb:
+    """Private validated material for trusted import/restore callers."""
+
+    components: dict[str, bytes]
+    master_secure_data: bytes
+    user_secure_data: bytes
+    biolockout_secure_data: bytes
+    identity_count: int
+
+    def __repr__(self) -> str:
+        return (
+            "ValidatedCatacomb(component_count=3, "
+            f"identity_nonzero={self.identity_count > 0}, data=<redacted>)"
+        )
 
 
 def _caller_uid() -> int:
@@ -402,28 +420,58 @@ def _validate_component(
     return model
 
 
-def validate_archive(
-    path: Path,
+def validate_components(
+    components: dict[str, bytes],
     apple_user_id: int,
     foundation_loader: Callable[[bytes], Any] = _foundation_load,
-) -> dict[str, object]:
+) -> ValidatedCatacomb:
     if isinstance(apple_user_id, bool) or not isinstance(apple_user_id, int):
         raise ValidationError("Apple user ID is invalid")
     if not 0 <= apple_user_id <= 0xFFFFFFFF:
         raise ValidationError("Apple user ID is outside uint32 policy")
-    components = _read_components(path, apple_user_id)
     user_name = f"user_{apple_user_id:08x}.cat"
+    if set(components) != {"master.cat", "biolockout.cat", user_name}:
+        raise ValidationError("component set does not match the selected user")
     user = _validate_component(
         components[user_name],
         lambda graph: _validate_user(graph, apple_user_id),
         foundation_loader,
     )
-    _validate_component(components["master.cat"], _validate_master, foundation_loader)
-    _validate_component(components["biolockout.cat"], _validate_biolockout, foundation_loader)
+    master = _validate_component(
+        components["master.cat"], _validate_master, foundation_loader
+    )
+    biolockout = _validate_component(
+        components["biolockout.cat"], _validate_biolockout, foundation_loader
+    )
+    return ValidatedCatacomb(
+        components=dict(components),
+        master_secure_data=master[0],
+        user_secure_data=user[0],
+        biolockout_secure_data=biolockout[0],
+        identity_count=len(user[3]),
+    )
+
+
+def load_validated_archive(
+    path: Path,
+    apple_user_id: int,
+    foundation_loader: Callable[[bytes], Any] = _foundation_load,
+) -> ValidatedCatacomb:
+    return validate_components(
+        _read_components(path, apple_user_id), apple_user_id, foundation_loader
+    )
+
+
+def validate_archive(
+    path: Path,
+    apple_user_id: int,
+    foundation_loader: Callable[[bytes], Any] = _foundation_load,
+) -> dict[str, object]:
+    validated = load_validated_archive(path, apple_user_id, foundation_loader)
     return {
         "schema_version": 1,
         "component_count": 3,
-        "identity_count": len(user[3]),
+        "identity_count": validated.identity_count,
         "schemas_valid": True,
         "foundation_readback": True,
         "semantic_round_trip_equal": True,

@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Restore current Apple T2 Touch ID Catacomb after cold boot
+Requires=t2-credential-unlock.service
+After=t2-credential-unlock.service NetworkManager.service network-online.target
+Wants=network-online.target
+Before=t2-biometric-ready.service fprintd.service
+ConditionPathExists=/var/lib/t2-touchid/cold-restore-enabled
+ConditionPathIsDirectory=/var/lib/t2-touchid/catacomb
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/t2-touchid.conf
+ExecStart=/usr/local/libexec/t2-current-catacomb-restore/cold-catacomb-restore.py --live --confirm=I_UNDERSTAND_THIS_RESTORES_THE_CURRENT_T2_CATACOMB
+RemainAfterExit=yes
+StateDirectory=t2-touchid
+StateDirectoryMode=0700
+RuntimeDirectory=t2-touchid
+RuntimeDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectKernelModules=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_LOCAL AF_NETLINK AF_INET6
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

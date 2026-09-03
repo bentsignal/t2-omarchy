@@ -24,6 +24,7 @@ COMMAND_CANCEL = 0x0C
 COMMAND_REMOVE_IDENTITY = 0x0D
 COMMAND_MAX_IDENTITY_COUNT = 0x0F
 COMMAND_PROVISIONING_STATE = 0x10
+COMMAND_LOAD_CALIBRATION = 0x20
 COMMAND_PRESENCE_DETECT = 0x26
 COMMAND_GET_SKS_LOCK_STATE = 0x27
 COMMAND_GET_BIOMETRICKITD_INFO = 0x28
@@ -40,6 +41,7 @@ COMMAND_LOAD_CATACOMB = 0x40
 COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
 COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
+COMMAND_LOAD_BIOLOCKOUT = 0x4B
 COMMAND_IS_XART_AVAILABLE = 0x4C
 COMMAND_GET_CATACOMB_GROUP_STATE = 0x50
 COMMAND_GET_BIO_DEVICE_LIST = 0x52
@@ -69,6 +71,9 @@ CATACOMB_SAVE_CONTEXT = struct.Struct("<II16s")
 CATACOMB_HEADER_MINIMUM_SIZE = 33
 # The recovered biometric outbound SBIO aperture is exactly 75 4-KiB pages.
 MAX_CATACOMB_BLOB_SIZE = 75 * 4096
+MAX_CALIBRATION_BLOB_SIZE = 1024 * 1024
+MAX_BIOLOCKOUT_BLOB_SIZE = 64 * 1024
+CATACOMB_FILE_HEADER = struct.Struct("<IIi20s")
 SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
 SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
 SERVICE_EVENT_MATCH_ACTIVITY = 0xE3FF800B
@@ -450,6 +455,37 @@ def current_catacomb_secure_data_fields(blob: bytes):
             or len(blob) > MAX_CATACOMB_BLOB_SIZE):
         raise BiometricCommandError("current catacomb secure data is outside safe bounds")
     return COMMAND_LOAD_CATACOMB, COMMAND_VERSION, 0, blob, 0
+
+
+def current_catacomb_component_fields(*, user_id: int, blob: bytes):
+    """Encode one exact current-macOS LTFC component for LoadCatacomb."""
+    if (isinstance(user_id, bool) or not isinstance(user_id, int)
+            or not -(1 << 31) <= user_id < (1 << 31)):
+        raise BiometricCommandError("Catacomb component user ID is outside int32")
+    if (not isinstance(blob, bytes)
+            or not CATACOMB_FILE_HEADER.size < len(blob) <= MAX_CATACOMB_BLOB_SIZE):
+        raise BiometricCommandError("current Catacomb component is outside safe bounds")
+    magic, version, encoded_user_id, reserved = CATACOMB_FILE_HEADER.unpack_from(blob)
+    if (magic != 0x4346544C or version != 10
+            or encoded_user_id != user_id or reserved != bytes(20)):
+        raise BiometricCommandError("current Catacomb component header is invalid")
+    return COMMAND_LOAD_CATACOMB, COMMAND_VERSION, 0, blob, 0
+
+
+def load_fdr_calibration_fields(blob: bytes):
+    """Upload bounded bridgeOS FDR calibration using Gibraltar source 3."""
+    if (not isinstance(blob, bytes) or not blob
+            or len(blob) > MAX_CALIBRATION_BLOB_SIZE):
+        raise BiometricCommandError("FDR calibration data is outside safe bounds")
+    return COMMAND_LOAD_CALIBRATION, COMMAND_VERSION, 3, blob, 0
+
+
+def load_biolockout_fields(blob: bytes):
+    """Restore one bounded current-macOS bio-lockout secure record."""
+    if (not isinstance(blob, bytes) or not blob.startswith(b"HRLB")
+            or not 16 <= len(blob) <= MAX_BIOLOCKOUT_BLOB_SIZE):
+        raise BiometricCommandError("bio-lockout secure data is outside safe bounds")
+    return COMMAND_LOAD_BIOLOCKOUT, COMMAND_VERSION, 0, blob, 0
 
 
 def validate_opaque_record_array(output: bytes, *, record_size: int,

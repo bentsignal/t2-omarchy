@@ -182,6 +182,19 @@ class CurrentMacOSCatacombValidatorTests(unittest.TestCase):
         self.assertTrue(result["identifiers_redacted"])
         self.assertNotIn("uuid", result)
 
+    def test_private_validated_model_redacts_component_material(self):
+        with tempfile.TemporaryDirectory() as directory:
+            validated = validator.load_validated_archive(
+                self.archive(directory), 501, self.python_loader
+            )
+        self.assertEqual(set(validated.components), {
+            "master.cat", "user_000001f5.cat", "biolockout.cat"
+        })
+        self.assertEqual(validated.identity_count, 2)
+        self.assertNotIn("LTFC", repr(validated))
+        self.assertNotIn("HRLB", repr(validated))
+        self.assertIn("data=<redacted>", repr(validated))
+
     def test_duplicate_identity_uuid_is_rejected(self):
         root = plistlib.loads(user_fixture())
         root["$objects"][18]["BKIdentityUUID"] = root["$objects"][4]["BKIdentityUUID"]

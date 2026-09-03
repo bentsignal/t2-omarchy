@@ -124,6 +124,53 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
             with self.assertRaises(command.BiometricCommandError):
                 command.current_catacomb_secure_data_fields(invalid)
 
+    def test_strict_current_restore_component_codecs(self):
+        master = command.CATACOMB_FILE_HEADER.pack(
+            0x4346544C, 10, -1, bytes(20)
+        ) + b"master"
+        user = command.CATACOMB_FILE_HEADER.pack(
+            0x4346544C, 10, 501, bytes(20)
+        ) + b"user"
+        self.assertEqual(
+            command.current_catacomb_component_fields(user_id=-1, blob=master),
+            (0x40, 1, 0, master, 0),
+        )
+        self.assertEqual(
+            command.current_catacomb_component_fields(user_id=501, blob=user),
+            (0x40, 1, 0, user, 0),
+        )
+        self.assertEqual(
+            command.load_fdr_calibration_fields(b"calibration"),
+            (0x20, 1, 3, b"calibration", 0),
+        )
+        self.assertEqual(
+            command.load_biolockout_fields(b"HRLB" + bytes(12)),
+            (0x4B, 1, 0, b"HRLB" + bytes(12), 0),
+        )
+
+    def test_strict_current_restore_codecs_reject_ambiguous_input(self):
+        valid = command.CATACOMB_FILE_HEADER.pack(
+            0x4346544C, 10, 501, bytes(20)
+        ) + b"payload"
+        bad_headers = (
+            valid[:8],
+            b"BAD!" + valid[4:],
+            valid[:4] + struct.pack("<I", 9) + valid[8:],
+            valid[:8] + struct.pack("<i", 502) + valid[12:],
+            valid[:12] + b"x" + valid[13:],
+        )
+        for blob in bad_headers:
+            with self.subTest(length=len(blob)), self.assertRaises(
+                command.BiometricCommandError
+            ):
+                command.current_catacomb_component_fields(user_id=501, blob=blob)
+        for blob in (b"", bytearray(b"x"), bytes(command.MAX_CALIBRATION_BLOB_SIZE + 1)):
+            with self.assertRaises(command.BiometricCommandError):
+                command.load_fdr_calibration_fields(blob)
+        for blob in (b"", b"BAD!" + bytes(12), bytearray(b"HRLB" + bytes(12))):
+            with self.assertRaises(command.BiometricCommandError):
+                command.load_biolockout_fields(blob)
+
     def test_catacomb_persistence_codecs_reject_unbounded_or_wrong_user_data(self):
         for output in (b"", b"123", struct.pack("<I", 32),
                        struct.pack("<I", command.MAX_CATACOMB_BLOB_SIZE + 1)):
