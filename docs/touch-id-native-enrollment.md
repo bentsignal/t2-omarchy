@@ -204,3 +204,12 @@ connection identity, monotonic ordering, duplicate exclusion, payload shape,
 and active cancellation state. Neighboring unknown statuses remain rejected.
 Six overlay tests, 117 research tests, 484 prototype tests, the external
 broker's 343 tests, and a fresh no-touch hardware preflight all pass.
+
+The next trial reached a touch and stopped at status 63. Reconciliation proved
+one unchanged identity with no persistent identity delta. The recovered Apple
+generic-operation callback explicitly maps 63 to presence true and 64 to
+presence false. The wrapper now accepts those notifications and the paired
+90/91 lifecycle events without advancing enrollment or sending continue.
+It also stops routing arbitrary enrollment errors to the matching rejection
+toast. Versioned evidence, implementation limits, and tests are recorded in
+[Enrollment presence callbacks](touch-id-enrollment-presence-events.md).

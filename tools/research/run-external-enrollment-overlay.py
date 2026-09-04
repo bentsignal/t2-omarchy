@@ -7,12 +7,11 @@ after a populated enrollment start.  The pinned broker already consumes that
 shape during setup but rejects it after start.  This overlay preserves every
 shape check while accepting only UID 0 or the pinned enrollment UID.
 
-The T2 also emits generic status 90 immediately after enrollment starts.
-Apple's enrollment operation forwards unhandled statuses to its superclass,
-whose recovered status switch leaves 90 as a no-op.  The pinned reducer
-instead freezes on every unlisted status.  The second overlay restores only
-that exact no-op while retaining framing, ordering, operation, generation,
-duplicate, cancellation, and neighboring-ordinal checks.
+Apple's generic operation handler reports statuses 63/64 as presence on/off
+and leaves 90/91 without an enrollment transition. The pinned reducer instead
+freezes on every unlisted status. These four events may leave enrollment
+active but cannot cause a continue command, progress, persistence, or success.
+See docs/touch-id-enrollment-presence-events.md for versioned evidence.
 """
 
 from __future__ import annotations
@@ -28,6 +27,8 @@ import sys
 SOURCE_ROOT = Path("/home/shawn/dev/t2-touchid-linux-latest")
 EXPECTED_COMMIT = "826a86e55a9a745f50fb64672e5be32cf352cb76"
 EXPECTED_PROTOCOL_SHA256 = "2116946027fec5734e21a46d67de629899c1dd0554bc70d5ccaef276eddf9b0d"
+EXPECTED_BROKER_SHA256 = "3d24053d80ebd7482484040a488201e385cc5378f9dfd38c6401bf10acb7912d"
+NONADVANCING_STATUSES = frozenset((63, 64, 90, 91))
 
 
 class EnrollmentOverlayError(RuntimeError):
@@ -42,6 +43,8 @@ def validate_source(root: Path = SOURCE_ROOT) -> Path:
     actual_hash = hashlib.sha256(protocol_path.read_bytes()).hexdigest()
     if actual_hash != EXPECTED_PROTOCOL_SHA256:
         raise EnrollmentOverlayError("enrollment protocol source hash changed")
+    if hashlib.sha256(broker_path.read_bytes()).hexdigest() != EXPECTED_BROKER_SHA256:
+        raise EnrollmentOverlayError("enrollment broker source hash changed")
     try:
         commit = subprocess.run(
             [
@@ -76,10 +79,10 @@ def permit_system_scoped_sks_event(protocol_module) -> None:
     protocol_module.validate_sks_lock_state_payload = validate
 
 
-def permit_system_lifecycle_status_90(protocol_module) -> None:
-    """Mirror Apple's generic-operation no-op for exact status ordinal 90."""
+def permit_nonadvancing_status_events(protocol_module) -> None:
+    """Consume validated presence/lifecycle events without advancing enrollment."""
     machine_type = protocol_module.EnrollmentStateMachine
-    if getattr(machine_type.accept, "_t2_status_90_overlay", False):
+    if getattr(machine_type.accept, "_t2_presence_overlay", False):
         return
     original_accept = machine_type.accept
 
@@ -93,15 +96,15 @@ def permit_system_lifecycle_status_90(protocol_module) -> None:
                 operation_id=operation_id,
             )
         except protocol_module.EnrollmentProtocolError as error:
-            exact_status_90 = (
+            validated_nonadvancing_status = (
                 prior_state is protocol_module.EnrollmentState.ACTIVE
                 and event.envelope_type == protocol_module.SERVICE_STATUS
                 and event.version == 1
-                and event.ordinal == 90
-                and str(error) == "unknown enrollment status 90"
+                and event.ordinal in NONADVANCING_STATUSES
+                and str(error) == f"unknown enrollment status {event.ordinal}"
                 and self.state is protocol_module.EnrollmentState.FROZEN
             )
-            if not exact_status_90:
+            if not validated_nonadvancing_status:
                 raise
             # original_accept has already validated the generic-status payload,
             # generation, operation ID, monotonic sequence, and duplicate hash.
@@ -112,27 +115,50 @@ def permit_system_lifecycle_status_90(protocol_module) -> None:
                 self.state,
             )
 
-    accept._t2_status_90_overlay = True
+    accept._t2_presence_overlay = True
     machine_type.accept = accept
+
+
+def report_enrollment_notification(user_name: str, unit: str) -> None:
+    """Keep enrollment feedback in its terminal instead of match-only toasts."""
+    if unit == "t2-touchid-failure.service":
+        print(
+            "Enrollment did not complete. See the terminal result for the cause; "
+            "this alone does not mean your fingerprint was rejected.",
+            file=sys.stderr,
+            flush=True,
+        )
+    # The terminal already provides password, touch, retry, and success output.
+    # These units otherwise play shared match sounds or mislabel protocol errors.
+
+
+def run_broker(broker: Path) -> None:
+    namespace = runpy.run_path(str(broker), run_name="_t2_enrollment_broker_overlay")
+    entrypoint = namespace["main"]
+    entrypoint.__globals__["notify_user"] = report_enrollment_notification
+    raise SystemExit(entrypoint())
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--overlay-acknowledge-system-sks-event", action="store_true")
     parser.add_argument("--overlay-acknowledge-status-90-noop", action="store_true")
+    parser.add_argument("--overlay-acknowledge-presence-events", action="store_true")
     known, remaining = parser.parse_known_args()
     if not known.overlay_acknowledge_system_sks_event:
         raise EnrollmentOverlayError("system-scoped SKS overlay acknowledgement is required")
     if not known.overlay_acknowledge_status_90_noop:
         raise EnrollmentOverlayError("status-90 no-op overlay acknowledgement is required")
+    if not known.overlay_acknowledge_presence_events:
+        raise EnrollmentOverlayError("presence-event overlay acknowledgement is required")
     broker = validate_source()
     sys.path.insert(0, str(broker.parent))
     import t2_enrollment_protocol
 
     permit_system_scoped_sks_event(t2_enrollment_protocol)
-    permit_system_lifecycle_status_90(t2_enrollment_protocol)
+    permit_nonadvancing_status_events(t2_enrollment_protocol)
     sys.argv = [str(broker), *remaining]
-    runpy.run_path(str(broker), run_name="__main__")
+    run_broker(broker)
 
 
 if __name__ == "__main__":

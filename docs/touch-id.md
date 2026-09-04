@@ -4013,3 +4013,11 @@ and the external broker's 343 tests pass. A fresh overlaid no-touch hardware
 preflight again reports one identity, verified host state, available capacity,
 same-connection inventory, initialized retained sensor state, and no mutation.
 The next action is one supervised retry with a different, unenrolled finger.
+
+That retry reached a touch and froze on status 63; reconciliation again found
+one identity and no persistent identity delta. Apple's recovered generic
+operation handler defines 63/64 as presence on/off. The overlay now consumes
+these plus the paired 90/91 lifecycle events without enrollment progress or
+continue commands. Its enrollment errors no longer invoke the matching-only
+rejection toast. See `docs/touch-id-enrollment-presence-events.md` for the exact
+older-framework evidence, current-hardware corroboration, and remaining limits.
