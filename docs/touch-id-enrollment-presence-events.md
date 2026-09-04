@@ -34,12 +34,36 @@ not establish successful image capture, enrollment progress, or a new identity.
 Earlier successful raw matching controls on this same T2 also emitted 63/64
 with 36-byte status details and 90/91 without details.
 
+## Subsequent status-55 trial and broader switch audit
+
+The next Linux trial passed presence handling but froze on generic status 55.
+Reconciliation again observed one identity and no persistent identity delta.
+The rejection toast was no longer emitted by the enrollment runner.
+
+`tools/research/inspect-legacy-enrollment-statuses.py` now verifies the exact
+framework digest and reads the generic, enrollment, and capture-error jump
+tables. It audits every status 51..99. For 55, the generic table entry at
+`0x27970` points to `0x278e2`, the logging/return block. Enrollment forwards it
+to that generic handler and the capture-error mapper returns zero. The same
+three checks establish that 72, 81, and 89 also have no enrollment action;
+these ordinals already appeared in this machine's earlier successful raw
+matching controls. They can therefore be handled together with the earlier
+notifications, subject to the same version-1 framing and active-operation
+checks. No specific producer-side name such as "image accepted" is inferred
+for 55 or these other ordinals.
+
+This audit does **not** justify ignoring all statuses. For example,
+51/58/62/65/80/99 follow generic termination paths; 60/61 change generic operation state;
+status 95 was seen with a version-2 payload during matching, which the overlay
+does not claim to understand. These remain rejected. Existing enrollment
+failures, capture feedback, progress, and result processing are unchanged.
+
 ## Linux overlay behavior
 
 The project wrapper pins external commit
 `826a86e55a9a745f50fb64672e5be32cf352cb76`, the protocol digest, and now the
-broker digest. The external checkout is unchanged. The four allowed generic
-statuses are precisely 63, 64, 90, and 91. They return the existing auxiliary
+broker digest. The external checkout is unchanged. The allowed generic
+statuses are precisely 55, 63, 64, 72, 81, 89, 90, and 91. They return the existing auxiliary
 action without progress, identity, or a continue command. Presence-off leaves
 the Linux operation active awaiting further events, encompassing Apple's
 nonterminal waiting-state change without inventing another wire command.
@@ -47,7 +71,7 @@ nonterminal waiting-state change without inventing another wire command.
 The original reducer performs connection/operation checks, duplicate and
 monotonic-sequence checks, version and status-detail validation, and
 cancellation checks first. The wrapper handles only its exact final
-`unknown enrollment status N` error for one of these four ordinals in an
+`unknown enrollment status N` error for one of these eight ordinals in an
 otherwise active operation. It retains the checked sequence and fingerprint;
 every other error still freezes the operation. Failure statuses 66/67/68 and
 the distinct identity-result event retain their original behavior.
@@ -60,7 +84,7 @@ broker under a non-main name permits this override before explicitly calling
 its original main function and preserving its exit status.
 
 Tests exercise a multi-event presence sequence followed by real progress and
-identity result, all four statuses against malformed payloads, wrong versions,
+identity result, all eight statuses against malformed payloads, wrong versions,
 unrelated operations/connections, duplicate/decreasing sequences, cancellation,
 terminal failures, broker startup, and notification wording. Real enrollment
 and persistence still require the next supervised hardware attempt.

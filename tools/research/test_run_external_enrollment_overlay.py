@@ -125,19 +125,21 @@ class ExternalEnrollmentOverlayTests(unittest.TestCase):
             self.accept(cancelled, self.status(10, 90))
 
     def test_neighboring_unknown_statuses_remain_rejected(self):
-        for ordinal in (62, 65, 80, 81, 89, 92, 99):
+        for ordinal in (51, 58, 62, 65, 80, 92, 95, 99, 501):
             with self.subTest(ordinal=ordinal):
                 machine = self.machine()
                 with self.assertRaisesRegex(
                     protocol.EnrollmentProtocolError,
-                    f"unknown enrollment status {ordinal}",
+                    "accessory authorization is unsupported" if ordinal == 501
+                    else f"unknown enrollment status {ordinal}",
                 ):
                     self.accept(machine, self.status(10, ordinal))
                 self.assertEqual(machine.state, protocol.EnrollmentState.FROZEN)
 
     def test_presence_and_lifecycle_sequence_needs_real_progress_and_result(self):
         machine = self.machine()
-        for sequence, ordinal in enumerate((90, 63, 91, 64, 90, 63), 1):
+        ordinals = (89, 90, 63, 55, 72, 81, 91, 64, 90, 63)
+        for sequence, ordinal in enumerate(ordinals, 1):
             # Exact T2 presence events carry a 36-byte status detail record.
             detail = bytes(36) if ordinal in (63, 64) else b""
             value = protocol.ServiceEvent(
@@ -150,17 +152,17 @@ class ExternalEnrollmentOverlayTests(unittest.TestCase):
             self.assertIsNone(transition.identity)
             self.assertIsNone(transition.progress_percent)
             self.assertEqual(machine.state, protocol.EnrollmentState.ACTIVE)
-        progress = self.accept(machine, self.status(7, 263))
+        progress = self.accept(machine, self.status(len(ordinals) + 1, 263))
         self.assertTrue(progress.continue_required)
         self.assertEqual(progress.progress_percent, 63)
         identity = protocol.ServiceEvent(
-            8, protocol.SERVICE_ENROLLMENT_RESULT, 1, 0,
+            len(ordinals) + 2, protocol.SERVICE_ENROLLMENT_RESULT, 1, 0,
             struct.pack("<I16s", 501, bytes(range(16))),
         )
         result = self.accept(machine, identity)
         self.assertEqual(result.action, protocol.EnrollmentAction.IDENTITY_OBSERVED)
         with self.assertRaisesRegex(protocol.EnrollmentProtocolError, "terminal"):
-            self.accept(machine, self.status(9, 64))
+            self.accept(machine, self.status(len(ordinals) + 3, 64))
 
     def test_every_allowed_status_retains_all_guards(self):
         for ordinal in overlay.NONADVANCING_STATUSES:

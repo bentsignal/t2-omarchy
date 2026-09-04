@@ -8,8 +8,8 @@ shape during setup but rejects it after start.  This overlay preserves every
 shape check while accepting only UID 0 or the pinned enrollment UID.
 
 Apple's generic operation handler reports statuses 63/64 as presence on/off
-and leaves 90/91 without an enrollment transition. The pinned reducer instead
-freezes on every unlisted status. These four events may leave enrollment
+and leaves 55/72/81/89/90/91 without an enrollment transition. The pinned reducer
+instead freezes on every unlisted status. These events may leave enrollment
 active but cannot cause a continue command, progress, persistence, or success.
 See docs/touch-id-enrollment-presence-events.md for versioned evidence.
 """
@@ -28,7 +28,7 @@ SOURCE_ROOT = Path("/home/shawn/dev/t2-touchid-linux-latest")
 EXPECTED_COMMIT = "826a86e55a9a745f50fb64672e5be32cf352cb76"
 EXPECTED_PROTOCOL_SHA256 = "2116946027fec5734e21a46d67de629899c1dd0554bc70d5ccaef276eddf9b0d"
 EXPECTED_BROKER_SHA256 = "3d24053d80ebd7482484040a488201e385cc5378f9dfd38c6401bf10acb7912d"
-NONADVANCING_STATUSES = frozenset((63, 64, 90, 91))
+NONADVANCING_STATUSES = frozenset((55, 63, 64, 72, 81, 89, 90, 91))
 
 
 class EnrollmentOverlayError(RuntimeError):

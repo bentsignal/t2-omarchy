@@ -213,3 +213,11 @@ presence false. The wrapper now accepts those notifications and the paired
 It also stops routing arbitrary enrollment errors to the matching rejection
 toast. Versioned evidence, implementation limits, and tests are recorded in
 [Enrollment presence callbacks](touch-id-enrollment-presence-events.md).
+
+The following trial stopped on status 55, also with no persistent identity
+delta after reconciliation. An offline audit of the pinned Catalina generic,
+enrollment, and capture-error switches verified no enrollment action for
+55/72/81/89. Those already-observed sensor notifications now join the existing
+presence/lifecycle allowlist; unknown versions and termination/state-changing
+statuses retain their prior rejection behavior. Native enrollment completion
+has still not been demonstrated.

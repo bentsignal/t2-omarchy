@@ -4021,3 +4021,10 @@ these plus the paired 90/91 lifecycle events without enrollment progress or
 continue commands. Its enrollment errors no longer invoke the matching-only
 rejection toast. See `docs/touch-id-enrollment-presence-events.md` for the exact
 older-framework evidence, current-hardware corroboration, and remaining limits.
+
+The next touch attempt stopped at status 55 and reconciled with one unchanged
+identity. A reproducible offline audit now reads all three relevant Catalina
+status switches and verifies no enrollment action for 55/72/81/89, also seen
+in prior matching traces. These are handled as additional version-1 auxiliary
+notifications. This addresses event interpretation; it does not demonstrate
+native enrollment success or relax the separate persistence requirements.
