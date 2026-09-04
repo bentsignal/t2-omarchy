@@ -61,7 +61,26 @@ plaintext removal.
 
 ## macOS result
 
-Pending.
+The bounded capture completed on macOS build `25G83`. Removing every visible
+fingerprint changed the validated selected-user archive from two identity
+records to zero. Completing exactly one subsequent enrollment added one identity
+record under one entity number, with an entity-group size of one. It added no
+second record and removed none. The master enrollment count increased by one,
+from three to four, and the master, selected-user, and bio-lockout components
+all changed.
+
+The final clean archive was encrypted to a 23,562-byte CMS DER envelope at
+`/Volumes/EFI/t2-touchid-catacomb-clean-single.cms`. CMS parsing passed,
+identifiers and raw values were not retained, and all plaintext snapshots,
+comparison files, and temporary paths were removed before the helper reported
+success.
+
+This clean transition resolves the earlier ambiguity: one uninterrupted,
+completed macOS enrollment on this machine creates one identity record in a
+one-member entity group and increments the master enrollment count by one. The
+extra record in the earlier two-record interval is therefore associated with
+the separate accepted-then-cancelled attempt, not required representation for
+the completed fingerprint.
 
 ## Linux return plan
 

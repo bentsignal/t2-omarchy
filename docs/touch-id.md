@@ -3917,3 +3917,22 @@ fixture. Its helper fails closed unless removing every visible fingerprint
 produces a strictly validated zero-identity archive, and it permits only one
 human-completed enrollment before the final encrypted snapshot. No further
 Linux enrollment mutation is justified until that clean delta is known.
+
+### 2026-09-04 clean macOS enrollment fixture
+
+The bounded macOS helper validated the existing two-record archive, then
+validated a zero-identity archive after all visible fingerprints were removed.
+Exactly one uninterrupted enrollment subsequently produced one identity record,
+one entity number with group size one, and a master enrollment-count increment
+of one. Master, selected-user, and bio-lockout components all changed. This
+proves that the earlier interval's second record came from its separate
+accepted-then-cancelled attempt rather than being required representation for
+one completed fingerprint.
+
+The clean archive was encrypted to a 23,562-byte CMS DER envelope on EFI. CMS
+parsing passed, no identifiers or raw values were retained, and all plaintext
+was removed. The next work is back in Linux: validate and import this clean
+fixture while preserving the two-record archive as rollback evidence, compare
+host and live identity/capacity state without resetting the sensor, then finish
+the native enrollment persistence and mutation gates before one supervised
+Linux enrollment attempt.

@@ -79,45 +79,51 @@ sudo python3 tools/research/catacomb-identity-shape-delta.py \
 
 ## Consequences for Linux enrollment
 
-The earlier MIT prototype and the current upstream GPL reference both model a
-successful enrollment as exactly one added SEP identity and create one host
-identity object. The upstream decoder also rejects reused entity numbers.
-Those assumptions are incompatible with the validated Apple archive on this
-`MacBookPro16,1` and must not be used to mutate it.
+The clean macOS transition now proves that one uninterrupted completed
+enrollment on this `MacBookPro16,1` adds exactly one SEP identity, creates one
+one-member entity group, increments the master enrollment count by one, and
+changes all three Catacomb components. The extra record in the earlier interval
+is attributable to its separate accepted-then-cancelled attempt. Existing
+archives must still accept reused entity numbers so that recovery can preserve
+that historical Apple-owned state without deduplicating it.
 
-The current free count is one, while the only observed macOS capture interval
-consumed two units and its per-operation allocation remains ambiguous. A
-populated-state enrollment experiment is therefore not justified merely
-because the counter is nonzero. The old zero-state attempts had enough
-reported capacity but command 3 returned a synchronous rejection before sensor
-capture, so finger placement was not involved.
+The clean fixture is encrypted on EFI but has not yet been imported or compared
+with the live T2 from Linux. A Linux enrollment experiment is therefore not
+justified until the Linux thread validates the fixture, preserves the current
+two-record rollback state, imports the clean archive atomically, and confirms
+host/live identity and capacity agreement without resetting the sensor. The old
+zero-state attempts had enough reported capacity but command 3 returned a
+synchronous rejection before sensor capture, so finger placement was not
+involved.
 
 Before the mutation gate can open, an independent Linux implementation must:
 
-1. preserve the two-record entity representation rather than deduplicating it;
-2. accept terminal enrollment evidence only when the complete post-operation
-   identity delta is proven for this bridgeOS generation;
+1. preserve any preexisting reused-entity representation rather than
+   deduplicating Apple-owned state;
+2. require exactly one added identity and one added entity for an uninterrupted
+   completed operation on this bridgeOS generation;
 3. transactionally save all changed Catacomb components and atomically update
    the host keyed archives;
 4. reconcile terminal disconnects and every partial persistence state against
    both the live SEP and the previous root-only backup; and
-5. prove sufficient capacity for the expected multi-record operation.
+5. prove at least one free identity unit immediately before mutation.
 
 Until those gates are implemented and offline-tested, the baseline reports
 `safe_for_mutation=false`. Existing authentication remains untouched and is
 the recovery control.
 
-## Next controlled discriminator
+## Clean macOS enrollment result
 
-The next cross-OS pass is a clean macOS fixture, not another Linux enrollment
-attempt. The bounded helper in
-`tools/research/capture-macos-clean-enrollment-fixture.sh` requires a validated
-transition from the current state to zero identities after Shawn removes the
-visible fingerprint in System Settings, followed by exactly one completed
-enrollment with no second attempt. It preserves only privacy-safe counts and
-encrypts the final archive for Linux using the existing EFI transfer
-certificate.
+The controlled macOS pass completed on build `25G83`. Its validated zero state
+contained no identity records. Exactly one completed enrollment then produced
+one identity record, one entity number with group size one, a master enrollment
+count delta of one, and changes to all three Catacomb components. The final
+23,562-byte encrypted fixture passed CMS parsing, retained no raw values, and
+left no plaintext behind. Full sanitized evidence is recorded in
+`docs/macos-clean-enrollment-fixture-handoff.md`.
 
-This pass will establish whether one clean UI enrollment creates one or two
-SEP identity records on this machine. The exact macOS procedure and Linux
-return gates are in `docs/macos-clean-enrollment-fixture-handoff.md`.
+The next controlled discriminator is the Linux return plan from that handoff:
+validate and adopt the clean fixture with the two-record state preserved as
+rollback evidence, compare it with stable live state and capacity without a
+sensor reset, and keep `safe_for_mutation=false` until every persistence,
+journal, password-fallback, and rollback gate passes.
