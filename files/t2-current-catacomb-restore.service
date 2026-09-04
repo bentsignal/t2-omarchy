@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 [Unit]
-Description=Restore current Apple T2 Touch ID Catacomb after cold boot
+Description=Validate or restore current Apple T2 Touch ID state after cold boot
+StartLimitIntervalSec=1h
+StartLimitBurst=1
 Requires=t2-credential-unlock.service
 After=t2-credential-unlock.service t2-warm-identity-capture.service NetworkManager.service network-online.target
 Wants=network-online.target

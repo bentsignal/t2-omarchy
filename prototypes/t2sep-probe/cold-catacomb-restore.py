@@ -45,10 +45,11 @@ class ColdRestoreError(RuntimeError):
 class ColdRestoreResult:
     component_count: int
     source_identity_nonzero: bool
-    calibration_status: int
-    master_status: int
-    user_status: int
-    biolockout_status: int
+    restoration_required: bool
+    calibration_status: int | None
+    master_status: int | None
+    user_status: int | None
+    biolockout_status: int | None
     protected_config_length: int
     identity_count: int
     identity_readback_stable: bool
@@ -119,10 +120,66 @@ def _perform_zero_output(session, fields, label: str) -> int:
     return status
 
 
+def _stable_identity_inventory(session, apple_user_id: int, label: str):
+    outputs = []
+    identities = ()
+    for _ in range(2):
+        status, output = state._perform(
+            session, state.biometric.identity_list_fields(user_id=apple_user_id)
+        )
+        if status != 0 or (output is not None and not isinstance(output, bytes)):
+            raise ColdRestoreError(f"{label} failed with status {status}")
+        try:
+            decoded = state.biometric.decode_identity_list(output or b"")
+        except state.biometric.BiometricCommandError as error:
+            raise ColdRestoreError(f"{label} is malformed") from error
+        if any(item.user_id != apple_user_id for item in decoded):
+            raise ColdRestoreError(f"{label} contains a foreign user")
+        outputs.append(output)
+        identities = decoded
+    if outputs[0] != outputs[1]:
+        raise ColdRestoreError(f"{label} is unstable")
+    return identities
+
+
+def _protected_config_length(session, apple_user_id: int, label: str) -> int:
+    status, protected = state._perform(
+        session, state.biometric.protected_config_fields(user_id=apple_user_id)
+    )
+    if (
+        status != 0
+        or not isinstance(protected, bytes)
+        or len(protected) != state.biometric.PROTECTED_CONFIG_SIZE
+    ):
+        raise ColdRestoreError(f"{label} is invalid with status {status}")
+    return len(protected)
+
+
 def probe_socket(sock, *, apple_user_id: int, store_path: Path) -> ColdRestoreResult:
     validated = read_current_store(store_path, apple_user_id)
     session = state.coupled.bridge_query.BridgeSession(sock)
     state._initialize(session)
+
+    preexisting = _stable_identity_inventory(
+        session, apple_user_id, "pre-restore identity inventory"
+    )
+    if preexisting:
+        protected_length = _protected_config_length(
+            session, apple_user_id, "pre-restore protected policy"
+        )
+        return ColdRestoreResult(
+            component_count=0,
+            source_identity_nonzero=True,
+            restoration_required=False,
+            calibration_status=None,
+            master_status=None,
+            user_status=None,
+            biolockout_status=None,
+            protected_config_length=protected_length,
+            identity_count=len(preexisting),
+            identity_readback_stable=True,
+            completed=True,
+        )
 
     _perform_zero_output(session, state.biometric.cancel_fields(), "initial cancellation")
     reply = session.call([state.coupled.bridge_query.protocol.CALIBRATION_DATA_FROM_FDR])
@@ -158,46 +215,23 @@ def probe_socket(sock, *, apple_user_id: int, store_path: Path) -> ColdRestoreRe
         "bio-lockout load",
     )
 
-    protected_status, protected = state._perform(
-        session, state.biometric.protected_config_fields(user_id=apple_user_id)
+    protected_length = _protected_config_length(
+        session, apple_user_id, "restored protected policy"
     )
-    if (
-        protected_status != 0
-        or not isinstance(protected, bytes)
-        or len(protected) != state.biometric.PROTECTED_CONFIG_SIZE
-    ):
-        raise ColdRestoreError(
-            f"restored protected policy is invalid with status {protected_status}"
-        )
-
-    identity_outputs = []
-    identities = ()
-    for _ in range(2):
-        identity_status, output = state._perform(
-            session, state.biometric.identity_list_fields(user_id=apple_user_id)
-        )
-        if identity_status != 0 or not isinstance(output, bytes):
-            raise ColdRestoreError(
-                f"restored identity readback failed with status {identity_status}"
-            )
-        try:
-            decoded = state.biometric.decode_identity_list(output)
-        except state.biometric.BiometricCommandError as error:
-            raise ColdRestoreError("restored identity readback is malformed") from error
-        if not decoded or any(item.user_id != apple_user_id for item in decoded):
-            raise ColdRestoreError("restored identity list is empty or foreign")
-        identity_outputs.append(output)
-        identities = decoded
-    if identity_outputs[0] != identity_outputs[1]:
-        raise ColdRestoreError("restored identity readback is unstable")
+    identities = _stable_identity_inventory(
+        session, apple_user_id, "restored identity readback"
+    )
+    if not identities:
+        raise ColdRestoreError("restored identity readback is empty")
     return ColdRestoreResult(
         component_count=3,
         source_identity_nonzero=True,
+        restoration_required=True,
         calibration_status=calibration_status,
         master_status=master_status,
         user_status=user_status,
         biolockout_status=biolockout_status,
-        protected_config_length=len(protected),
+        protected_config_length=protected_length,
         identity_count=len(identities),
         identity_readback_stable=True,
         completed=True,
@@ -278,8 +312,9 @@ def main() -> int:
     finally:
         LIVE_COLD_RESTORE_ENABLED = False
     print(
-        "current Catacomb cold restore complete: "
-        f"components={result.component_count} "
+        "current Catacomb cold restore decision complete: "
+        f"restoration_required={'yes' if result.restoration_required else 'no'} "
+        f"components_loaded={result.component_count} "
         f"source_identity_nonzero={'yes' if result.source_identity_nonzero else 'no'} "
         f"calibration_status={result.calibration_status} "
         f"master_status={result.master_status} user_status={result.user_status} "

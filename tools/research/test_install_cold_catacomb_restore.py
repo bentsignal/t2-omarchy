@@ -23,6 +23,8 @@ class ColdRestoreDeploymentTests(unittest.TestCase):
         self.assertIn("Requires=t2-credential-unlock.service", UNIT)
         self.assertIn("After=t2-credential-unlock.service t2-warm-identity-capture.service", UNIT)
         self.assertIn("Before=t2-biometric-ready.service fprintd.service", UNIT)
+        self.assertIn("StartLimitIntervalSec=1h", UNIT)
+        self.assertIn("StartLimitBurst=1", UNIT)
         self.assertIn(
             "ConditionPathExists=/var/lib/t2-touchid/cold-restore-enabled", UNIT
         )

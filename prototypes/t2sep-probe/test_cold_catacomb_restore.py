@@ -43,6 +43,8 @@ class ColdCatacombRestoreTests(unittest.TestCase):
     def test_exact_restore_order_and_stable_nonempty_readback(self):
         identity = struct.pack("<I16s", 501, bytes(range(16)))
         replies = [
+            (0, b""),
+            (0, b""),
             (0, None),
             (0, None),
             (0, None),
@@ -72,13 +74,45 @@ class ColdCatacombRestoreTests(unittest.TestCase):
             [[restore.state.coupled.bridge_query.protocol.CALIBRATION_DATA_FROM_FDR]],
         )
         commands = [item.args[1][0] for item in perform.call_args_list]
-        self.assertEqual(commands, [0x0C, 0x20, 0x40, 0x40, 0x4B, 0x2E, 0x42, 0x42])
+        self.assertEqual(
+            commands,
+            [0x42, 0x42, 0x0C, 0x20, 0x40, 0x40, 0x4B, 0x2E, 0x42, 0x42],
+        )
         self.assertTrue(result.completed)
+        self.assertTrue(result.restoration_required)
         self.assertTrue(result.identity_readback_stable)
         self.assertEqual(result.identity_count, 1)
 
+    def test_stable_preexisting_inventory_skips_every_mutation(self):
+        identity = struct.pack("<I16s", 501, bytes(range(16)))
+        session = FakeSession(object())
+        with (
+            patch.object(restore, "read_current_store", return_value=self.validated()),
+            patch.object(
+                restore.state.coupled.bridge_query,
+                "BridgeSession",
+                return_value=session,
+            ),
+            patch.object(restore.state, "_initialize"),
+            patch.object(
+                restore.state,
+                "_perform",
+                side_effect=[(0, identity), (0, identity), (0, bytes(32))],
+            ) as perform,
+        ):
+            result = restore.probe_socket(
+                object(), apple_user_id=501, store_path=Path("/private/store")
+            )
+        self.assertEqual(session.calls, [])
+        commands = [item.args[1][0] for item in perform.call_args_list]
+        self.assertEqual(commands, [0x42, 0x42, 0x2E])
+        self.assertFalse(result.restoration_required)
+        self.assertEqual(result.component_count, 0)
+        self.assertEqual(result.identity_count, 1)
+        self.assertIsNone(result.calibration_status)
+
     def test_restore_stops_on_first_rejected_component(self):
-        replies = [(0, None), (0, None), (22, None)]
+        replies = [(0, None), (0, None), (0, None), (0, None), (22, None)]
         with (
             patch.object(restore, "read_current_store", return_value=self.validated()),
             patch.object(restore.state.coupled.bridge_query, "BridgeSession", FakeSession),
@@ -89,12 +123,12 @@ class ColdCatacombRestoreTests(unittest.TestCase):
                 restore.probe_socket(
                     object(), apple_user_id=501, store_path=Path("/private/store")
                 )
-        self.assertEqual(perform.call_count, 3)
+        self.assertEqual(perform.call_count, 5)
 
     def test_restore_rejects_unstable_identity_readback(self):
         first = struct.pack("<I16s", 501, bytes(range(16)))
         second = struct.pack("<I16s", 501, bytes(range(1, 17)))
-        replies = [(0, None)] * 5 + [
+        replies = [(0, b""), (0, b"")] + [(0, None)] * 5 + [
             (0, bytes(32)),
             (0, first),
             (0, second),

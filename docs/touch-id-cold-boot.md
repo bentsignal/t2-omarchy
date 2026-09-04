@@ -125,12 +125,15 @@ validated its exact three-component schema and semantic round trip with the
 in-repository validator, and removed the plaintext. The atomic importer then
 installed it while preserving the earlier zero-identity baseline for rollback.
 
-The restore service loads proven bridgeOS FDR calibration, then the general,
+The boot service first requires two byte-identical, structurally valid identity
+inventories for the configured user. If they are nonempty and the protected
+policy is valid, it succeeds without cancellation, calibration upload, reset,
+or Catacomb loading. Only an empty stable inventory reaches the experimental
+fallback, which loads bridgeOS FDR calibration and then the general,
 selected-user, and biolockout Catacomb components in order. It stops on the
-first protocol error and requires two byte-identical, structurally valid,
-nonempty identity inventories for the configured user before success. It does
-not reset the sensor. A failed restore prevents readiness and fprintd from
-starting; password authentication remains available.
+first protocol error and requires another stable nonempty inventory before
+success. It never resets the sensor. A failed run prevents readiness and
+fprintd from starting; password authentication remains available.
 
 ## First cold acceptance test
 
@@ -140,3 +143,26 @@ the current-boot service order and safe restore result before any retry. Only
 after a successful restore and stable nonempty inventory should the stock
 fprintd positive and negative controls, lock screen, Polkit, and sudo be
 retested. Do not blindly repeat a failed mutating restore.
+
+## First cold acceptance result
+
+After a complete shutdown and default Linux boot, the unattended genuine
+keybag load and encrypted-credential unlock both succeeded. Crucially, the
+boot-time capture taken before any restore command already reported a stable,
+structurally valid, nonempty identity inventory. This proves the enrolled T2
+identity state survives a full shutdown on this machine when Linux avoids the
+old reset-capable startup path.
+
+The initial service did not yet check for that state. It unnecessarily loaded
+calibration and attempted the master component, which the already-populated T2
+rejected with status 257. The service failed closed, and readiness and fprintd
+remained off. A later read-only check still found the same nonempty inventory
+and valid protected policy, confirming the rejection did not erase the live
+identities. The arm marker was moved aside before further work.
+
+The corrected service now short-circuits on the proven preexisting state using
+only two identity reads and one protected-policy read. Offline tests prove that
+this branch dispatches no biometric mutation. The unit also permits only one
+failed start per hour, preventing the three dependency-driven retries observed
+on the first boot. A second cold acceptance boot must prove automatic readiness,
+fprintd startup, and positive/negative fingerprint verification.
