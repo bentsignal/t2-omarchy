@@ -3888,19 +3888,21 @@ group size two; entity reuse is valid Apple state and is no longer rejected by
 the MIT validator. Requested and effective protected policy both remain
 `(1, 1, 1, 0)`.
 
-The preserved pre-enrollment zero-identity archive and the current archive
-also provide a complete redacted delta for the single fingerprint Shawn added
-in macOS: identity records advanced from zero to two, distinct entity numbers
-from zero to one, and master enrollment count from one to three. Exactly two
-UUIDs were added and none removed. The live free counter independently fell
-from three before enrollment to one now. All three Catacomb component files
-changed. On this machine, one proven macOS enrollment therefore created a
-two-record entity, consumed two reported identity units, and requires a
-three-component persistence transaction.
+The preserved zero-identity archive predates a macOS capture interval that
+contained one completed fingerprint enrollment and a separate accepted first
+scan followed by cancellation. Across that interval, identity records advanced
+from zero to two, distinct entity numbers from zero to one, and master
+enrollment count from one to three. Exactly two UUIDs were added and none
+removed. The live free counter independently fell from three to one, and all
+three Catacomb component files changed. This proves a two-record/one-entity
+transition and a three-component persistence requirement, but it does not
+prove whether the completed fingerprint owns both records or the cancelled
+attempt left one behind.
 
 This supersedes the prototype's one-added-identity completion assumption for
 this bridgeOS generation. It also prevents a populated-state mutation trial:
-only one free unit is reported, while the proven operation required two.
+only one free unit is reported, while the observed interval consumed two and
+the per-operation requirement is unresolved.
 Version-0 Catacomb UUID/state/group queries currently reject even though
 matching works, so their availability cannot be used as the sole presence
 gate. The new baseline and delta tools expose only counts, Boolean relations,

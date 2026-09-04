@@ -40,8 +40,10 @@ iterations and defeats that isolation.
 component directories after strict keyed-archive validation. It emits only
 record counts, entity-group sizes, master-count deltas, and UUID add/remove
 counts. It never emits a UUID, identity name, Catacomb payload, or archive
-hash. The tool is used to preserve the observed two-record/one-entity shape of
-one successful macOS enrollment on the tested `MacBookPro16,1`.
+hash. The tool is used to preserve the observed two-record/one-entity shape
+across a macOS interval containing one completed enrollment and one cancelled
+partial attempt on the tested `MacBookPro16,1`; it does not attribute records
+to either operation.
 
 `capture-macos-bridge.sh` is a read-only collector for the small set of
 installed macOS artifacts needed to resolve the remaining current-version

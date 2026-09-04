@@ -41,11 +41,12 @@ sudo python3 prototypes/t2sep-probe/native-enrollment-baseline.py \
   --confirm=I_UNDERSTAND_THIS_ONLY_READS_NATIVE_ENROLLMENT_BASELINE
 ```
 
-## Proven one-enrollment archive transition
+## Proven enrollment-capture interval
 
-The root-only zero-identity backup is the host state captured before Shawn
-added the one fingerprint currently visible in macOS. The current archive is
-the matching post-enrollment state. The privacy-safe comparison tool reports:
+The root-only zero-identity backup predates the macOS capture interval. That
+interval contained one completed fingerprint enrollment and a separate
+accepted first scan followed by cancellation. The current archive is the
+later state. The privacy-safe comparison tool reports:
 
 - identity records: 0 to 2;
 - distinct entity numbers: 0 to 1;
@@ -54,11 +55,14 @@ the matching post-enrollment state. The privacy-safe comparison tool reports:
 - two UUIDs added and none removed.
 - master, selected-user, and bio-lockout component files all changed.
 
-The same live T2's free counter was 3 before that enrollment and is now 1.
-Together these independent deltas show that this successful macOS enrollment
-consumed two identity units and created two UUID records under one entity on
-this firmware. They do not establish that every T2 model or bridgeOS build
-uses the same representation.
+The same live T2's free counter was 3 before that interval and is now 1.
+Together these independent deltas show that the capture interval consumed two
+identity units and created two UUID records under one entity on this firmware.
+They do **not** distinguish a two-record representation of the completed
+fingerprint from residue associated with the cancelled attempt. The macOS UI
+shows one fingerprint, but that is not enough to assign either private record
+to a particular operation. They also do not establish that another T2 model or
+bridgeOS build uses the same representation.
 
 The comparison is reproducible without printing either UUID:
 
@@ -77,12 +81,12 @@ identity object. The upstream decoder also rejects reused entity numbers.
 Those assumptions are incompatible with the validated Apple archive on this
 `MacBookPro16,1` and must not be used to mutate it.
 
-The current free count is one, while the only proven successful enrollment on
-this machine consumed two units. A populated-state enrollment experiment is
-therefore not justified merely because the counter is nonzero. The old
-zero-state attempts had enough reported capacity but command 3 returned a
-synchronous rejection before sensor capture, so finger placement was not
-involved.
+The current free count is one, while the only observed macOS capture interval
+consumed two units and its per-operation allocation remains ambiguous. A
+populated-state enrollment experiment is therefore not justified merely
+because the counter is nonzero. The old zero-state attempts had enough
+reported capacity but command 3 returned a synchronous rejection before sensor
+capture, so finger placement was not involved.
 
 Before the mutation gate can open, an independent Linux implementation must:
 
