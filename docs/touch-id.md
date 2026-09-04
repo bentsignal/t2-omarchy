@@ -3972,7 +3972,7 @@ reject.
 
 An isolated dry run using the machine's real clean one-finger archive advanced
 identity, entity, and master counts by one and removed all private staging after
-commit without touching the installed store. All 484 prototype tests and 111
+commit without touching the installed store. All 484 prototype tests and 114
 research tests pass, with one expected macOS-only skip. The next live action is
 a no-touch preflight and then one explicitly supervised enrollment; any
 ambiguous post-dispatch outcome must reconcile rather than retry.
@@ -3983,3 +3983,15 @@ Its no-touch preflight passed with one identity, available capacity, verified
 host state, stable same-connection live inventory, initialized retained sensor
 state, and no mutation. The project is now at the supervised Linux enrollment
 boundary.
+
+The first supervised populated-state run accepted the password and enrollment
+start but froze on the first active callback. Reconciliation proved one
+unchanged identity and no persistent mutation. The callback is the previously
+characterized version-1, 22-byte, UID-0 SKS lock-state notification; the broker
+already treats it as system-scoped during setup but rejected it in the active
+reducer. A pinned runtime overlay now accepts only UID 0 or UID 501 while
+preserving the existing version, minimum-length, framing, and unrelated-user
+checks. The external checkout remains unmodified. Three overlay tests, all 114
+research tests, the external broker's 343 tests, and the overlaid no-touch
+preflight pass. A retry is justified only because fresh reconciliation proved
+that the first attempt created no persistent delta.

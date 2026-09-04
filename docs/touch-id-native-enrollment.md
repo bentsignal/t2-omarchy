@@ -160,7 +160,7 @@ rules out treating bio-lockout as optional metadata.
 The real one-finger store passed a fully isolated transaction dry run: identity,
 entity, and master counts each advanced by exactly one, the final journal phase
 was committed, private staging was removed, and the installed live store was
-not modified. The complete public suite passes 484 prototype tests and 111
+not modified. The complete public suite passes 484 prototype tests and 114
 research tests, with one expected macOS-only skip.
 
 The live gate remains explicit. The next step is a no-touch preflight against a
@@ -175,3 +175,20 @@ broker reported one host/live identity, available capacity, a verified local
 store, same-connection inventory, and initialized retained sensor state. It
 reported `mutation_performed=false`. The next action is therefore the single
 supervised new-finger enrollment, not another macOS pass or discovery probe.
+
+The first supervised populated-state start accepted the password and command 3,
+then stopped on its first callback before a scan was accepted. The callback was
+the already characterized version-1 SKS lock-state auxiliary event: this T2 can
+emit its 22-byte system-scoped UID-0 form after enrollment starts, while the
+broker accepted UID 0 only during prestart staging and required UID 501 in the
+active reducer. Fresh host/live reconciliation proved one unchanged identity,
+no persistent delta, and no remaining unfinished operation.
+
+`tools/research/run-external-enrollment-overlay.py` pins the exact external GPL
+source commit and protocol-module digest, then makes the narrow correction at
+runtime without modifying that checkout: the existing event parser still
+requires version 1 and a complete six-byte UID/state prefix, and the reducer
+accepts only system UID 0 or the pinned enrollment UID. Every other user and
+every malformed shape still fail closed. Three focused overlay tests, all 114
+research tests, the external broker's 343 tests, and another real no-touch
+preflight pass.
