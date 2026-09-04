@@ -77,8 +77,27 @@ def _identities(session, user_id: int):
     return identities
 
 
-def _persist_catacomb(session, *, user_id: int,
-                       catacomb_sink: Callable[[bytes], None],
+def _identity_capacity(session, user_id: int) -> tuple[int, int]:
+    maximum_status, maximum_output = _perform(
+        session, biometric.max_identity_count_fields()
+    )
+    free_status, free_output = _perform(
+        session, biometric.free_identity_count_fields(user_id=user_id)
+    )
+    if maximum_status != 0 or free_status != 0:
+        raise EnrollmentProbeError("identity capacity query failed")
+    try:
+        maximum = biometric.decode_identity_count(maximum_output or b"")
+        free = biometric.decode_identity_count(free_output or b"")
+    except biometric.BiometricCommandError as error:
+        raise EnrollmentProbeError("identity capacity reply was invalid") from error
+    if free > maximum:
+        raise EnrollmentProbeError("identity capacity reply is inconsistent")
+    return maximum, free
+
+
+def _persist_catacomb(session, *, user_id: int, component_name: str,
+                       catacomb_sink: Callable[[str, bytes], None],
                        stage: str) -> None:
     """Durably sink one service snapshot before acknowledging its save."""
     prepare_status, prepared_size = _perform(
@@ -106,7 +125,7 @@ def _persist_catacomb(session, *, user_id: int,
             f"{stage} catacomb save completion failed with status {complete_status}")
     try:
         biometric.load_catacomb_fields(user_id=user_id, blob=blob)
-        catacomb_sink(blob)
+        catacomb_sink(component_name, blob)
     except Exception as error:
         raise EnrollmentProbeError(f"{stage} catacomb persistence sink failed") from error
     confirm_status, confirm_output = _perform(
@@ -134,7 +153,7 @@ def _initialize_current_bridge(session) -> None:
         raise EnrollmentProbeError("biometric service did not report opened")
 
 
-def _establish_enrollment_sensor_context(session) -> None:
+def _establish_enrollment_sensor_context(session, *, catacomb_populated: bool) -> None:
     """Mirror the daemon's non-secret state reads on the enrollment session."""
     sensor_context._establish_nonsecret_context(session)
     status, output = _perform(session, biometric.system_protected_config_fields())
@@ -162,7 +181,7 @@ def _establish_enrollment_sensor_context(session) -> None:
     group_state_absent = status == KIORETURN_BAD_ARGUMENT
     if catacomb_state_absent != group_state_absent:
         raise EnrollmentProbeError("catacomb state availability is inconsistent")
-    if catacomb_state_absent:
+    if catacomb_state_absent and not catacomb_populated:
         status, output = _perform(
             session, biometric.no_catacomb_fields(
                 user_id=biometric.DEFAULT_USER_ID))
@@ -183,14 +202,22 @@ def probe_socket(sock, *, user_id: int,
                  policy_request=None,
                  establish_sensor_context: bool = False,
                  catacomb_sink: Callable[[bytes], None] | None = None,
+                 component_sink: Callable[[str, bytes], None] | None = None,
+                 mutation_begin: Callable[[tuple[biometric.BiometricIdentity, ...], int, int], None] | None = None,
+                 terminal_sink: Callable[[biometric.BiometricIdentity], None] | None = None,
+                 persistence_commit: Callable[[], None] | None = None,
                  progress: Callable[[tuple[int, int, int]], None] | None = None
                  ) -> EnrollmentProbeResult:
     """Enroll one token-free identity and prove an exact terminal/list delta."""
     session = coupled.bridge_query.BridgeSession(sock)
     _initialize_current_bridge(session)
+    before = None
     if establish_sensor_context:
+        before = _identities(session, user_id)
         try:
-            _establish_enrollment_sensor_context(session)
+            _establish_enrollment_sensor_context(
+                session, catacomb_populated=bool(before)
+            )
         except (sensor_context.ExternalCatacombLoadError,
                 sensor_context.state.biometric.BiometricCommandError) as error:
             raise EnrollmentProbeError(
@@ -230,7 +257,23 @@ def probe_socket(sock, *, user_id: int,
         if struct.unpack_from("<4I", read_output) != expected_policy:
             raise EnrollmentProbeError("protected policy readback did not match the requested policy")
         policy_initialized = True
-    before = _identities(session, user_id)
+    if before is None or policy_initialized:
+        before = _identities(session, user_id)
+    full_transaction = component_sink is not None
+    if full_transaction != all(
+        callback is not None
+        for callback in (mutation_begin, terminal_sink, persistence_commit)
+    ):
+        raise EnrollmentProbeError(
+            "three-component persistence requires every transaction callback"
+        )
+    if catacomb_sink is not None and full_transaction:
+        raise EnrollmentProbeError("legacy and three-component persistence conflict")
+    if mutation_begin is not None:
+        maximum, free = _identity_capacity(session, user_id)
+        if free < 1 or len(before) >= maximum:
+            raise EnrollmentProbeError("identity capacity is exhausted")
+        mutation_begin(before, maximum, free)
     statuses: list[int] = []
     events: list[tuple[int, int, int]] = []
     terminal_identity = None
@@ -296,9 +339,46 @@ def probe_socket(sock, *, user_id: int,
         if added != terminal_identity:
             raise EnrollmentProbeError(
                 "terminal identity does not equal the newly enumerated identity")
+        if terminal_sink is not None:
+            terminal_sink(terminal_identity)
+        if component_sink is not None:
+            _persist_catacomb(
+                session,
+                user_id=user_id,
+                component_name=f"user_{user_id:08x}.cat",
+                catacomb_sink=component_sink,
+                stage="enrolled user",
+            )
+            _persist_catacomb(
+                session,
+                user_id=biometric.DEFAULT_USER_ID,
+                component_name="master.cat",
+                catacomb_sink=component_sink,
+                stage="enrolled master",
+            )
+            lockout_status, lockout_blob = _perform(
+                session, biometric.save_biolockout_fields()
+            )
+            if lockout_status != 0:
+                raise EnrollmentProbeError(
+                    "bio-lockout save failed with status "
+                    f"{lockout_status}"
+                )
+            try:
+                lockout_blob = biometric.decode_saved_biolockout(
+                    lockout_blob or b""
+                )
+                component_sink("biolockout.cat", lockout_blob)
+                persistence_commit()
+            except Exception as error:
+                raise EnrollmentProbeError(
+                    "three-component persistence finalization failed"
+                ) from error
+            catacomb_saved = True
         if catacomb_sink is not None:
             _persist_catacomb(session, user_id=user_id,
-                              catacomb_sink=catacomb_sink,
+                              component_name=f"user_{user_id:08x}.cat",
+                              catacomb_sink=lambda _name, blob: catacomb_sink(blob),
                               stage="enrolled")
             catacomb_saved = True
     finally:
@@ -318,6 +398,10 @@ def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
                policy_request=None,
                establish_sensor_context: bool = False,
                catacomb_sink: Callable[[bytes], None] | None = None,
+               component_sink: Callable[[str, bytes], None] | None = None,
+               mutation_begin=None,
+               terminal_sink=None,
+               persistence_commit=None,
                progress: Callable[[tuple[int, int, int]], None] | None = None
                ) -> EnrollmentProbeResult:
     if not LIVE_ENROLLMENT_ENABLED:
@@ -337,6 +421,10 @@ def live_probe(*, user_id: int, interface: str = "enp4s0f1u1",
                               policy_request=policy_request,
                               establish_sensor_context=establish_sensor_context,
                               catacomb_sink=catacomb_sink,
+                              component_sink=component_sink,
+                              mutation_begin=mutation_begin,
+                              terminal_sink=terminal_sink,
+                              persistence_commit=persistence_commit,
                               progress=progress)
         return result
 

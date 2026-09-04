@@ -147,6 +147,12 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
             command.load_biolockout_fields(b"HRLB" + bytes(12)),
             (0x4B, 1, 0, b"HRLB" + bytes(12), 0),
         )
+        self.assertEqual(
+            command.save_biolockout_fields(),
+            (0x4A, 1, 0, b"", 0x1000),
+        )
+        saved = b"HRLB" + bytes(12)
+        self.assertIs(command.decode_saved_biolockout(saved), saved)
 
     def test_strict_current_restore_codecs_reject_ambiguous_input(self):
         valid = command.CATACOMB_FILE_HEADER.pack(
@@ -170,6 +176,14 @@ class OrdinaryMatchPayloadTests(unittest.TestCase):
         for blob in (b"", b"BAD!" + bytes(12), bytearray(b"HRLB" + bytes(12))):
             with self.assertRaises(command.BiometricCommandError):
                 command.load_biolockout_fields(blob)
+        for blob in (
+            b"",
+            b"BAD!" + bytes(12),
+            bytearray(b"HRLB" + bytes(12)),
+            b"HRLB" + bytes(command.SAVE_BIOLOCKOUT_CAPACITY),
+        ):
+            with self.assertRaises(command.BiometricCommandError):
+                command.decode_saved_biolockout(blob)
 
     def test_catacomb_persistence_codecs_reject_unbounded_or_wrong_user_data(self):
         for output in (b"", b"123", struct.pack("<I", 32),

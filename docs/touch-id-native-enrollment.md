@@ -51,7 +51,7 @@ later state. The privacy-safe comparison tool reports:
 - distinct entity numbers: 0 to 1;
 - the new entity group size: 2;
 - master enrollment count: 1 to 3;
-- two UUIDs added and none removed.
+- two UUIDs added and none removed;
 - master, selected-user, and bio-lockout component files all changed.
 
 The same live T2's free counter was 3 before that interval and is now 1.
@@ -61,11 +61,11 @@ The two private records' creation times are about eight minutes apart, which
 is consistent with the separate complete and cancelled capture runs. That is
 supporting evidence for cancellation residue, not proof of which run owns
 either record.
-They do **not** distinguish a two-record representation of the completed
-fingerprint from residue associated with the cancelled attempt. The macOS UI
-shows one fingerprint, but that is not enough to assign either private record
-to a particular operation. They also do not establish that another T2 model or
-bridgeOS build uses the same representation.
+The later controlled clean enrollment distinguishes these cases: one completed
+enrollment creates one record, while the earlier interval's additional record
+was residue from its separately accepted then cancelled attempt. These results
+still do not establish that another T2 model or bridgeOS build uses the same
+representation.
 
 The comparison is reproducible without printing either UUID:
 
@@ -93,11 +93,11 @@ adopted it. The previous two-record store is preserved as
 remains untouched. Post-import validation proved the installed components are
 byte-identical to the fixture. The live T2 now reports two free identity units.
 
-A Linux enrollment experiment is still not justified until the transaction,
-journal, three-component persistence, and rollback gates below are implemented
-and tested. The old zero-state attempts had enough reported capacity but
-command 3 returned a synchronous rejection before sensor capture, so finger
-placement was not involved.
+The old zero-state attempts had enough reported capacity but command 3 returned
+a synchronous rejection before sensor capture, so finger placement was not
+involved. A populated-state attempt must never issue `NoCatacomb` merely
+because optional version-0 state queries reject; a stable nonempty identity
+inventory is the authoritative presence gate.
 
 Before the mutation gate can open, an independent Linux implementation must:
 
@@ -111,9 +111,9 @@ Before the mutation gate can open, an independent Linux implementation must:
    both the live SEP and the previous root-only backup; and
 5. prove at least one free identity unit immediately before mutation.
 
-Until those gates are implemented and offline-tested, the baseline reports
-`safe_for_mutation=false`. Existing authentication remains untouched and is
-the recovery control.
+The transaction and rollback gates are now implemented and offline-tested as
+described below. Existing authentication remains untouched and is the recovery
+control until one supervised end-to-end enrollment proves the live save order.
 
 ## Clean macOS enrollment result
 
@@ -131,3 +131,39 @@ matched stable live state, the protected policy remained exact, and free
 capacity rose from one to two. The installed store matches the fixture with no
 component delta. `safe_for_mutation=false` remains correct until every
 persistence, journal, password-fallback, and rollback gate passes.
+
+## Linux three-component transaction implementation
+
+The MIT prototype now has an independent offline implementation of the missing
+host transaction:
+
+- command `0x4a`, version 1, is encoded as the bounded bio-lockout save and its
+  response must be a 16-to-4096-byte `HRLB` record;
+- a completed enrollment saves selected-user and master `LTFC` payloads through
+  prepare/complete/confirm, staging each payload durably before its SEP host
+  confirmation, then captures bio-lockout;
+- the host keyed archives gain exactly one new private identity with the first
+  unused entity number, increment the master enrollment count once, and replace
+  all three secure payloads;
+- the journal stores only counts, lengths, and SHA-256 digests; the raw terminal
+  identity and opaque SEP data remain in root-only staging files;
+- the complete candidate is independently schema-validated before commit, the
+  previous store is retained as rollback evidence, and a failed directory swap
+  restores the previous store; and
+- successful commit removes the raw identity and secure-payload staging files.
+
+Privacy-safe comparison of the preserved zero, historical two-record, and
+clean one-record stores proved that the secure payload itself changes in all
+three components. This is stronger than the earlier whole-file comparison and
+rules out treating bio-lockout as optional metadata.
+
+The real one-finger store passed a fully isolated transaction dry run: identity,
+entity, and master counts each advanced by exactly one, the final journal phase
+was committed, private staging was removed, and the installed live store was
+not modified. The complete public suite passes 484 prototype tests and 111
+research tests, with one expected macOS-only skip.
+
+The live gate remains explicit. The next step is a no-touch preflight against a
+baseline archive matching the clean store, followed by one supervised new-finger
+enrollment. No repeat is allowed after an ambiguous post-dispatch failure;
+journal and live/host reconciliation take precedence.

@@ -41,6 +41,9 @@ class CatacombIdentityShapeDeltaTests(unittest.TestCase):
             identity_entity_count=0,
             identity_entity_group_sizes=(),
             master_enrollment_count=1,
+            master_secure_data=b"before-master-secure",
+            user_secure_data=b"before-user-secure",
+            biolockout_secure_data=b"before-lockout-secure",
             components={
                 "master.cat": b"before-master",
                 "user_000001f5.cat": b"before-user",
@@ -53,6 +56,9 @@ class CatacombIdentityShapeDeltaTests(unittest.TestCase):
             identity_entity_count=1,
             identity_entity_group_sizes=(2,),
             master_enrollment_count=3,
+            master_secure_data=b"after-master-secure",
+            user_secure_data=b"after-user-secure",
+            biolockout_secure_data=b"after-lockout-secure",
             components={
                 "master.cat": b"after-master",
                 "user_000001f5.cat": b"after-user",
@@ -65,6 +71,9 @@ class CatacombIdentityShapeDeltaTests(unittest.TestCase):
         self.assertEqual(result.entity_number_count_delta, 1)
         self.assertEqual(result.master_enrollment_count_delta, 2)
         self.assertTrue(result.all_components_changed)
+        self.assertTrue(result.master_secure_data_changed)
+        self.assertTrue(result.user_secure_data_changed)
+        self.assertTrue(result.biolockout_secure_data_changed)
         self.assertFalse(result.logical_finger_count_inferred)
         self.assertTrue(result.identifiers_redacted)
         self.assertFalse(result.mutation_performed)
@@ -75,6 +84,9 @@ class CatacombIdentityShapeDeltaTests(unittest.TestCase):
             identity_entity_count=1,
             identity_entity_group_sizes=(2,),
             master_enrollment_count=3,
+            master_secure_data=b"same-master-secure",
+            user_secure_data=b"same-user-secure",
+            biolockout_secure_data=b"same-lockout-secure",
             components={
                 "master.cat": b"same-master",
                 "user_000001f5.cat": b"same-user",
@@ -87,6 +99,9 @@ class CatacombIdentityShapeDeltaTests(unittest.TestCase):
             identity_entity_count=1,
             identity_entity_group_sizes=(2,),
             master_enrollment_count=3,
+            master_secure_data=b"same-master-secure",
+            user_secure_data=b"same-user-secure",
+            biolockout_secure_data=b"same-lockout-secure",
             components={
                 "master.cat": b"same-master",
                 "user_000001f5.cat": b"same-user",
@@ -95,6 +110,9 @@ class CatacombIdentityShapeDeltaTests(unittest.TestCase):
         )
         result = delta.compare_validated(before, after)
         self.assertFalse(result.two_record_one_entity_addition_observed)
+        self.assertFalse(result.master_secure_data_changed)
+        self.assertFalse(result.user_secure_data_changed)
+        self.assertFalse(result.biolockout_secure_data_changed)
 
     def test_source_never_prints_or_serializes_private_identity_values(self):
         source = SCRIPT.read_text()

@@ -3953,3 +3953,26 @@ This closes the clean-state and capacity discriminator. Linux-native
 enrollment remains gated on transactionally saving all three changed Catacomb
 components, journaling the one-record/one-entity terminal delta, and proving
 rollback behavior before another supervised command-3 attempt.
+
+### 2026-09-04 Linux-native three-component enrollment transaction
+
+Privacy-safe comparison now proves that master, selected-user, and bio-lockout
+secure payloads all change across enrollment, not only their surrounding keyed
+archives. The MIT prototype therefore added strict save-bio-lockout command
+`0x4a` handling and replaced the old one-component persistence assumption with
+selected-user, master, and bio-lockout staging.
+
+The host transaction journals intent before command 3, stores only redacted
+counts and digests in the journal, durably stages private SEP output before
+each confirmation, builds a one-record/one-entity keyed-archive delta,
+independently validates it, preserves the prior store, and rolls back a failed
+commit. The populated-state setup path also refuses to call `NoCatacomb` when
+stable live identities exist even if the optional version-0 state queries
+reject.
+
+An isolated dry run using the machine's real clean one-finger archive advanced
+identity, entity, and master counts by one and removed all private staging after
+commit without touching the installed store. All 484 prototype tests and 111
+research tests pass, with one expected macOS-only skip. The next live action is
+a no-touch preflight and then one explicitly supervised enrollment; any
+ambiguous post-dispatch outcome must reconcile rather than retry.

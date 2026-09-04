@@ -30,6 +30,15 @@ class AuthorizedEnrollmentRunnerSafetyTests(unittest.TestCase):
         self.assertIn("authorized_enrollment_confirmation=0x41555448454e5231", SOURCE)
         self.assertIn("verify-authorized-enrollment-handoff-log.py", SOURCE)
 
+    def test_transactional_enrollment_has_distinct_confirmation_and_root_store(self):
+        self.assertIn(
+            "I_UNDERSTAND_THIS_TRANSACTIONALLY_CREATES_ONE_FINGERPRINT_IDENTITY",
+            SOURCE,
+        )
+        self.assertIn("transactional-enrollment-client.py", SOURCE)
+        self.assertIn("--state-root /var/lib/t2-touchid", SOURCE)
+        self.assertIn('if (( transactional )); then', SOURCE)
+
     def test_policy_bootstrap_requires_a_distinct_explicit_confirmation(self):
         self.assertIn(
             "I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY",

@@ -49,7 +49,7 @@ class EnrollmentProbeTests(unittest.TestCase):
     USER = 1000
     UUID = bytes(range(16))
     IDS = tuple(f"{index:08d}-89AB-4CDE-8FAB-0123456789AB"
-                for index in range(13))
+                for index in range(20))
 
     def incoming(self, *, after_record=True, terminal_uuid=UUID):
         identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
@@ -167,6 +167,65 @@ class EnrollmentProbeTests(unittest.TestCase):
         self.assertEqual(saved, [bytes(blob)])
         self.assertTrue(result.catacomb_saved)
 
+    def test_successful_enrollment_stages_all_three_components_then_commits(self):
+        identity = probe.biometric.IDENTITY.pack(self.USER, self.UUID)
+        user_blob = bytearray(b"LTFC" + bytes(124))
+        struct.pack_into("<I", user_blob, 8, self.USER)
+        master_blob = bytearray(b"LTFC" + bytes(124))
+        struct.pack_into("<I", master_blob, 8, probe.biometric.DEFAULT_USER_ID)
+        lockout_blob = b"HRLB" + bytes(28)
+        incoming = (envelope(self.IDS[0], [0, 3])
+                    + envelope(self.IDS[1], [0])
+                    + envelope(self.IDS[2], [0, True])
+                    + envelope(self.IDS[3], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[4], [0, struct.pack("<I", 5)])
+                    + envelope(self.IDS[5], [0, struct.pack("<I", 2)])
+                    + envelope(self.IDS[6], [0, protocol.NO_REPLY_UUID.lower()])
+                    + service_event(0xE3FF8001)
+                    + service_event(0xE3FF8003, identity, 2)
+                    + envelope(self.IDS[7], [0, identity])
+                    + envelope(self.IDS[8], [0, struct.pack("<I", len(user_blob))])
+                    + envelope(self.IDS[9], [0, bytes(user_blob)])
+                    + envelope(self.IDS[10], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[11], [0, struct.pack("<I", len(master_blob))])
+                    + envelope(self.IDS[12], [0, bytes(master_blob)])
+                    + envelope(self.IDS[13], [0, protocol.NO_REPLY_UUID.lower()])
+                    + envelope(self.IDS[14], [0, lockout_blob])
+                    + envelope(self.IDS[15], [0, protocol.NO_REPLY_UUID.lower()]))
+        calls = []
+        ids = iter(self.IDS)
+        original = probe.coupled.bridge_query.uuid.uuid4
+        probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
+        try:
+            result = probe.probe_socket(
+                FakeSocket(incoming),
+                user_id=self.USER,
+                mutation_begin=lambda before, maximum, free: calls.append(
+                    ("begin", len(before), maximum, free)
+                ),
+                terminal_sink=lambda terminal: calls.append(
+                    ("terminal", terminal.user_id)
+                ),
+                component_sink=lambda name, blob: calls.append(
+                    ("component", name, len(blob))
+                ),
+                persistence_commit=lambda: calls.append(("commit",)),
+            )
+        finally:
+            probe.coupled.bridge_query.uuid.uuid4 = original
+        self.assertEqual(
+            calls,
+            [
+                ("begin", 0, 5, 2),
+                ("terminal", self.USER),
+                ("component", f"user_{self.USER:08x}.cat", len(user_blob)),
+                ("component", "master.cat", len(master_blob)),
+                ("component", "biolockout.cat", len(lockout_blob)),
+                ("commit",),
+            ],
+        )
+        self.assertTrue(result.catacomb_saved)
+
     def test_progress_callback_gets_metadata_only(self):
         seen = []
         self.run_probe_with_progress(self.incoming(), seen.append)
@@ -198,7 +257,9 @@ class EnrollmentProbeTests(unittest.TestCase):
         original = probe._establish_enrollment_sensor_context
         original_uuid = probe.coupled.bridge_query.uuid.uuid4
         ids = iter(self.IDS)
-        probe._establish_enrollment_sensor_context = seen.append
+        probe._establish_enrollment_sensor_context = (
+            lambda session, **kwargs: seen.append((session, kwargs))
+        )
         probe.coupled.bridge_query.uuid.uuid4 = lambda: next(ids)
         try:
             result = probe.probe_socket(
@@ -209,7 +270,8 @@ class EnrollmentProbeTests(unittest.TestCase):
             probe.coupled.bridge_query.uuid.uuid4 = original_uuid
         self.assertEqual(result.identities_after, 1)
         self.assertEqual(len(seen), 1)
-        self.assertIsInstance(seen[0], probe.coupled.bridge_query.BridgeSession)
+        self.assertIsInstance(seen[0][0], probe.coupled.bridge_query.BridgeSession)
+        self.assertEqual(seen[0][1], {"catacomb_populated": False})
 
     def test_enrollment_context_requires_ordered_state_reads_before_xart(self):
         calls = []
@@ -227,7 +289,9 @@ class EnrollmentProbeTests(unittest.TestCase):
         probe._perform = lambda session, fields: (
             calls.append(fields[0]) or next(replies))
         try:
-            probe._establish_enrollment_sensor_context(object())
+            probe._establish_enrollment_sensor_context(
+                object(), catacomb_populated=False
+            )
         finally:
             probe.sensor_context._establish_nonsecret_context = original_context
             probe._perform = original_perform
@@ -239,6 +303,29 @@ class EnrollmentProbeTests(unittest.TestCase):
             probe.biometric.COMMAND_NO_CATACOMB,
             probe.biometric.COMMAND_IS_XART_AVAILABLE,
         ])
+
+    def test_populated_context_never_issues_no_catacomb(self):
+        calls = []
+        original_context = probe.sensor_context._establish_nonsecret_context
+        original_perform = probe._perform
+        replies = iter((
+            (0, struct.pack("<9I", 172800, 5, 5, 1, 1, 1, 1, 14400, 561600)),
+            (probe.KIORETURN_BAD_ARGUMENT, None),
+            (probe.KIORETURN_BAD_ARGUMENT, None),
+            (0, b"\x01"),
+        ))
+        probe.sensor_context._establish_nonsecret_context = lambda session: None
+        probe._perform = lambda session, fields: (
+            calls.append(fields[0]) or next(replies)
+        )
+        try:
+            probe._establish_enrollment_sensor_context(
+                object(), catacomb_populated=True
+            )
+        finally:
+            probe.sensor_context._establish_nonsecret_context = original_context
+            probe._perform = original_perform
+        self.assertNotIn(probe.biometric.COMMAND_NO_CATACOMB, calls)
 
 
 if __name__ == "__main__":

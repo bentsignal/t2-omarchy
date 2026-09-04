@@ -41,6 +41,7 @@ COMMAND_LOAD_CATACOMB = 0x40
 COMMAND_FREE_IDENTITY_COUNT = 0x41
 COMMAND_IDENTITY_LIST = 0x42
 COMMAND_GET_SYSTEM_PROTECTED_CONFIG = 0x43
+COMMAND_SAVE_BIOLOCKOUT = 0x4A
 COMMAND_LOAD_BIOLOCKOUT = 0x4B
 COMMAND_IS_XART_AVAILABLE = 0x4C
 COMMAND_GET_CATACOMB_GROUP_STATE = 0x50
@@ -73,6 +74,7 @@ CATACOMB_HEADER_MINIMUM_SIZE = 33
 MAX_CATACOMB_BLOB_SIZE = 75 * 4096
 MAX_CALIBRATION_BLOB_SIZE = 1024 * 1024
 MAX_BIOLOCKOUT_BLOB_SIZE = 64 * 1024
+SAVE_BIOLOCKOUT_CAPACITY = 0x1000
 CATACOMB_FILE_HEADER = struct.Struct("<IIi20s")
 SERVICE_EVENT_MATCH_RESULT = 0xE3FF8002
 SERVICE_EVENT_ENROLL_RESULT = 0xE3FF8003
@@ -486,6 +488,28 @@ def load_biolockout_fields(blob: bytes):
             or not 16 <= len(blob) <= MAX_BIOLOCKOUT_BLOB_SIZE):
         raise BiometricCommandError("bio-lockout secure data is outside safe bounds")
     return COMMAND_LOAD_BIOLOCKOUT, COMMAND_VERSION, 0, blob, 0
+
+
+def save_biolockout_fields():
+    """Request the bounded bio-lockout record used by current persistence."""
+    return (
+        COMMAND_SAVE_BIOLOCKOUT,
+        COMMAND_VERSION,
+        0,
+        b"",
+        SAVE_BIOLOCKOUT_CAPACITY,
+    )
+
+
+def decode_saved_biolockout(output: bytes) -> bytes:
+    """Validate one opaque saved record without interpreting its private body."""
+    if (
+        not isinstance(output, bytes)
+        or not output.startswith(b"HRLB")
+        or not 16 <= len(output) <= SAVE_BIOLOCKOUT_CAPACITY
+    ):
+        raise BiometricCommandError("saved bio-lockout record is outside safe bounds")
+    return output
 
 
 def validate_opaque_record_array(output: bytes, *, record_size: int,

@@ -21,6 +21,7 @@ catacomb_path=
 global_input=
 user_input=
 authorize_policy=0
+transactional=0
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] || die "run as the desktop user"
@@ -39,6 +40,12 @@ case $confirmation in
     client_name=authorized-enrollment-client.py
     client_confirmation=$confirmation
     authorize_policy=1
+    ;;
+  I_UNDERSTAND_THIS_TRANSACTIONALLY_CREATES_ONE_FINGERPRINT_IDENTITY)
+    client_name=transactional-enrollment-client.py
+    client_confirmation=$confirmation
+    authorize_policy=1
+    transactional=1
     ;;
   I_UNDERSTAND_THIS_CREATES_ONE_USER_POLICY_AND_FINGERPRINT_IDENTITY)
     client_name=authorized-policy-enrollment-client.py
@@ -137,7 +144,14 @@ done
 
 echo "Authorized BiometricKit operation is starting." >&2
 set +e
-if [[ -n $global_input ]]; then
+if (( transactional )); then
+  sudo -n cat "$credential_path" |
+    sudo -n python3 "$module_dir/$client_name" \
+      --user-id "$session_uid" --interface "$interface" \
+      --state-root /var/lib/t2-touchid \
+      --confirm="$client_confirmation"
+  client_status=${PIPESTATUS[1]}
+elif [[ -n $global_input ]]; then
   sudo -n cat "$credential_path" |
     python3 "$module_dir/$client_name" \
       --user-id "$session_uid" --interface "$interface" \

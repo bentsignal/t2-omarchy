@@ -52,6 +52,9 @@ class CatacombShapeDelta:
     master_component_changed: bool
     user_component_changed: bool
     biolockout_component_changed: bool
+    master_secure_data_changed: bool
+    user_secure_data_changed: bool
+    biolockout_secure_data_changed: bool
     all_components_changed: bool
     two_record_one_entity_addition_observed: bool
     logical_finger_count_inferred: bool
@@ -135,6 +138,11 @@ def compare_validated(before, after) -> CatacombShapeDelta:
     biolockout_changed = (
         before.components["biolockout.cat"] != after.components["biolockout.cat"]
     )
+    master_secure_data_changed = before.master_secure_data != after.master_secure_data
+    user_secure_data_changed = before.user_secure_data != after.user_secure_data
+    biolockout_secure_data_changed = (
+        before.biolockout_secure_data != after.biolockout_secure_data
+    )
     two_record_one_entity = (
         record_delta == 2
         and added == 2
@@ -159,6 +167,9 @@ def compare_validated(before, after) -> CatacombShapeDelta:
         master_component_changed=master_changed,
         user_component_changed=user_changed,
         biolockout_component_changed=biolockout_changed,
+        master_secure_data_changed=master_secure_data_changed,
+        user_secure_data_changed=user_secure_data_changed,
+        biolockout_secure_data_changed=biolockout_secure_data_changed,
         all_components_changed=master_changed and user_changed and biolockout_changed,
         two_record_one_entity_addition_observed=two_record_one_entity,
         # Entity grouping is structural evidence, not a general UI mapping.
