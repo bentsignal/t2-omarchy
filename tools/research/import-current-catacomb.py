@@ -51,7 +51,7 @@ class ImportResult:
 
 
 def _require_private_directory(path: Path) -> None:
-    metadata = path.stat(follow_symlinks=False)
+    metadata = path.lstat()
     if (
         not stat.S_ISDIR(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
@@ -92,7 +92,7 @@ def _require_replaceable_store(path: Path, expected: set[str]) -> None:
     if actual != expected:
         raise ImportError("existing Catacomb store is not the exact component set")
     for name in expected:
-        metadata = (path / name).stat(follow_symlinks=False)
+        metadata = (path / name).lstat()
         if (
             not stat.S_ISREG(metadata.st_mode)
             or metadata.st_uid != os.geteuid()

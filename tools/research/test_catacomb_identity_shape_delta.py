@@ -28,7 +28,12 @@ class CatacombIdentityShapeDeltaTests(unittest.TestCase):
             ) as validate:
                 result = delta.load_private_source(path, 501)
         self.assertIs(result, sentinel)
-        validate.assert_called_once_with(path, 501, delta.plistlib.loads)
+        expected_loader = (
+            delta.validator._foundation_load
+            if Path("/usr/bin/plutil").is_file()
+            else delta.plistlib.loads
+        )
+        validate.assert_called_once_with(path, 501, expected_loader)
 
     def test_two_record_one_entity_addition_is_reported_without_identifiers(self):
         before = SimpleNamespace(

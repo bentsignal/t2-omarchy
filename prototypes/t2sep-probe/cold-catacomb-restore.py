@@ -57,7 +57,7 @@ class ColdRestoreResult:
 
 
 def _private_component(path: Path) -> bytes:
-    metadata = path.stat(follow_symlinks=False)
+    metadata = path.lstat()
     if (
         not stat.S_ISREG(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
@@ -82,7 +82,7 @@ def _private_component(path: Path) -> bytes:
 def read_current_store(path: Path, apple_user_id: int):
     if not path.is_absolute():
         raise ColdRestoreError("local Catacomb path must be absolute")
-    metadata = path.stat(follow_symlinks=False)
+    metadata = path.lstat()
     if stat.S_ISREG(metadata.st_mode):
         try:
             validated = validator.load_validated_archive(

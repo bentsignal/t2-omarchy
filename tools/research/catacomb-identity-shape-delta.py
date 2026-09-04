@@ -60,7 +60,7 @@ class CatacombShapeDelta:
 
 
 def _private_component(path: Path) -> bytes:
-    metadata = path.stat(follow_symlinks=False)
+    metadata = path.lstat()
     if (
         not stat.S_ISREG(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
@@ -85,7 +85,7 @@ def _private_component(path: Path) -> bytes:
 def load_private_source(path: Path, apple_user_id: int):
     if not path.is_absolute():
         raise CatacombShapeDeltaError("private Catacomb source path must be absolute")
-    metadata = path.stat(follow_symlinks=False)
+    metadata = path.lstat()
     foundation_loader = (
         validator._foundation_load
         if Path("/usr/bin/plutil").is_file()
