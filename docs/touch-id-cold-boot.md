@@ -166,3 +166,14 @@ this branch dispatches no biometric mutation. The unit also permits only one
 failed start per hour, preventing the three dependency-driven retries observed
 on the first boot. A second cold acceptance boot must prove automatic readiness,
 fprintd startup, and positive/negative fingerprint verification.
+
+The corrected installed service was then exercised on the same first cold
+boot. It reported that restoration was not required, loaded zero components,
+and passed its stable nonempty identity and protected-policy gates. The
+no-reset readiness service and fprintd subsequently started cleanly. Through
+the stock `fprintd-verify` client, the macOS-enrolled finger returned
+`verify-match (done)` with exit status zero, while a separately supervised
+unenrolled finger returned `verify-no-match (done)`. This proves real cold-boot
+matching and rejection on the retained T2 state. It does not yet prove that the
+corrected chain starts automatically, because those three services were
+started manually after installing the fix during this boot.
