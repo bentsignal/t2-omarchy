@@ -513,7 +513,7 @@ def validate_archive(
         "master_enrollment_count": validated.master_enrollment_count,
         "logical_finger_count_inferred": False,
         "schemas_valid": True,
-        "foundation_readback": True,
+        "foundation_readback": foundation_loader is _foundation_load,
         "semantic_round_trip_equal": True,
         "secure_envelopes_valid": True,
         "account_and_keybag_bindings_present": True,
@@ -526,8 +526,15 @@ def main() -> int:
     parser.add_argument("archive", type=Path)
     parser.add_argument("--apple-user-id", type=int, required=True)
     args = parser.parse_args()
+    platform_loader = (
+        _foundation_load
+        if Path("/usr/bin/plutil").is_file()
+        else plistlib.loads
+    )
     try:
-        result = validate_archive(args.archive, args.apple_user_id)
+        result = validate_archive(
+            args.archive, args.apple_user_id, platform_loader
+        )
     except (OSError, ValidationError, ValueError) as error:
         parser.error("current Catacomb validation failed")
     print(json.dumps(result, sort_keys=True, indent=2))

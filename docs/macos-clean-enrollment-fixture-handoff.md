@@ -97,3 +97,25 @@ without resetting the sensor.
 No Linux enrollment command will run until the clean identity delta, available
 capacity, host/live equality, password fallback, journal, three-component save,
 and rollback gates all pass.
+
+## Linux return result
+
+Linux independently parsed and decrypted the 23,562-byte CMS envelope only in
+a root-owned temporary directory on the encrypted filesystem. Python's plist
+reader then validated the exact three-component schema after the independent
+Foundation validation performed on macOS. The archive contained one identity,
+one entity with group size one, and master enrollment count four.
+
+Before changing the host store, the read-only baseline proved that the
+archive's private identity set exactly matched two stable live T2 reads. The
+protected policy remained `(1, 1, 1, 0)`, the maximum identity count was five,
+and the reported free count was two. No sensor reset, enrollment, matching, or
+touch occurred.
+
+The importer atomically installed the clean archive and preserved the prior
+two-record store as `catacomb-pre-clean-enrollment-backup`. The original
+`catacomb-zero-identity-backup` was not changed. A post-import comparison found
+zero identity or component delta between the encrypted fixture and installed
+store, and a second live baseline again proved exact host/live agreement. All
+decrypted temporary material was removed; the encrypted EFI artifact remains
+as recovery evidence.

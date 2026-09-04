@@ -183,6 +183,7 @@ class CurrentMacOSCatacombValidatorTests(unittest.TestCase):
         self.assertTrue(result["identity_entity_reuse_present"])
         self.assertFalse(result["logical_finger_count_inferred"])
         self.assertEqual(result["master_enrollment_count"], 2)
+        self.assertFalse(result["foundation_readback"])
         self.assertTrue(result["semantic_round_trip_equal"])
         self.assertTrue(result["identifiers_redacted"])
         self.assertNotIn("uuid", result)

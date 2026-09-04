@@ -18,20 +18,19 @@ counts, Boolean relationships, and status codes.
 
 On the tested machine it established all of the following:
 
-- the archive and live SEP each contain two identity records, and their UUID
+- the archive and live SEP each contain one identity record, and their UUID
   sets match exactly;
-- the archive contains one distinct entity number whose group contains both
-  records;
+- the archive contains one distinct entity number with group size one;
 - requested and effective protected policy both equal `(1, 1, 1, 0)`;
-- the T2 reports maximum count 5 and free count 1;
+- the T2 reports maximum count 5 and free count 2;
 - version-0 Catacomb UUID, state, and group queries all reject with the same
   bridge status even though the identities are usable for matching; and
 - mutation and persistence readiness remain deliberately false.
 
 The entity number is structural metadata. It must not be presented as a
-general count of user-visible fingerprints. The two records in the current
-entity also do not have identical names or creation times, so collapsing them
-into one ordinary identity object would discard Apple-owned state.
+general count of user-visible fingerprints. The previous two-record archive
+is preserved separately because its reused entity was valid Apple-owned state,
+not something an importer may deduplicate.
 
 Run the baseline only while the installed operation lock is available:
 
@@ -87,14 +86,18 @@ is attributable to its separate accepted-then-cancelled attempt. Existing
 archives must still accept reused entity numbers so that recovery can preserve
 that historical Apple-owned state without deduplicating it.
 
-The clean fixture is encrypted on EFI but has not yet been imported or compared
-with the live T2 from Linux. A Linux enrollment experiment is therefore not
-justified until the Linux thread validates the fixture, preserves the current
-two-record rollback state, imports the clean archive atomically, and confirms
-host/live identity and capacity agreement without resetting the sensor. The old
-zero-state attempts had enough reported capacity but command 3 returned a
-synchronous rejection before sensor capture, so finger placement was not
-involved.
+Linux independently decrypted and validated the clean fixture, proved its
+private identity set exactly matched two stable live T2 reads, and atomically
+adopted it. The previous two-record store is preserved as
+`catacomb-pre-clean-enrollment-backup`, while the original zero-identity backup
+remains untouched. Post-import validation proved the installed components are
+byte-identical to the fixture. The live T2 now reports two free identity units.
+
+A Linux enrollment experiment is still not justified until the transaction,
+journal, three-component persistence, and rollback gates below are implemented
+and tested. The old zero-state attempts had enough reported capacity but
+command 3 returned a synchronous rejection before sensor capture, so finger
+placement was not involved.
 
 Before the mutation gate can open, an independent Linux implementation must:
 
@@ -122,8 +125,9 @@ count delta of one, and changes to all three Catacomb components. The final
 left no plaintext behind. Full sanitized evidence is recorded in
 `docs/macos-clean-enrollment-fixture-handoff.md`.
 
-The next controlled discriminator is the Linux return plan from that handoff:
-validate and adopt the clean fixture with the two-record state preserved as
-rollback evidence, compare it with stable live state and capacity without a
-sensor reset, and keep `safe_for_mutation=false` until every persistence,
-journal, password-fallback, and rollback gate passes.
+The Linux return completed successfully. Independent Python plist validation
+accepted the archive after macOS Foundation validation, the clean identity
+matched stable live state, the protected policy remained exact, and free
+capacity rose from one to two. The installed store matches the fixture with no
+component delta. `safe_for_mutation=false` remains correct until every
+persistence, journal, password-fallback, and rollback gate passes.

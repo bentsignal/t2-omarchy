@@ -3936,3 +3936,20 @@ fixture while preserving the two-record archive as rollback evidence, compare
 host and live identity/capacity state without resetting the sensor, then finish
 the native enrollment persistence and mutation gates before one supervised
 Linux enrollment attempt.
+
+### 2026-09-04 clean fixture Linux adoption
+
+Linux independently decrypted and schema-validated the clean fixture in a
+root-only temporary directory. Before import, the fixture's one private
+identity exactly matched two stable live T2 reads. Protected policy remained
+`(1, 1, 1, 0)`; maximum identity count was five and free count was two. The
+importer then atomically installed the clean store, preserved the historical
+two-record store separately, and left the original zero-identity backup
+untouched. A post-import comparison found no identity or component delta, and
+a second live baseline again proved exact host/live agreement. No biometric
+operation or sensor reset was performed and no private material was retained.
+
+This closes the clean-state and capacity discriminator. Linux-native
+enrollment remains gated on transactionally saving all three changed Catacomb
+components, journaling the one-record/one-entity terminal delta, and proving
+rollback behavior before another supervised command-3 attempt.
