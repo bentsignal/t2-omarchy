@@ -3847,3 +3847,34 @@ Polkit, and sudo. It does **not** yet prove cold-Linux-boot identity restoration
 or Linux-native enrollment. `fprintd.service` and
 `t2-biometric-ready.service` remain active but not boot-enabled during this
 research stage.
+
+### 2026-09-04 automatic cold-boot acceptance
+
+The warm-only limitation above is now superseded. Two controlled complete
+shutdowns proved that this machine retains its enrolled T2 identity state when
+Linux avoids the old reset-capable startup path. On the second boot, transport,
+genuine-keybag load, encrypted-credential unlock, privacy-safe identity
+capture, stable state validation, no-reset readiness, and fprintd all started
+automatically in order. The validator observed a stable nonempty inventory and
+valid protected policy, declared restoration unnecessary, and loaded zero
+Catacomb components.
+
+On that automatic boot, stock fprintd positively matched the enrolled finger
+and explicitly rejected an unenrolled finger. The Omarchy lock screen, a
+harmless Polkit request, and a forced real sudo PAM request all authenticated
+with the enrolled finger. Password fallback remained available. The only
+observed UX defect is that a lock-screen rejection notification is queued
+behind the lock layer and appears after a later successful unlock.
+
+The first boot had exposed a safe logic error: the initial restore service
+attempted to load the master component even though the pre-consumer capture had
+already found live identities. The populated T2 returned status 257, and
+systemd correctly withheld readiness and fprintd. The service is now
+read-before-write: two byte-identical nonempty identity replies plus an exact
+protected-policy reply short-circuit all cancellation, calibration, reset, and
+Catacomb commands. A failure is rate-limited and remains fail-closed. The full
+public suite passes 465 prototype tests and 99 research tests, with one expected
+macOS-only skip. Full details are in `docs/touch-id-cold-boot.md`.
+
+This proves cold Linux authentication using the macOS-enrolled fixture. It does
+not complete Linux-native enrollment. That remains the next functional gap.

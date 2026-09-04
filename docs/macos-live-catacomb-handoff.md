@@ -668,3 +668,12 @@ but not boot-enabled, and the present result still depends on retained
 macOS-warm identity state. Cold Linux boot restoration and Linux-native
 enrollment remain the outstanding milestones; no macOS handoff is needed for
 the already proven desktop-authentication paths.
+
+### 2026-09-04 cold-boot closure
+
+Cold Linux authentication is now proven and supersedes the final limitation
+above. The T2 identities survived two complete shutdowns because the Linux boot
+chain no longer resets the sensor. The automatic path validated the retained
+nonempty inventory, performed no Catacomb load, started no-reset readiness and
+fprintd, and passed fprintd match/rejection plus lock-screen, Polkit, and sudo
+controls. Linux-native enrollment remains outstanding.

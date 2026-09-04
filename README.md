@@ -39,6 +39,22 @@ clients. A reboot into the desired entry is slower but predictable and leaves
 the normal AMD entry available as recovery if Intel display initialization
 fails.
 
+## Touch ID status
+
+Touch ID authentication is hardware-proven on this `MacBookPro16,1` after a
+complete shutdown and unattended Linux boot. The enrolled finger matches and
+an unenrolled finger rejects through stock fprintd, the Omarchy lock screen,
+Polkit, and sudo PAM. The safe boot path preserves the T2's existing identities
+and deliberately avoids the reset that previously erased the active biometric
+session; it does not reload Catacomb data when a stable nonempty inventory is
+already present.
+
+The current identity was enrolled in macOS as a reverse-engineering fixture.
+Linux-native enrollment remains experimental and is the major outstanding gap
+before this becomes a macOS-independent end-user setup. See the
+[cold-boot acceptance record](docs/touch-id-cold-boot.md) for exact boundaries
+and recovery behavior.
+
 ## Audio recovery
 
 This profile provides measured six-speaker FIR correction, virtual bass,

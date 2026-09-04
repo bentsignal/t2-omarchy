@@ -149,3 +149,21 @@ The successful run produced a 63,674-byte AES-256 CMS DER envelope at the new
 EFI destination. CMS parsing passed, all plaintext and temporary files were
 removed before success was reported, and the older zero-identity baseline
 artifact remained untouched.
+
+## Linux cold-boot result
+
+Linux independently validated and imported this encrypted archive, but the
+first complete shutdown revealed that restoration was unnecessary: the
+privacy-safe boot capture already contained a stable nonempty identity
+inventory before any restore command. The initial loader attempted the master
+component anyway; the populated T2 returned status 257, readiness and fprintd
+stayed off, and later read-only state still showed the identities and policy
+intact.
+
+The corrected service now validates the private recovery source but first
+performs a stable live inventory and policy check. A nonempty result loads zero
+components and proceeds directly to no-reset readiness. A second complete
+shutdown proved this path automatically, followed by successful fprintd
+positive and negative controls, Omarchy lock-screen unlock, Polkit, and sudo.
+The encrypted archive and private rollback store remain recovery evidence; no
+Catacomb load is part of the proven normal cold-boot path.
