@@ -37,13 +37,24 @@ an entire loop in one scope allows retained memory to accumulate across loop
 iterations and defeats that isolation.
 
 `catacomb-identity-shape-delta.py` compares two private, root-owned Catacomb
-component directories after strict keyed-archive validation. It emits only
-record counts, entity-group sizes, master-count deltas, and UUID add/remove
-counts. It never emits a UUID, identity name, Catacomb payload, or archive
-hash. The tool is used to preserve the observed two-record/one-entity shape
-across a macOS interval containing one completed enrollment and one cancelled
-partial attempt on the tested `MacBookPro16,1`; it does not attribute records
-to either operation.
+component directories or tar archives after strict keyed-archive validation.
+It emits only record counts, entity-group sizes, master-count deltas, and UUID
+add/remove counts. It never emits a UUID, identity name, Catacomb payload, or
+archive hash. The tool is used to preserve the observed
+two-record/one-entity shape across a macOS interval containing one completed
+enrollment and one cancelled partial attempt on the tested `MacBookPro16,1`;
+it does not attribute records to either operation.
+
+`capture-macos-clean-enrollment-fixture.sh` is the interactive macOS half of
+the controlled native-enrollment discriminator. It requires a validated
+nonempty-to-empty transition after a manual Settings deletion and then an
+empty-to-nonempty transition after exactly one manually completed enrollment.
+Only the final validated archive is encrypted to EFI; all plaintext snapshots
+and comparisons are removed before the redacted result is printed.
+
+`import-current-catacomb.py` accepts a constrained `--backup-name` so a later
+validated fixture can preserve the current store without overwriting the
+original zero-identity rollback archive.
 
 `capture-macos-bridge.sh` is a read-only collector for the small set of
 installed macOS artifacts needed to resolve the remaining current-version

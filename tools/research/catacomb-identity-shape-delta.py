@@ -82,10 +82,24 @@ def _private_component(path: Path) -> bytes:
         os.close(descriptor)
 
 
-def load_private_store(path: Path, apple_user_id: int):
+def load_private_source(path: Path, apple_user_id: int):
     if not path.is_absolute():
-        raise CatacombShapeDeltaError("private Catacomb store path must be absolute")
+        raise CatacombShapeDeltaError("private Catacomb source path must be absolute")
     metadata = path.stat(follow_symlinks=False)
+    foundation_loader = (
+        validator._foundation_load
+        if Path("/usr/bin/plutil").is_file()
+        else plistlib.loads
+    )
+    if stat.S_ISREG(metadata.st_mode):
+        try:
+            return validator.load_validated_archive(
+                path, apple_user_id, foundation_loader
+            )
+        except (OSError, ValueError, validator.ValidationError) as error:
+            raise CatacombShapeDeltaError(
+                "private Catacomb archive validation failed"
+            ) from error
     if (
         not stat.S_ISDIR(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
@@ -103,7 +117,9 @@ def load_private_store(path: Path, apple_user_id: int):
         raise CatacombShapeDeltaError("private store lacks the exact component set")
     components = {name: _private_component(path / name) for name in expected}
     try:
-        return validator.validate_components(components, apple_user_id, plistlib.loads)
+        return validator.validate_components(
+            components, apple_user_id, foundation_loader
+        )
     except (OSError, ValueError, validator.ValidationError) as error:
         raise CatacombShapeDeltaError("private Catacomb store validation failed") from error
 
@@ -159,8 +175,8 @@ def main() -> int:
     parser.add_argument("--apple-user-id", type=int, required=True)
     args = parser.parse_args()
     try:
-        before = load_private_store(args.before, args.apple_user_id)
-        after = load_private_store(args.after, args.apple_user_id)
+        before = load_private_source(args.before, args.apple_user_id)
+        after = load_private_source(args.after, args.apple_user_id)
         result = compare_validated(before, after)
     except (CatacombShapeDeltaError, OSError, ValueError, TypeError):
         parser.error("Catacomb identity-shape comparison failed safely")

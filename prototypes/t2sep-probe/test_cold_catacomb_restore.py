@@ -2,6 +2,7 @@ import importlib.util
 import plistlib
 import struct
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,6 +40,19 @@ class ColdCatacombRestoreTests(unittest.TestCase):
             user_secure_data=ltfc(501, b"user"),
             biolockout_secure_data=b"HRLB" + bytes(12),
         )
+
+    def test_private_archive_source_uses_strict_validator(self):
+        validated = self.validated()
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "clean.tar.gz"
+            archive.write_bytes(b"bounded private archive")
+            archive.chmod(0o600)
+            with patch.object(
+                restore.validator, "load_validated_archive", return_value=validated
+            ) as load:
+                result = restore.read_current_store(archive, 501)
+        self.assertIs(result, validated)
+        load.assert_called_once_with(archive, 501, plistlib.loads)
 
     def test_exact_restore_order_and_stable_nonempty_readback(self):
         identity = struct.pack("<I16s", 501, bytes(range(16)))

@@ -17,6 +17,7 @@ modified, committed to, pushed, or used as hidden project worktrees.
 - [Touch ID / T2 Secure Enclave research](docs/touch-id.md)
 - [Touch ID cold-boot checkpoint](docs/touch-id-cold-boot.md)
 - [Touch ID native-enrollment checkpoint](docs/touch-id-native-enrollment.md)
+- [macOS handoff: clean one-enrollment fixture](docs/macos-clean-enrollment-fixture-handoff.md)
 - [macOS handoff: current Catacomb for Linux cold boot](docs/macos-current-catacomb-cold-boot-handoff.md)
 - [macOS 26.6.2 Touch ID capture findings](docs/macos-touch-id-findings.md)
 - [macOS Codex handoff for Touch ID capture](docs/macos-touch-id-handoff.md)

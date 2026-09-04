@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).with_name("catacomb-identity-shape-delta.py")
@@ -15,6 +17,19 @@ SPEC.loader.exec_module(delta)
 
 
 class CatacombIdentityShapeDeltaTests(unittest.TestCase):
+    def test_private_archive_source_uses_strict_validator(self):
+        sentinel = object()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "private.tar.gz"
+            path.write_bytes(b"bounded private fixture")
+            path.chmod(0o600)
+            with patch.object(
+                delta.validator, "load_validated_archive", return_value=sentinel
+            ) as validate:
+                result = delta.load_private_source(path, 501)
+        self.assertIs(result, sentinel)
+        validate.assert_called_once_with(path, 501, delta.plistlib.loads)
+
     def test_two_record_one_entity_addition_is_reported_without_identifiers(self):
         before = SimpleNamespace(
             identity_count=0,

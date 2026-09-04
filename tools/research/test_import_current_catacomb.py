@@ -88,6 +88,38 @@ class CurrentCatacombImportTests(unittest.TestCase):
                     data,
                 )
 
+    def test_custom_rollback_name_preserves_a_later_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o700)
+            old = make_old_store(root)
+            archive, _ = make_archive(root)
+            result = importer.install_archive(
+                archive,
+                root,
+                501,
+                backup_name="catacomb-pre-clean-enrollment-backup",
+            )
+            self.assertTrue(result.previous_store_preserved)
+            for name, data in old.items():
+                self.assertEqual(
+                    (root / "catacomb-pre-clean-enrollment-backup" / name).read_bytes(),
+                    data,
+                )
+
+    def test_unsafe_rollback_name_is_rejected_before_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o700)
+            old = make_old_store(root)
+            archive, _ = make_archive(root)
+            with self.assertRaisesRegex(importer.ImportError, "rollback name is unsafe"):
+                importer.install_archive(
+                    archive, root, 501, backup_name="../outside"
+                )
+            for name, data in old.items():
+                self.assertEqual((root / "catacomb" / name).read_bytes(), data)
+
     def test_empty_identity_archive_is_rejected_before_store_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

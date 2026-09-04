@@ -58,6 +58,10 @@ later state. The privacy-safe comparison tool reports:
 The same live T2's free counter was 3 before that interval and is now 1.
 Together these independent deltas show that the capture interval consumed two
 identity units and created two UUID records under one entity on this firmware.
+The two private records' creation times are about eight minutes apart, which
+is consistent with the separate complete and cancelled capture runs. That is
+supporting evidence for cancellation residue, not proof of which run owns
+either record.
 They do **not** distinguish a two-record representation of the completed
 fingerprint from residue associated with the cancelled attempt. The macOS UI
 shows one fingerprint, but that is not enough to assign either private record
@@ -102,3 +106,18 @@ Before the mutation gate can open, an independent Linux implementation must:
 Until those gates are implemented and offline-tested, the baseline reports
 `safe_for_mutation=false`. Existing authentication remains untouched and is
 the recovery control.
+
+## Next controlled discriminator
+
+The next cross-OS pass is a clean macOS fixture, not another Linux enrollment
+attempt. The bounded helper in
+`tools/research/capture-macos-clean-enrollment-fixture.sh` requires a validated
+transition from the current state to zero identities after Shawn removes the
+visible fingerprint in System Settings, followed by exactly one completed
+enrollment with no second attempt. It preserves only privacy-safe counts and
+encrypts the final archive for Linux using the existing EFI transfer
+certificate.
+
+This pass will establish whether one clean UI enrollment creates one or two
+SEP identity records on this machine. The exact macOS procedure and Linux
+return gates are in `docs/macos-clean-enrollment-fixture-handoff.md`.

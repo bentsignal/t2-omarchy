@@ -3897,7 +3897,9 @@ removed. The live free counter independently fell from three to one, and all
 three Catacomb component files changed. This proves a two-record/one-entity
 transition and a three-component persistence requirement, but it does not
 prove whether the completed fingerprint owns both records or the cancelled
-attempt left one behind.
+attempt left one behind. The two records' private creation times are about
+eight minutes apart, which is consistent with the two separate capture runs
+but is not sufficient to assign either record to one run.
 
 This supersedes the prototype's one-added-identity completion assumption for
 this bridgeOS generation. It also prevents a populated-state mutation trial:
@@ -3909,3 +3911,9 @@ gate. The new baseline and delta tools expose only counts, Boolean relations,
 and statuses and leave `safe_for_mutation=false`. See
 `docs/touch-id-native-enrollment.md` for the required persistence and
 reconciliation gates.
+
+The next discriminator is a controlled macOS zero-to-one-completed-enrollment
+fixture. Its helper fails closed unless removing every visible fingerprint
+produces a strictly validated zero-identity archive, and it permits only one
+human-completed enrollment before the final encrypted snapshot. No further
+Linux enrollment mutation is justified until that clean delta is known.

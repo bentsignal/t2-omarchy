@@ -7,6 +7,7 @@ import argparse
 import importlib.util
 import os
 import plistlib
+import re
 import stat
 import sys
 import tempfile
@@ -19,6 +20,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 VALIDATOR_PATH = SCRIPT_DIR / "validate-current-macos-catacomb.py"
 CONFIRMATION = "I_UNDERSTAND_THIS_REPLACES_THE_LINUX_CATACOMB_STORE"
 DEFAULT_STATE_ROOT = Path("/var/lib/t2-touchid")
+DEFAULT_BACKUP_NAME = "catacomb-zero-identity-backup"
 
 
 def _load_validator():
@@ -101,17 +103,25 @@ def _require_replaceable_store(path: Path, expected: set[str]) -> None:
             raise ImportError("existing Catacomb component is unsafe")
 
 
+def _require_backup_name(name: str) -> str:
+    if not re.fullmatch(r"catacomb-[a-z0-9]+(?:-[a-z0-9]+)*-backup", name):
+        raise ImportError("Catacomb rollback name is unsafe")
+    return name
+
+
 def install_archive(
     archive: Path,
     state_root: Path,
     apple_user_id: int,
     *,
+    backup_name: str = DEFAULT_BACKUP_NAME,
     foundation_loader=plistlib.loads,
     failure_hook: Callable[[str], None] | None = None,
 ) -> ImportResult:
     if not state_root.is_absolute():
         raise ImportError("Catacomb state root must be absolute")
     _require_private_directory(state_root)
+    backup_name = _require_backup_name(backup_name)
     try:
         validated = validator.load_validated_archive(
             archive, apple_user_id, foundation_loader
@@ -129,7 +139,7 @@ def install_archive(
     if set(validated.components) != expected:
         raise ImportError("validated Catacomb component set changed")
     target = state_root / "catacomb"
-    backup = state_root / "catacomb-zero-identity-backup"
+    backup = state_root / backup_name
     if os.path.lexists(backup):
         raise ImportError("Catacomb rollback directory already exists")
     if os.path.lexists(target):
@@ -173,6 +183,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("archive", type=Path)
     parser.add_argument("--apple-user-id", type=int, default=501)
+    parser.add_argument("--backup-name", default=DEFAULT_BACKUP_NAME)
     parser.add_argument("--confirm", required=True)
     args = parser.parse_args()
     if os.geteuid() != 0:
@@ -181,7 +192,10 @@ def main() -> int:
         parser.error(f"import requires --confirm={CONFIRMATION}")
     try:
         result = install_archive(
-            args.archive, DEFAULT_STATE_ROOT, args.apple_user_id
+            args.archive,
+            DEFAULT_STATE_ROOT,
+            args.apple_user_id,
+            backup_name=args.backup_name,
         )
     except (OSError, ImportError) as error:
         parser.error(str(error))
