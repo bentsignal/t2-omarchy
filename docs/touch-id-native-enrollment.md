@@ -192,3 +192,15 @@ accepts only system UID 0 or the pinned enrollment UID. Every other user and
 every malformed shape still fail closed. Three focused overlay tests, all 114
 research tests, the external broker's 343 tests, and another real no-touch
 preflight pass.
+
+The supervised retry passed the system-scoped SKS callback, then stopped on
+well-formed version-1 generic status 90. Reconciliation again proved the
+one-identity baseline unchanged and cleared the unfinished operation. Apple's
+enrollment operation forwards unhandled lower statuses to its generic
+operation superclass; the recovered superclass switch leaves status 90 as a
+no-op. The pinned overlay now mirrors only that exact behavior after the
+underlying reducer has already validated event framing, operation and
+connection identity, monotonic ordering, duplicate exclusion, payload shape,
+and active cancellation state. Neighboring unknown statuses remain rejected.
+Six overlay tests, 117 research tests, 484 prototype tests, the external
+broker's 343 tests, and a fresh no-touch hardware preflight all pass.

@@ -3995,3 +3995,21 @@ checks. The external checkout remains unmodified. Three overlay tests, all 114
 research tests, the external broker's 343 tests, and the overlaid no-touch
 preflight pass. A retry is justified only because fresh reconciliation proved
 that the first attempt created no persistent delta.
+
+The retry passed that SKS event and then stopped on generic biometric status
+90. Reconciliation again found one identity and no persistent mutation.
+Apple's `BKEnrollOperation` forwards unhandled lower statuses to
+`BKOperation`; the recovered generic-operation switch handles only 51 through
+80 plus 99, so 90 returns without changing state or notifying enrollment.
+Status 90 is also present in successful matching traces from this exact T2.
+The pinned runtime overlay therefore accepts only a well-formed version-1
+generic status 90 as a noncontinuing no-op. The underlying reducer still owns
+and enforces the connection generation, operation ID, event ordering,
+duplicate hash, payload framing, and cancellation state, and neighboring
+unknown ordinals remain fail-closed.
+
+Six focused overlay tests, all 117 research tests, all 484 prototype tests,
+and the external broker's 343 tests pass. A fresh overlaid no-touch hardware
+preflight again reports one identity, verified host state, available capacity,
+same-connection inventory, initialized retained sensor state, and no mutation.
+The next action is one supervised retry with a different, unenrolled finger.
