@@ -3976,3 +3976,10 @@ commit without touching the installed store. All 484 prototype tests and 111
 research tests pass, with one expected macOS-only skip. The next live action is
 a no-touch preflight and then one explicitly supervised enrollment; any
 ambiguous post-dispatch outcome must reconcile rather than retry.
+
+The broker's private active baseline was then realigned to the clean one-finger
+store while preserving the former archive in a non-active historical directory.
+Its no-touch preflight passed with one identity, available capacity, verified
+host state, stable same-connection live inventory, initialized retained sensor
+state, and no mutation. The project is now at the supervised Linux enrollment
+boundary.

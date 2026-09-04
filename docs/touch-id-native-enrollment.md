@@ -167,3 +167,11 @@ The live gate remains explicit. The next step is a no-touch preflight against a
 baseline archive matching the clean store, followed by one supervised new-finger
 enrollment. No repeat is allowed after an ambiguous post-dispatch failure;
 journal and live/host reconciliation take precedence.
+
+That no-touch preflight subsequently passed. The previously active baseline
+archive was retained under a private historical directory, a new hash-named
+archive was generated from the independently validated clean store, and the
+broker reported one host/live identity, available capacity, a verified local
+store, same-connection inventory, and initialized retained sensor state. It
+reported `mutation_performed=false`. The next action is therefore the single
+supervised new-finger enrollment, not another macOS pass or discovery probe.
