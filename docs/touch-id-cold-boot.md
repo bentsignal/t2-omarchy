@@ -177,3 +177,20 @@ unenrolled finger returned `verify-no-match (done)`. This proves real cold-boot
 matching and rejection on the retained T2 state. It does not yet prove that the
 corrected chain starts automatically, because those three services were
 started manually after installing the fix during this boot.
+
+## Automatic cold-boot acceptance result
+
+A second complete shutdown and default Linux boot proved the unattended path.
+Transport, genuine keybag loading, encrypted-credential unlock, pre-consumer
+identity capture, state validation, no-reset readiness, and fprintd all started
+successfully in that order. The state validator again reported that restoration
+was not required, loaded zero components, and required a valid protected policy
+plus a stable nonempty identity inventory before allowing either consumer to
+start.
+
+On that untouched automatic boot, the stock `fprintd-verify` client returned
+`verify-match (done)` with exit status zero for the enrolled finger. A separate
+one-attempt negative control returned `verify-no-match (done)` with the client's
+expected nonzero status for an unenrolled finger. This completes the cold-boot
+fprintd positive and negative acceptance criteria without a macOS warm
+transition, sensor reset, manual service start, or Catacomb load.
