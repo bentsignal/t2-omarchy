@@ -3878,3 +3878,32 @@ macOS-only skip. Full details are in `docs/touch-id-cold-boot.md`.
 
 This proves cold Linux authentication using the macOS-enrolled fixture. It does
 not complete Linux-native enrollment. That remains the next functional gap.
+
+### 2026-09-04 native-enrollment identity-shape baseline
+
+A new mutation-free baseline compared two stable live UID-501 identity reads
+with the strictly validated current host Catacomb. Both sides contain the same
+two private UUID records. The host archive has one distinct entity number with
+group size two; entity reuse is valid Apple state and is no longer rejected by
+the MIT validator. Requested and effective protected policy both remain
+`(1, 1, 1, 0)`.
+
+The preserved pre-enrollment zero-identity archive and the current archive
+also provide a complete redacted delta for the single fingerprint Shawn added
+in macOS: identity records advanced from zero to two, distinct entity numbers
+from zero to one, and master enrollment count from one to three. Exactly two
+UUIDs were added and none removed. The live free counter independently fell
+from three before enrollment to one now. All three Catacomb component files
+changed. On this machine, one proven macOS enrollment therefore created a
+two-record entity, consumed two reported identity units, and requires a
+three-component persistence transaction.
+
+This supersedes the prototype's one-added-identity completion assumption for
+this bridgeOS generation. It also prevents a populated-state mutation trial:
+only one free unit is reported, while the proven operation required two.
+Version-0 Catacomb UUID/state/group queries currently reject even though
+matching works, so their availability cannot be used as the sole presence
+gate. The new baseline and delta tools expose only counts, Boolean relations,
+and statuses and leave `safe_for_mutation=false`. See
+`docs/touch-id-native-enrollment.md` for the required persistence and
+reconciliation gates.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import math
 import os
@@ -11,7 +12,7 @@ import plistlib
 import stat
 import subprocess
 import tarfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
@@ -47,11 +48,37 @@ class ValidatedCatacomb:
     user_secure_data: bytes
     biolockout_secure_data: bytes
     identity_count: int
+    identity_entity_count: int
+    identity_entity_group_sizes: tuple[int, ...]
+    master_enrollment_count: int
+    _identity_uuids: frozenset[bytes] = field(repr=False, compare=False)
 
     def __repr__(self) -> str:
         return (
             "ValidatedCatacomb(component_count=3, "
-            f"identity_nonzero={self.identity_count > 0}, data=<redacted>)"
+            f"identity_nonzero={self.identity_count > 0}, "
+            f"entity_reuse={self.identity_entity_count < self.identity_count}, "
+            "data=<redacted>)"
+        )
+
+    def matches_identity_uuids(self, identity_uuids: object) -> bool:
+        """Compare a trusted live UUID set without returning archive identifiers."""
+        if not isinstance(identity_uuids, (tuple, list, set, frozenset)):
+            return False
+        values: list[bytes] = []
+        for value in identity_uuids:
+            if not isinstance(value, bytes) or len(value) != 16:
+                return False
+            values.append(value)
+        return len(values) == len(set(values)) and frozenset(values) == self._identity_uuids
+
+    def identity_uuid_delta_counts(self, later: object) -> tuple[int, int]:
+        """Return only added/removed counts for another validated archive."""
+        if not isinstance(later, ValidatedCatacomb):
+            raise TypeError("later Catacomb must be independently validated")
+        return (
+            len(later._identity_uuids - self._identity_uuids),
+            len(self._identity_uuids - later._identity_uuids),
         )
 
 
@@ -443,12 +470,18 @@ def validate_components(
     biolockout = _validate_component(
         components["biolockout.cat"], _validate_biolockout, foundation_loader
     )
+    identities = user[3]
+    entity_counts = Counter(identity[1] for identity in identities)
     return ValidatedCatacomb(
         components=dict(components),
         master_secure_data=master[0],
         user_secure_data=user[0],
         biolockout_secure_data=biolockout[0],
-        identity_count=len(user[3]),
+        identity_count=len(identities),
+        identity_entity_count=len(entity_counts),
+        identity_entity_group_sizes=tuple(sorted(entity_counts.values())),
+        master_enrollment_count=master[1],
+        _identity_uuids=frozenset(identity[0] for identity in identities),
     )
 
 
@@ -472,6 +505,13 @@ def validate_archive(
         "schema_version": 1,
         "component_count": 3,
         "identity_count": validated.identity_count,
+        "identity_entity_count": validated.identity_entity_count,
+        "identity_entity_group_sizes": list(validated.identity_entity_group_sizes),
+        "identity_entity_reuse_present": (
+            validated.identity_entity_count < validated.identity_count
+        ),
+        "master_enrollment_count": validated.master_enrollment_count,
+        "logical_finger_count_inferred": False,
         "schemas_valid": True,
         "foundation_readback": True,
         "semantic_round_trip_equal": True,

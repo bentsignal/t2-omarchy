@@ -36,6 +36,13 @@ Each archive payload must be launched through the helper separately. Wrapping
 an entire loop in one scope allows retained memory to accumulate across loop
 iterations and defeats that isolation.
 
+`catacomb-identity-shape-delta.py` compares two private, root-owned Catacomb
+component directories after strict keyed-archive validation. It emits only
+record counts, entity-group sizes, master-count deltas, and UUID add/remove
+counts. It never emits a UUID, identity name, Catacomb payload, or archive
+hash. The tool is used to preserve the observed two-record/one-entity shape of
+one successful macOS enrollment on the tested `MacBookPro16,1`.
+
 `capture-macos-bridge.sh` is a read-only collector for the small set of
 installed macOS artifacts needed to resolve the remaining current-version
 bridge question. Run it from macOS with an output directory on a volume that

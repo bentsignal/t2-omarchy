@@ -178,6 +178,11 @@ class CurrentMacOSCatacombValidatorTests(unittest.TestCase):
                 self.archive(directory), 501, self.python_loader
             )
         self.assertEqual(result["identity_count"], 2)
+        self.assertEqual(result["identity_entity_count"], 1)
+        self.assertEqual(result["identity_entity_group_sizes"], [2])
+        self.assertTrue(result["identity_entity_reuse_present"])
+        self.assertFalse(result["logical_finger_count_inferred"])
+        self.assertEqual(result["master_enrollment_count"], 2)
         self.assertTrue(result["semantic_round_trip_equal"])
         self.assertTrue(result["identifiers_redacted"])
         self.assertNotIn("uuid", result)
@@ -191,9 +196,46 @@ class CurrentMacOSCatacombValidatorTests(unittest.TestCase):
             "master.cat", "user_000001f5.cat", "biolockout.cat"
         })
         self.assertEqual(validated.identity_count, 2)
+        self.assertEqual(validated.identity_entity_count, 1)
+        self.assertEqual(validated.identity_entity_group_sizes, (2,))
+        self.assertEqual(validated.master_enrollment_count, 2)
+        self.assertTrue(
+            validated.matches_identity_uuids(
+                [uuid.UUID(int=1).bytes, uuid.UUID(int=4).bytes]
+            )
+        )
+        self.assertFalse(
+            validated.matches_identity_uuids(
+                [uuid.UUID(int=1).bytes, uuid.UUID(int=5).bytes]
+            )
+        )
+        self.assertFalse(
+            validated.matches_identity_uuids(
+                [uuid.UUID(int=1).bytes, uuid.UUID(int=1).bytes]
+            )
+        )
         self.assertNotIn("LTFC", repr(validated))
         self.assertNotIn("HRLB", repr(validated))
+        self.assertNotIn(str(uuid.UUID(int=1)), repr(validated))
         self.assertIn("data=<redacted>", repr(validated))
+
+    def test_private_uuid_delta_reports_counts_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            before = validator.load_validated_archive(
+                self.archive(directory), 501, self.python_loader
+            )
+        with tempfile.TemporaryDirectory() as directory:
+            after_root = plistlib.loads(user_fixture())
+            after_root["$objects"][18]["BKIdentityUUID"] = uuid.UUID(int=5).bytes
+            after_user = plistlib.dumps(
+                after_root, fmt=plistlib.FMT_BINARY, sort_keys=False
+            )
+            after = validator.load_validated_archive(
+                self.archive(directory, user=after_user), 501, self.python_loader
+            )
+        self.assertEqual(before.identity_uuid_delta_counts(after), (1, 1))
+        with self.assertRaises(TypeError):
+            before.identity_uuid_delta_counts(object())
 
     def test_duplicate_identity_uuid_is_rejected(self):
         root = plistlib.loads(user_fixture())

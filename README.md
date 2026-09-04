@@ -16,6 +16,7 @@ modified, committed to, pushed, or used as hidden project worktrees.
 - [Power management and dual boot modes](docs/power-management.md)
 - [Touch ID / T2 Secure Enclave research](docs/touch-id.md)
 - [Touch ID cold-boot checkpoint](docs/touch-id-cold-boot.md)
+- [Touch ID native-enrollment checkpoint](docs/touch-id-native-enrollment.md)
 - [macOS handoff: current Catacomb for Linux cold boot](docs/macos-current-catacomb-cold-boot-handoff.md)
 - [macOS 26.6.2 Touch ID capture findings](docs/macos-touch-id-findings.md)
 - [macOS Codex handoff for Touch ID capture](docs/macos-touch-id-handoff.md)
@@ -52,8 +53,9 @@ already present.
 The current identity was enrolled in macOS as a reverse-engineering fixture.
 Linux-native enrollment remains experimental and is the major outstanding gap
 before this becomes a macOS-independent end-user setup. See the
-[cold-boot acceptance record](docs/touch-id-cold-boot.md) for exact boundaries
-and recovery behavior.
+[cold-boot acceptance record](docs/touch-id-cold-boot.md) and
+[native-enrollment checkpoint](docs/touch-id-native-enrollment.md) for exact
+boundaries and recovery behavior.
 
 ## Audio recovery
 
