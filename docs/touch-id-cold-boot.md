@@ -194,3 +194,20 @@ one-attempt negative control returned `verify-no-match (done)` with the client's
 expected nonzero status for an unenrolled finger. This completes the cold-boot
 fprintd positive and negative acceptance criteria without a macOS warm
 transition, sensor reset, manual service start, or Catacomb load.
+
+The same automatic boot then passed every integrated consumer. The Omarchy
+lock screen rejected an initially misplaced finger and unlocked after the
+enrolled finger was repositioned. Its rejection notification was hidden by the
+lock layer and appeared only after unlock, which is a follow-up UX issue rather
+than an authentication failure. A harmless Polkit control,
+`pkexec /usr/bin/true`, closed successfully and the child exited zero after an
+enrolled-finger scan. Finally, a narrowly scoped temporary sudoers override
+forced `/usr/bin/true` through the real sudo PAM stack; the enrolled finger
+authorized it and sudo exited zero. The override was immediately removed and
+the complete sudoers configuration passed `visudo` validation afterward.
+
+Cold-boot Touch ID is therefore proven through fprintd positive and negative
+controls, the Omarchy lock screen, Polkit, and sudo. The machine still retains
+its separate development-wide `NOPASSWD` research rule, so ordinary sudo calls
+will continue to bypass PAM until that temporary development exception is
+retired.
