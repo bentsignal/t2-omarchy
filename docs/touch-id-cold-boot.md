@@ -1,5 +1,35 @@
 # Touch ID cold-boot checkpoint
 
+## 2026-09-05 post-suspend transport failure
+
+Normal lock-screen verification was reported as not recognized after sleep.
+This was not evidence of identity removal by experimental enrollment:
+
+- Boot readiness at 12:21 EDT observed stable nonempty identities and loaded
+  no Catacomb components.
+- Deep sleep resumed at 12:50:51. Immediately afterward the internal CDC-NCM
+  link repeatedly logged `NETDEV WATCHDOG: transmit queue 0 timed out`.
+  Its interface stayed UP, but neighbor resolution failed and direct TCP
+  connections to the configured cached biometric endpoint timed out.
+- The enrollment journal had no unfinished operation. fprintd was active,
+  with VerifyStop/Release cleanup errors near resume; an active service alone
+  did not prove its T2 transport worked.
+- Under the shared operation lock, rebinding only USB interface `7-1:1.0`
+  to `cdc_ncm` recovered communication. Its exact T2BCE ancestry and driver
+  were checked first. This did not reset the USB parent, T2, or biometric
+  sensor, and no enrollment, deletion, or Catacomb load command was sent.
+- A subsequent read-only comparison over the cached endpoint confirmed one
+  stable live identity matching the saved one-identity/one-entity archive,
+  master count four, exact protected policy, maximum count five and free
+  count two. Optional Catacomb queries retained their known rejection status.
+
+The installed facade also maps an absent terminal match result to
+`verify-no-match`, so that verdict alone cannot establish a rejected captured
+finger. A supervised positive verification is still required following this
+recovery. No automatic resume workaround has been installed; the transport
+regression can recur. The same CDC-NCM resume symptom and successful narrow
+rebind were documented during the earlier 2026-08-28 transport investigation.
+
 This checkpoint records the last known-good warm-transition configuration on
 the MacBookPro16,1 before cold-boot restoration work begins. It deliberately
 contains no password, keybag handle, biometric identifier, Catacomb payload,
