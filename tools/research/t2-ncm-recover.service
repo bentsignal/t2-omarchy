@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Bounded recovery of the internal T2 network after sleep
+After=NetworkManager.service
+ConditionPathExists=/etc/t2-touchid.conf
+ConditionPathExists=/var/lib/t2-touchid/biometric-port
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/libexec/t2-ncm-recover.py
+TimeoutStartSec=60
+UMask=0077
+MemoryMax=64M
+TasksMax=16
+CPUQuota=50%
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
+PrivateTmp=true
+# Do not enable ProtectKernelTunables: this service needs the two validated
+# cdc_ncm sysfs bind/unbind files. It deliberately has no restart loop.

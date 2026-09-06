@@ -1,5 +1,17 @@
 # Touch ID cold-boot checkpoint
 
+## 2026-09-06 resume workaround installed
+
+The post-suspend CDC-NCM stall recurred. The new bounded recovery service
+restored transport, and read-only inspection confirmed the same single live
+identity exactly matching the archive. A sleep-target hook is now enabled;
+the matcher also distinguishes absent terminal results/transport errors from
+fingerprint rejection without changing successful-match checks. Live transport
+recovery and healthy no-op checks pass. Supervised matching and actual sleep/wake
+acceptance remain pending. See [resume recovery](touch-id-resume-recovery.md)
+for evidence, deployment, limits, and rollback. This supersedes the September 5
+statement that no automatic resume workaround is installed.
+
 ## 2026-09-05 post-suspend transport failure
 
 Normal lock-screen verification was reported as not recognized after sleep.

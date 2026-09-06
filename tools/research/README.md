@@ -1,5 +1,12 @@
 # Bounded research helpers
 
+`t2-ncm-recover.py` and the paired recovery/resume systemd units implement a
+bounded workaround for the internal T2 CDC-NCM post-sleep TX stall.
+`t2-fprintd-runtime.py` is a pinned overlay that keeps transport errors from
+producing false fingerprint-rejection feedback. Neither changes the external
+reference checkout. See [resume recovery](../../docs/touch-id-resume-recovery.md)
+for exact scope, deployment state, tests, and rollback.
+
 `macos-objc-methods.m` is a macOS-only, read-only shared-cache inspection
 helper. It loads one framework and prints Objective-C method type encodings,
 implementations, and image-relative offsets. Optional environment selectors

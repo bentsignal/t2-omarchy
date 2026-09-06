@@ -4028,3 +4028,12 @@ status switches and verifies no enrollment action for 55/72/81/89, also seen
 in prior matching traces. These are handled as additional version-1 auxiliary
 notifications. This addresses event interpretation; it does not demonstrate
 native enrollment success or relax the separate persistence requirements.
+
+On September 6, normal verification again failed after sleep because the
+internal CDC-NCM transport stalled. The new bounded recovery service restored
+communication; a read-only comparison again proved one unchanged live identity
+matching the archive. The resume hook is enabled, and a separate pinned facade
+overlay no longer turns missing match results/transport exceptions into a
+fingerprint-rejection toast. Transport recovery and offline tests pass; real
+fingerprint and sleep/wake acceptance are next. No enrollment retry was started.
+See `docs/touch-id-resume-recovery.md` for the current checkpoint and rollback.
