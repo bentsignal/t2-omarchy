@@ -7,9 +7,12 @@ Run from the root-owned systemd service, never from an authentication request.
 """
 from __future__ import annotations
 
+import argparse
 import errno
 import fcntl
 import ipaddress
+import json
+import math
 import os
 from pathlib import Path
 import re
@@ -17,6 +20,7 @@ import shlex
 import socket
 import stat
 import sys
+import tempfile
 import time
 
 from t2_touchid_status import publish
@@ -25,6 +29,9 @@ CONFIG = Path("/etc/t2-touchid.conf")
 PORT = Path("/var/lib/t2-touchid/biometric-port")
 LOCK = Path("/run/t2-touchid/operation.lock")
 SYS = Path("/sys")
+RESUME_TICKET = Path("/run/t2-touchid/resume-ticket.json")
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+SUSPEND_SUCCESS = Path("/sys/power/suspend_stats/success")
 
 
 class RecoveryError(RuntimeError):
@@ -73,7 +80,7 @@ def parse_endpoint(config: str, port_text: str) -> tuple[str, str, int]:
     return host, interface, port
 
 
-def validate_target(interface: str, sys_root: Path = SYS) -> tuple[Path, str]:
+def validate_target(interface: str, sys_root: Path = SYS, *, require_up: bool = True) -> tuple[Path, str]:
     net = sys_root / "class/net" / interface
     device = (net / "device").resolve(strict=True)
     driver = (device / "driver").resolve(strict=True)
@@ -91,7 +98,7 @@ def validate_target(interface: str, sys_root: Path = SYS) -> tuple[Path, str]:
         parent / "idProduct"
     ).read_text().strip() != "8233":
         raise RecoveryError("not the validated Apple T2 internal USB network device")
-    if (net / "operstate").read_text().strip() != "up":
+    if require_up and (net / "operstate").read_text().strip() != "up":
         raise InterfaceNotReady("network interface is not up; leave setup to NetworkManager")
     return driver, device.name
 
@@ -166,15 +173,90 @@ def tx_errors(interface: str) -> int:
     return int((SYS / "class/net" / interface / "statistics/tx_errors").read_text())
 
 
-def recover(host: str, interface: str, port: int) -> bool:
+def ticket_directory_safe() -> None:
+    info = RESUME_TICKET.parent.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+        raise RecoveryError("resume ticket directory must be private and root-owned")
+
+
+def prepare_sleep() -> None:
+    """Record a local one-use guard, not a network/device operation."""
+    publish("transport", "sleeping")
+    temporary = None
+    try:
+        ticket_directory_safe()
+        RESUME_TICKET.unlink(missing_ok=True)
+        host, interface, _ = parse_endpoint(private_read(CONFIG), private_read(PORT))
+        # NetworkManager may have already lowered the link before sleep.target.
+        # Validate hardware here; require the link up again before recovery.
+        target = validate_target(interface, require_up=False)
+        record = {
+            "schema_version": 1, "boot_id": BOOT_ID.read_text().strip(),
+            "suspend_success": int(SUSPEND_SUCCESS.read_text().strip()),
+            "monotonic": time.monotonic(), "host": host, "interface": interface,
+            "target": [str(target[0]), target[1]],
+        }
+        fd, temporary = tempfile.mkstemp(prefix=".resume-", dir=RESUME_TICKET.parent)
+        with os.fdopen(fd, "w") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            json.dump(record, stream)
+            stream.write("\n")
+        os.replace(temporary, RESUME_TICKET)
+        temporary = None
+        print("T2 resume guard prepared; no device commands sent.", flush=True)
+    except (OSError, ValueError, RecoveryError):
+        # A missing optional optimization must not prevent ordinary suspend.
+        print("T2 resume guard unavailable; retain watchdog-gated recovery.", flush=True)
+    finally:
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+
+
+def consume_resume_ticket(host: str, interface: str, target: tuple[Path, str]) -> bool:
+    """Consume once; only an actual successful suspend qualifies for fast repair."""
+    try:
+        ticket_directory_safe()
+        try:
+            record = json.loads(private_read(RESUME_TICKET))
+        finally:
+            RESUME_TICKET.unlink(missing_ok=True)
+        if not isinstance(record, dict):
+            return False
+        stamp = record.get("monotonic")
+        count = record.get("suspend_success")
+        if type(stamp) not in (float, int) or not math.isfinite(stamp) or type(count) is not int or count < 0:
+            return False
+        # CLOCK_MONOTONIC excludes time asleep; long sleeps remain eligible,
+        # but a stale awake hook or ticket from a different boot does not.
+        return bool(
+            record.get("schema_version") == 1
+            and record.get("boot_id") == BOOT_ID.read_text().strip()
+            and int(SUSPEND_SUCCESS.read_text().strip()) == count + 1
+            and 0 <= time.monotonic() - stamp <= 120
+            and record.get("host") == host
+            and record.get("interface") == interface
+            and record.get("target") == [str(target[0]), target[1]]
+        )
+    except (OSError, ValueError, RecoveryError):
+        return False
+
+
+def recover(host: str, interface: str, port: int, *, after_resume: bool = False) -> bool:
     target = wait_for_target(interface)
+    early = after_resume and consume_resume_ticket(host, interface, target)
+    if after_resume:
+        print("T2 successful-resume guard verified; checking link before early recovery." if early
+              else "T2 resume guard not applicable; retaining watchdog-gated recovery.", flush=True)
     for attempt in range(3):
-        if transport_reachable(host, interface, port):
+        if transport_reachable(host, interface, port, timeout=0.35 if early else 2):
             print("T2 network reachable; no rebind performed.", flush=True)
             return False
         if attempt < 2:
-            time.sleep(1)
-    if tx_errors(interface) <= 0:
+            time.sleep(0.25 if early else 1)
+    if not early and tx_errors(interface) <= 0:
         # On the first real wake, cached EHOSTUNREACH made the three probes
         # finish before the NIC's ~5-second TX watchdog fired. Keep checking
         # briefly, but never remove the requirement for actual TX evidence.
@@ -193,26 +275,44 @@ def recover(host: str, interface: str, port: int) -> bool:
                 raise RecoveryError("network target changed while awaiting TX errors")
     if validate_target(interface) != target:
         raise RecoveryError("network target changed during checks")
-    print("T2 link unreachable with TX errors; rebinding its CDC-NCM interface once.", flush=True)
+    if early:
+        print("Confirmed resume with three failed probes; rebinding T2 CDC-NCM once before watchdog.", flush=True)
+    else:
+        print("T2 link unreachable with TX errors; rebinding its CDC-NCM interface once.", flush=True)
+    started = time.monotonic()
     rebind(*target)
+    print(f"T2 recovery timing: rebind elapsed_ms={(time.monotonic() - started) * 1000:.1f}", flush=True)
     deadline = time.monotonic() + 12
     while time.monotonic() < deadline:
-        time.sleep(1)
-        if transport_reachable(host, interface, port):
-            validate_target(interface)
+        time.sleep(0.1 if early else 1)
+        if transport_reachable(host, interface, port, timeout=0.25 if early else 2):
+            try:
+                validate_target(interface)
+            except InterfaceNotReady:
+                continue
             print("T2 transport recovered; no biometric commands sent.", flush=True)
             return True
     raise RecoveryError("interface rebound but peer still unreachable; no further reset attempted")
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--prepare-sleep", action="store_true")
+    mode.add_argument("--after-resume", action="store_true")
+    args = parser.parse_args()
     if os.geteuid() != 0:
         raise RecoveryError("root is required")
+    if args.prepare_sleep:
+        prepare_sleep()
+        return 0
     publish("transport", "recovering")
     endpoint = parse_endpoint(private_read(CONFIG), private_read(PORT))
     fd = lock_operation()
     try:
-        recover(*endpoint)
+        started = time.monotonic()
+        recover(*endpoint, after_resume=args.after_resume)
+        print(f"T2 recovery timing: recovery elapsed_ms={(time.monotonic() - started) * 1000:.1f}", flush=True)
     finally:
         os.close(fd)
     publish("transport", "available")

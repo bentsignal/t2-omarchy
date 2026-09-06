@@ -113,6 +113,14 @@ total probe time including touch. This validates the awake cached path, not
 the post-resume rediscovery path. Shawn authorized the next sleep/wake test;
 its result is still pending.
 
+Subsequent sleep controls returned sensor readiness in **11.779 s** and
+**12.724 s** after Linux resumed, with cached discovery and ~0.87-second matcher
+startup. They confirm that transport recovery, not the discovery shortcut, is
+the remaining measured delay in those runs. A guarded earlier-repair path is
+now deployed; see [resume recovery](touch-id-resume-recovery.md) for the changed
+fault-evidence gate, tests, rollback, and pending supervised acceptance. It has
+not yet been timed across a real sleep/wake. Enrollment remains next, not dropped.
+
 ## 2. Next: Linux-native fingerprint enrollment
 
 This remains required. Users should eventually enroll and manage fingerprints

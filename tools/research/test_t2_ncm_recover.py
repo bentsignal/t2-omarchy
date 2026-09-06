@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 import errno
+from contextlib import ExitStack
 import importlib.util
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -177,10 +179,104 @@ class RecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.fixture(root)
-            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 0, 13]):
+            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 0, 0, 0, 13]):
                 with self.assertRaisesRegex(MODULE.RecoveryError, "still unreachable"):
                     MODULE.recover("fe80::1", "enp4s0f1u1", 50000)
                 rebind.assert_called_once()
+
+    def test_confirmed_resume_recovers_early_without_reading_watchdog(self):
+        target = ("driver", "7-1:1.0")
+        with patch.object(MODULE, "validate_target", return_value=target), patch.object(MODULE, "consume_resume_ticket", return_value=True) as ticket, patch.object(MODULE, "transport_reachable", side_effect=[False] * 3 + [True]) as probe, patch.object(MODULE, "tx_errors") as errors, patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", return_value=0):
+            self.assertTrue(MODULE.recover("fe80::1", "test", 50000, after_resume=True))
+            ticket.assert_called_once_with("fe80::1", "test", target)
+            errors.assert_not_called()
+            rebind.assert_called_once_with(*target)
+            self.assertEqual([call.kwargs["timeout"] for call in probe.call_args_list], [0.35] * 3 + [0.25])
+
+    def test_resume_with_missing_guard_retains_watchdog_requirement(self):
+        with patch.object(MODULE, "validate_target"), patch.object(MODULE, "consume_resume_ticket", return_value=False), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "tx_errors", return_value=0), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 0, 13]):
+            with self.assertRaisesRegex(MODULE.RecoveryError, "without TX-error"):
+                MODULE.recover("fe80::1", "test", 50000, after_resume=True)
+            rebind.assert_not_called()
+
+    def test_early_healthy_or_transient_link_is_not_rebound(self):
+        for replies in ([True], [False, True], [False, False, True]):
+            with patch.object(MODULE, "validate_target"), patch.object(MODULE, "consume_resume_ticket", return_value=True) as ticket, patch.object(MODULE, "transport_reachable", side_effect=replies), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"):
+                self.assertFalse(MODULE.recover("fe80::1", "test", 50000, after_resume=True))
+                ticket.assert_called_once()
+                rebind.assert_not_called()
+
+    def test_early_target_change_still_prevents_rebind(self):
+        with patch.object(MODULE, "validate_target", side_effect=[("driver", "7-1:1.0"), ("driver", "8-1:1.0")]), patch.object(MODULE, "consume_resume_ticket", return_value=True), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"):
+            with self.assertRaisesRegex(MODULE.RecoveryError, "target changed"):
+                MODULE.recover("fe80::1", "test", 50000, after_resume=True)
+            rebind.assert_not_called()
+
+
+class ResumeTicketTests(unittest.TestCase):
+    def setUp(self):
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        root = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
+        self.ticket = root / "resume-ticket.json"
+        self.boot = root / "boot_id"
+        self.count = root / "success"
+        self.boot.write_text("fixture-boot\n")
+        self.count.write_text("11\n")
+        for name, value in (("RESUME_TICKET", self.ticket), ("BOOT_ID", self.boot), ("SUSPEND_SUCCESS", self.count)):
+            self.stack.enter_context(patch.object(MODULE, name, value))
+        self.stack.enter_context(patch.object(MODULE, "ticket_directory_safe"))
+        self.stack.enter_context(patch.object(MODULE, "private_read", side_effect=lambda path: path.read_text()))
+        self.stack.enter_context(patch.object(MODULE.time, "monotonic", return_value=100))
+        self.record = {"schema_version": 1, "boot_id": "fixture-boot", "suspend_success": 10, "monotonic": 70, "host": "fe80::1", "interface": "test", "target": ["driver", "7-1:1.0"]}
+
+    def consume(self):
+        return MODULE.consume_resume_ticket("fe80::1", "test", ("driver", "7-1:1.0"))
+
+    def test_successful_resume_guard_is_single_use(self):
+        self.ticket.write_text(json.dumps(self.record))
+        self.assertTrue(self.consume())
+        self.assertFalse(self.ticket.exists())
+        self.assertFalse(self.consume())
+
+    def test_stale_failed_sleep_changed_boot_or_target_rejected(self):
+        for key, value in (("suspend_success", 11), ("suspend_success", 9), ("suspend_success", True),
+                           ("monotonic", -1000), ("monotonic", 101), ("monotonic", float("nan")),
+                           ("monotonic", "70"), ("boot_id", "different-boot"),
+                           ("host", "fe80::2"), ("interface", "other"),
+                           ("target", ["driver", "8-1:1.0"]), ("schema_version", 2)):
+            with self.subTest(key=key, value=value):
+                self.ticket.write_text(json.dumps({**self.record, key: value}))
+                self.assertFalse(self.consume())
+                self.assertFalse(self.ticket.exists())
+
+    def test_malformed_ticket_consumed_without_enabling_fast_path(self):
+        for text in ("not json", "[]", "{}"):
+            self.ticket.write_text(text)
+            self.assertFalse(self.consume())
+            self.assertFalse(self.ticket.exists())
+
+    def test_unsafe_file_does_not_enable_fast_path(self):
+        self.ticket.write_text(json.dumps(self.record))
+        with patch.object(MODULE, "private_read", side_effect=MODULE.RecoveryError("unsafe file")):
+            self.assertFalse(self.consume())
+
+    def test_prepare_only_records_and_does_not_probe_or_rebind(self):
+        with patch.object(MODULE, "private_read", side_effect=[CONFIG, "50000"]), patch.object(MODULE, "validate_target", return_value=("driver", "7-1:1.0")) as target, patch.object(MODULE, "transport_reachable") as probe, patch.object(MODULE, "rebind") as rebind, patch.object(MODULE, "publish"):
+            MODULE.prepare_sleep()
+        target.assert_called_once_with("enp4s0f1u1", require_up=False)
+        probe.assert_not_called()
+        rebind.assert_not_called()
+        record = json.loads(self.ticket.read_text())
+        self.assertEqual(record["suspend_success"], 11)
+        self.assertEqual(record["monotonic"], 100)
+        self.assertEqual(self.ticket.stat().st_mode & 0o777, 0o600)
+
+    def test_prepare_failure_removes_old_guard_and_does_not_block_sleep(self):
+        self.ticket.write_text(json.dumps(self.record))
+        with patch.object(MODULE, "private_read", side_effect=OSError()), patch.object(MODULE, "publish"):
+            MODULE.prepare_sleep()
+        self.assertFalse(self.ticket.exists())
 
 
 if __name__ == "__main__":

@@ -2,6 +2,77 @@
 
 ## Latest checkpoint
 
+**September 6, 16:13 EDT: earlier, resume-only recovery is deployed for testing.**
+See [the current roadmap](touch-id-roadmap.md) for priority and acceptance status.
+The sections below preserve earlier iterations, including obsolete timing and
+test instructions; do not ask for an arbitrary 30-second wait after wake.
+
+The latest two controls confirmed real S3 suspend. Resume-to-sensor-ready was
+11.779 seconds at 15:45:56–15:46:08 and 12.724 seconds at 15:56:27–15:56:40.
+The latter spent 11.681 seconds restoring the transport, then 0.868 seconds
+starting the matcher (plus scheduling). Both used the cached service endpoint,
+so neither measured the direct-directory fallback. The lock screen unlocked
+at 15:56:43.067. Keypress-to-first-visible-frame remains unmeasured.
+
+### Earlier repair after a verified suspend
+
+Repeated wake controls show the same failure: no T2 network response, then a
+5-second-class transmit watchdog and an endpoint pause timeout, then successful
+recovery by rebinding the **network interface only**. The previous helper waited
+for that watchdog as its fault-evidence gate. The new path intentionally changes
+that gate **only for one confirmed, recent resume**; it is a workaround, not a
+proven kernel fix.
+
+Before sleep, `t2-touchid-resume.service` invokes the helper's `--prepare-sleep`
+mode. This publishes the existing sleeping UI state and writes a root-only,
+atomic, single-use `/run/t2-touchid/resume-ticket.json`. It records the boot ID,
+successful-suspend counter, monotonic time, and validated interface/target.
+It sends no network or biometric commands. Failure to prepare the optional
+guard does not prevent normal sleep.
+
+After wake, `--after-resume` consumes that ticket under the operation lock.
+The same boot and exact target must match, the kernel successful-suspend count
+must have advanced by exactly one, and no more than 120 seconds of monotonic
+(awake) time may have elapsed. Long time asleep does not expire the guard.
+The counter's meaning is documented in the upstream
+[Linux power sysfs ABI](https://github.com/torvalds/linux/blob/master/Documentation/ABI/testing/sysfs-power).
+Missing, unsafe, malformed, reused, failed-suspend, or stale evidence retains
+the original watchdog-gated behavior. Public UI state never authorizes repair.
+
+With a valid guard and an up, exactly validated T2 interface, three connection
+probes are bounded to 350 ms each, separated by 250 ms. A reachable or refused
+connection avoids rebind. Three failures allow one early CDC-NCM unbind/bind,
+without waiting for the watchdog counter. Target validation and bind-in-finally
+remain mandatory. Post-rebind checks poll every 100 ms with 250 ms connection
+timeouts instead of adding whole-second sleeps. Total recovery remains bounded
+by the existing service limit, with no restart loop or repeated rebind.
+
+Tradeoff: immediately after a confirmed resume, a merely slow connection could
+now receive one unnecessary network-interface rebind. This is deliberately
+narrower than unconditional resetting on every wake, but it is less conservative
+than waiting for a watchdog. No parent USB/T2 reset, firmware/driver replacement,
+enrollment mutation, stored-fingerprint change, or authentication relaxation is
+part of this patch. The pre-existing kernel endpoint-drain wait may still cost
+time; do not promise subsecond wake before a live measurement.
+
+Validation: 173 research tests completed, two expected environment skips. Tests
+cover one-use tickets, failed/stale/changed-boot/changed-target guards, malformed
+records, healthy and transient no-op paths, early rebind, and watchdog fallback.
+Both unit files pass systemd validation. A live **awake** prepare/recover smoke
+test rejected the guard because no sleep had occurred, confirmed a healthy
+link in 4.5 ms, performed no rebind, and consumed the ticket. This does not prove
+early-repair latency. The matcher was not restarted. No real sleep or touch was
+requested during implementation.
+
+Next manual gate: a separately authorized sleep/wake with immediate interaction,
+then inspect guard acceptance, early-rebind duration, first sensor-ready time,
+and positive/negative fingerprint controls. To disable only the optimization,
+remove `--after-resume` from the recovery unit's ExecStart and reload systemd;
+normal watchdog gating remains in the helper. Do this while awake with both
+sleep/recovery units inactive. No biometric data needs removal.
+
+### Previous checkpoint (historical)
+
 The third real sleep/wake passed: Shawn unlocked with the enrolled finger after
 automatic recovery at 13:32:22 EDT, about 12 seconds after resume. The following
 historical sections preserve the preceding failures. Read
