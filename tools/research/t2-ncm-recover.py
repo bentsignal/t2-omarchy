@@ -29,6 +29,10 @@ class RecoveryError(RuntimeError):
     pass
 
 
+class InterfaceNotReady(RecoveryError):
+    """The exact validated T2 interface is still being brought up after wake."""
+
+
 def private_read(path: Path) -> str:
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     with os.fdopen(fd) as stream:
@@ -86,8 +90,25 @@ def validate_target(interface: str, sys_root: Path = SYS) -> tuple[Path, str]:
     ).read_text().strip() != "8233":
         raise RecoveryError("not the validated Apple T2 internal USB network device")
     if (net / "operstate").read_text().strip() != "up":
-        raise RecoveryError("network interface is not up; leave setup to NetworkManager")
+        raise InterfaceNotReady("network interface is not up; leave setup to NetworkManager")
     return driver, device.name
+
+
+def wait_for_target(interface: str) -> tuple[Path, str]:
+    deadline = time.monotonic() + 10
+    reported = False
+    while True:
+        try:
+            return validate_target(interface)
+        except InterfaceNotReady:
+            # NetworkManager.service being active does not mean this interface
+            # has finished its independent resume. Never bring it up ourselves.
+            if time.monotonic() >= deadline:
+                raise RecoveryError("T2 interface still down after 10s; no rebind attempted") from None
+            if not reported:
+                print("Waiting up to 10s for NetworkManager to bring up the validated T2 interface.", flush=True)
+                reported = True
+            time.sleep(0.5)
 
 
 def transport_reachable(host: str, interface: str, port: int) -> bool:
@@ -144,7 +165,7 @@ def tx_errors(interface: str) -> int:
 
 
 def recover(host: str, interface: str, port: int) -> bool:
-    target = validate_target(interface)
+    target = wait_for_target(interface)
     for attempt in range(3):
         if transport_reachable(host, interface, port):
             print("T2 network reachable; no rebind performed.", flush=True)

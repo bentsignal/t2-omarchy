@@ -30,8 +30,8 @@ the enrolled finger unlocked successfully, and an unenrolled finger did not.
 These are user-observed end-to-end results, not an independently captured
 fprintd trace. Normal matching after transport recovery is now accepted.
 
-The first actual sleep/wake test failed; the timing correction below is now
-deployed and needs a second supervised sleep/wake test. No new enrollment
+The first two actual sleep/wake tests failed on distinct readiness races; the
+corrections below are deployed and need another supervised sleep/wake test. No new enrollment
 trial was started during this repair.
 Native enrollment remains at the status-55 overlay checkpoint described in
 `touch-id-enrollment-presence-events.md`.
@@ -65,13 +65,45 @@ sleep), avoiding a daemon restart that could mask a second resume issue. This
 manual recovery does not establish automatic resume acceptance; another real
 sleep/wake and successful scan are required.
 
+### Second real wake: interface-up race, corrected
+
+The next suspend ran from 12:51:22 to 13:00:43 EDT. The hook ran, but validation
+stopped immediately because the configured interface was not yet up.
+NetworkManager's journal then showed carrier connected at 13:00:43.654 and
+activation completed at 13:00:45.159. The first TX watchdog arrived at 13:00:50.
+Thus this attempt exited before the earlier watchdog-grace fix could run.
+Waiting longer before touching would not have restarted the failed helper.
+
+`InterfaceNotReady` now distinguishes an exactly validated T2 interface that is
+still down from all other validation failures. The helper gives NetworkManager
+up to 10 seconds to bring it up, repeating full validation without forcing any
+network state. Wrong hardware/driver/configuration still fails immediately.
+The total service timeout is now 75 seconds to cover the bounded lock, link-up,
+watchdog-evidence, and post-rebind waits. There is still at most one rebind.
+Tests cover down-to-up, permanently down, unsafe target, and the combined
+down-to-up/delayed-watchdog/rebind/reachable sequence.
+
+The installed helper manually restored transport at 13:09:01. Independent TCP
+reachability passed, and fprintd still had the same PID: no daemon restart was
+used to mask its post-suspend state. Another real sleep/wake test is required.
+
+Shawn reported the lock screen going dark after about five seconds. There was
+no second system suspend in the journal. Inspection of the installed Omarchy
+`shell/plugins/lock/Service.qml` confirms its 5000 ms `idleBlankTimer` invokes
+display/keyboard brightness-off commands, not system suspend; its fingerprint
+PAM remains armed during the lock. No packaged Omarchy files or idle settings
+were modified. For the test, allow recovery to run with the display dark, then
+press a key to light it again before touching. Do not ask Shawn to race the
+screen timeout or attribute this failed recovery to touching too soon.
+
 ### Next supervised test
 
 The resume hook is enabled, fprintd is active, the previous recovery unit result
 is successful, and the selected kernel sleep mode is `deep`. Save work, enter
 actual suspend (not merely lock the screen), wait about 20 seconds, then wake.
-Allow 30 seconds for recovery before trying the enrolled finger at the lock
-screen. Use password fallback if needed and report the result. This Linux thread
+Allow 30 seconds for recovery even if the display blanks, then press a key and
+try the enrolled finger at the lock screen. Use password fallback if needed and
+report the result. This Linux thread
 cannot perform work while the machine is suspended.
 
 On return, inspect the current-boot journal for `systemd-suspend.service`,
@@ -91,8 +123,9 @@ validates all of:
 - The configured interface's actual sysfs ancestry includes `t2bce_vhci`.
 - Its USB driver is exactly `cdc_ncm`, its parent is Apple USB `05ac:8233`, and
   it is interface `:1.0` of that parent. USB vendor `05ac` is not PCI vendor `106b`.
-- The interface is up, the endpoint is link-local IPv6, and the cached port is
-  within the expected ephemeral range.
+- The interface is up (allowing NetworkManager up to 10 seconds after wake),
+  the endpoint is link-local IPv6, and the cached port is within the expected
+  ephemeral range.
 
 It attempts three bounded TCP connections, then allows up to 12 additional
 seconds for delayed TX errors when the initial error counter is zero.
@@ -105,7 +138,7 @@ repeated immediately before the write. Bind is attempted in `finally` if the
 interface was detached. There is no parent USB reset, sensor reset, keybag load,
 Catacomb load, enrollment, deletion, or daemon restart in this helper.
 
-The service caps memory at 64 MiB, tasks at 16, CPU at 50%, total runtime at 60
+The service caps memory at 64 MiB, tasks at 16, CPU at 50%, total runtime at 75
 seconds, and starts at three per ten minutes. It has no restart loop. A busy
 operation lock, unexpected device, missing cache, or failed recovery leaves
 password fallback in place; these conditions require diagnosis rather than
@@ -174,7 +207,7 @@ PAM backup, enrollment fixture, or authentication fallback needs deletion.
 
 ## Verification
 
-- 141 research tests pass, with two expected skips under system Python (macOS
+- 145 research tests pass, with two expected skips under system Python (macOS
   platform test and installed-runtime import test).
 - The installed runtime's own Python environment separately passes all five
   facade-overlay tests, including the real pinned module import, positive and
@@ -186,6 +219,6 @@ PAM backup, enrollment fixture, or authentication fallback needs deletion.
   fprintd unit with its drop-ins.
 - Live recovery and subsequent healthy no-op pass. Shawn confirms successful
   enrolled-finger unlock and rejection of an unenrolled finger after deployment.
-  The first actual sleep/wake failed on delayed watchdog evidence. The corrected
-  helper restored the link manually without restarting fprintd; automatic
-  sleep/wake acceptance remains pending.
+  The first actual sleep/wake failed on delayed watchdog evidence, the second
+  on interface-up timing. The corrected helper restored the link manually
+  without restarting fprintd; automatic sleep/wake acceptance remains pending.

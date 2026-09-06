@@ -10,7 +10,8 @@ StartLimitBurst=3
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 /usr/local/libexec/t2-ncm-recover.py
-TimeoutStartSec=60
+# Includes bounded operation-lock, interface-up, watchdog, and link-return waits.
+TimeoutStartSec=75
 UMask=0077
 MemoryMax=64M
 TasksMax=16

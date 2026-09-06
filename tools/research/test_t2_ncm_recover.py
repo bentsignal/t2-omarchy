@@ -68,6 +68,34 @@ class RecoveryTests(unittest.TestCase):
                 self.assertFalse(MODULE.recover("fe80::1", "test", 50000))
                 rebind.assert_not_called()
 
+    def test_interface_up_is_awaited_before_probing(self):
+        target = ("driver", "7-1:1.0")
+        with patch.object(MODULE, "validate_target", side_effect=[MODULE.InterfaceNotReady(), MODULE.InterfaceNotReady(), target]), patch.object(MODULE, "transport_reachable", return_value=True) as probe, patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep") as sleep, patch.object(MODULE.time, "monotonic", return_value=0):
+            self.assertFalse(MODULE.recover("fe80::1", "test", 50000))
+            self.assertEqual(sleep.call_count, 2)
+            probe.assert_called_once()
+            rebind.assert_not_called()
+
+    def test_persistently_down_interface_is_not_probed_or_rebound(self):
+        with patch.object(MODULE, "validate_target", side_effect=MODULE.InterfaceNotReady()), patch.object(MODULE, "transport_reachable") as probe, patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "monotonic", side_effect=[0, 11]):
+            with self.assertRaisesRegex(MODULE.RecoveryError, "still down"):
+                MODULE.recover("fe80::1", "test", 50000)
+            probe.assert_not_called()
+            rebind.assert_not_called()
+
+    def test_unsafe_target_is_not_retried_as_interface_down(self):
+        with patch.object(MODULE, "validate_target", side_effect=MODULE.RecoveryError("wrong device")) as validate, patch.object(MODULE.time, "sleep") as sleep:
+            with self.assertRaisesRegex(MODULE.RecoveryError, "wrong device"):
+                MODULE.wait_for_target("test")
+            validate.assert_called_once()
+            sleep.assert_not_called()
+
+    def test_down_then_delayed_watchdog_then_link_recovery(self):
+        target = ("driver", "7-1:1.0")
+        with patch.object(MODULE, "validate_target", side_effect=[MODULE.InterfaceNotReady(), target, target, target, target]), patch.object(MODULE, "tx_errors", side_effect=[0, 0, 1]), patch.object(MODULE, "transport_reachable", side_effect=[False] * 4 + [True]), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", return_value=0):
+            self.assertTrue(MODULE.recover("fe80::1", "test", 50000))
+            rebind.assert_called_once_with(*target)
+
     def test_stalled_link_rebinds_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -82,7 +110,7 @@ class RecoveryTests(unittest.TestCase):
             root = Path(tmp)
             self.fixture(root)
             (root / "class/net/enp4s0f1u1/statistics/tx_errors").write_text("0")
-            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 13]):
+            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 0, 13]):
                 with self.assertRaisesRegex(MODULE.RecoveryError, "without TX-error"):
                     MODULE.recover("fe80::1", "enp4s0f1u1", 50000)
                 rebind.assert_not_called()
@@ -149,7 +177,7 @@ class RecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.fixture(root)
-            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 13]):
+            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 0, 13]):
                 with self.assertRaisesRegex(MODULE.RecoveryError, "still unreachable"):
                     MODULE.recover("fe80::1", "enp4s0f1u1", 50000)
                 rebind.assert_called_once()

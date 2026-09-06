@@ -19,6 +19,12 @@ evidence grace is deployed; manual recovery passed without restarting fprintd.
 Another actual sleep/wake test is required. The linked recovery document records
 the exact timeline and distinguishes this from automatic acceptance.
 
+The second test exposed an earlier race: the hook validated the link before
+NetworkManager had brought it up. A separately bounded interface-up wait is now
+deployed along with a 75-second total service timeout. Manual recovery passed
+again without restarting fprintd; automatic acceptance is still pending. The
+five-second lock-screen blackout is display blanking, not another suspend.
+
 ## 2026-09-05 post-suspend transport failure
 
 Normal lock-screen verification was reported as not recognized after sleep.

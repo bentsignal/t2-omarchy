@@ -4050,3 +4050,12 @@ or TX-error checks. All 141 research tests pass (two environment-specific skips)
 and the installed correction restored transport manually without restarting
 fprintd. Automatic recovery and matching need another supervised sleep/wake test;
 no new sleep is scheduled until Shawn is ready.
+
+The second sleep/wake failed before those probes: NetworkManager was still
+bringing the validated T2 interface up when the hook checked it. A typed,
+10-second interface-up wait now precedes probing; other validation errors remain
+terminal. The unit's total bound is 75 seconds, and all 145 research tests pass
+with the same two expected skips. Manual transport recovery again passed without
+restarting fprintd. Automatic acceptance needs another sleep/wake test. Omarchy's
+five-second screen blanking does not suspend the machine, so Shawn may let the
+display go dark during recovery and press a key before the next finger attempt.
