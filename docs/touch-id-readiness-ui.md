@@ -1,5 +1,20 @@
 # Touch ID readiness UX and Touch Bar investigation — 2026-09-06
 
+## Current scope decision
+
+Shawn accepted the lock-screen presentation and explicitly deferred Touch Bar
+work. Leave its hardware mode, native function row, drivers, and renderer alone.
+The research below is retained as a future reference, not an active installation
+plan. Focus on the underlying Touch ID implementation and wake latency.
+
+The next user-approved action is a timed sleep/wake with the visible readiness
+hint. The status publisher now logs only “Touch ID sensor accepted scan; UI
+ready.” when it publishes a real accepted scan cue, so the first post-wake cue
+can be correlated with suspend/resume and recovery journal timestamps. This
+contains no biometric identity or authentication verdict. It is needed because
+the live status file is replaced by `idle` after completion. Do not infer a new
+negative control or an exact wake time from the user's acceptance of the UI.
+
 ## Confirmed automatic recovery
 
 Shawn confirmed an enrolled-finger unlock after the third supervised sleep/wake
@@ -161,7 +176,7 @@ USB `7-6` with the biometric transport interface `7-1:1.0`.
   space initialization to fail; the same tests passed under the proper cgroup
   limit. No whole-system out-of-memory event was observed during this work.
 
-Next: one supervised normal lock-screen positive/negative control, then a
-sleep/wake using the visible readiness message instead of a counted 30-second
-wait. Measure recovery again. No new sleep or finger test has been triggered
-without Shawn being ready, and no Touch Bar hardware mode change has been made.
+Next: the user-approved sleep/wake using the visible readiness message instead
+of a counted 30-second wait. Measure resume-to-transport and resume-to-first-ready
+separately; user reaction time is not device startup time. Touch Bar work is
+explicitly deferred, and no Touch Bar hardware mode change has been made.

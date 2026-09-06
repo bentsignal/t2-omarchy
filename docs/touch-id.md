@@ -4070,3 +4070,9 @@ polling is shorter, but a faster wake time remains unmeasured. Public Touch Bar
 renderer sources were investigated; no graphics-mode switch or external installer
 was run. See `docs/touch-id-readiness-ui.md` for implementation, tests, rollback,
 Touch Bar prerequisites, and the next supervised controls.
+
+Shawn accepted the readiness presentation and asked to leave the Touch Bar alone
+for now. Focus remains on underlying Touch ID implementation and reducing wake
+latency. A privacy-safe journal marker for the actual accepted scan cue is
+installed for the next user-approved sleep test, avoiding reliance on a transient
+status file or the user's finger-placement timing to measure device readiness.

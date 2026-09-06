@@ -42,6 +42,10 @@ def publish(channel: str, state: str) -> None:
             os.fchmod(stream.fileno(), 0o644)
         os.replace(temporary, DIRECTORY / f"{channel}.json")
         temporary = None
+        if channel == "scan" and state == "ready":
+            # A journal timestamp survives the following idle update, allowing
+            # wake-to-first-accepted-scan measurement without biometric data.
+            print("Touch ID sensor accepted scan; UI ready.", flush=True)
     except OSError:
         print("Touch ID UI status publication unavailable; authentication unchanged.", file=sys.stderr, flush=True)
     finally:
