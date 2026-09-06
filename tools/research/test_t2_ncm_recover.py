@@ -75,6 +75,7 @@ class RecoveryTests(unittest.TestCase):
         with patch.object(MODULE, "validate_target", side_effect=[MODULE.InterfaceNotReady(), MODULE.InterfaceNotReady(), target]), patch.object(MODULE, "transport_reachable", return_value=True) as probe, patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep") as sleep, patch.object(MODULE.time, "monotonic", return_value=0):
             self.assertFalse(MODULE.recover("fe80::1", "test", 50000))
             self.assertEqual(sleep.call_count, 2)
+            self.assertEqual([call.args for call in sleep.call_args_list], [(0.05,), (0.05,)])
             probe.assert_called_once()
             rebind.assert_not_called()
 

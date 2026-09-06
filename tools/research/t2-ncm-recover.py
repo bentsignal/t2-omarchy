@@ -117,7 +117,9 @@ def wait_for_target(interface: str) -> tuple[Path, str]:
             if not reported:
                 print("Waiting up to 10s for NetworkManager to bring up the validated T2 interface.", flush=True)
                 reported = True
-            time.sleep(0.5)
+            # Observe the independently activating interface promptly. This is
+            # bounded readiness polling, not a shorter fault-evidence gate.
+            time.sleep(0.05)
 
 
 def transport_reachable(host: str, interface: str, port: int, *, timeout: float = 2) -> bool:

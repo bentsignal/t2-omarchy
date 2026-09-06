@@ -1,5 +1,41 @@
 # Bounded pre-arm latency experiment — September 6, 2026
 
+## Hardware result at 17:32 EDT and next improvement
+
+The next actual suspend/resume reached sensor readiness in **5.239607 s**,
+versus 5.666429 s previously. The preparation optimization was used both before
+sleep and after wake (`early_marker=true`). Post-wake pre-arm took **170.8 ms**,
+and cached-endpoint verification-to-ready took **525.8 ms**, versus the earlier
+awake cached control's 873.3 ms. This is evidence of a smaller startup delay,
+not statistically established repeatability or a post-change negative control.
+The probe finished normally and the lock logged `unlocked` at 17:32:36.107.
+
+| Event | September 6 EDT | After system resume |
+|---|---|---:|
+| System returned from suspend | 17:32:29.242242 | 0 |
+| Interface carrier connected (NM) | 17:32:29.824728 | 0.582 s |
+| Interface-up check finished | 17:32:29.877946 | 0.636 s |
+| Guarded rebind started | 17:32:30.378664 | 1.136 s |
+| Rebind finished | 17:32:32.478671 | 3.236 s |
+| T2 peer reachable | 17:32:33.886396 | 4.644 s |
+| Verification started | 17:32:33.956293 | 4.714 s |
+| Actual accepted scan cue | 17:32:34.481849 | 5.240 s |
+
+The 500-ms interface-up polling interval is now **50 ms**, within the same
+10-second deadline and exact-target validation. This reduces sampling delay,
+not the actual time NM needs: in this run the old check saw carrier about
+53 ms late, so do not claim the full 500 ms was avoidable. The three failed
+probes, resume guard, rebind limits, and kernel queue-drain waits are unchanged.
+The awake healthy no-rebind check passed in 4.4 ms after deployment; the faster
+polling itself still needs a real resume measurement.
+
+Shawn reported the premature ready cue still appeared. The UI needs a
+**pre-freeze acknowledgement**, not just asynchronous file watchers; see the
+new checkpoint in [readiness UI](touch-id-readiness-ui.md). No second sleep or
+finger test was started while implementing that repair and the finer poll.
+
+## Previous checkpoint (before this hardware test)
+
 Current OS: Linux/Omarchy. Latest proven resume-to-sensor-ready remains
 **5.666 seconds**, measured before this experiment. No new sleep or finger test
 has been run for this change. Native enrollment remains the next main task;

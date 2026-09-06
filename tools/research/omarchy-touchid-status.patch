@@ -8,7 +8,7 @@
 
  Item {
    id: root
-@@ -22,6 +23,83 @@
+@@ -22,6 +23,99 @@
    property bool fingerprintAuthenticating: false
    property bool passwordPamConfigured: false
    property bool fingerprintConfigured: false
@@ -18,8 +18,22 @@
 +  property bool touchIdTransportPending: true
 +  property bool touchIdScanPending: true
 +  property double touchIdScanNotBefore: 0
-+  readonly property var touchIdStatus: TouchIdStatus.describe(touchIdTransport, touchIdScan, touchIdNow, touchIdTransportPending || touchIdScanPending, touchIdScanNotBefore)
++  property bool touchIdSleepPrepared: false
++  property double touchIdSleepEpoch: 0
++  readonly property var touchIdStatus: TouchIdStatus.describe(touchIdTransport, touchIdScan, touchIdNow, touchIdTransportPending || touchIdScanPending, touchIdScanNotBefore, touchIdSleepPrepared)
 +  readonly property bool touchIdTransportWaiting: touchIdStatus.waitingForTransport
++
++  function prepareTouchIdSleep() {
++    // Called under a user-session delay inhibitor BEFORE user.slice freezes.
++    // File watchers alone cannot guarantee a redraw before suspend.
++    touchIdSleepPrepared = true
++    touchIdSleepEpoch = Date.now() / 1000
++    touchIdScanNotBefore = touchIdSleepEpoch
++    fingerprintRetryTimer.stop()
++    if (fingerprintPam.active) fingerprintPam.abort()
++    fingerprintAuthenticating = false
++    logEvent("touchid-sleep-prepared")
++  }
 +
 +  function refreshTouchIdReadiness() {
 +    // Clear presentation before asynchronous reads; never reuse a ready cue
@@ -46,6 +60,8 @@
 +    onLoaded: {
 +      root.touchIdNow = Date.now()
 +      root.touchIdTransport = TouchIdStatus.parse(text())
++      if (root.touchIdSleepPrepared && TouchIdStatus.recoveredAfter(root.touchIdTransport, root.touchIdSleepEpoch))
++        root.touchIdSleepPrepared = false
 +      root.touchIdTransportPending = false
 +    }
 +    onLoadFailed: {
@@ -92,7 +108,7 @@
    property bool previewVisible: false
    property string enteredPassword: ""
    property string pendingPassword: ""
-@@ -131,6 +209,8 @@
+@@ -131,6 +225,8 @@
        return false
      }
 
@@ -101,7 +117,15 @@
      resetAuthenticationState()
      lockRequested = true
      armBlankTimer()
-@@ -208,6 +288,7 @@
+@@ -149,6 +245,7 @@
+     if (!root.locked && !lockRequested) return
+
+     lockRequested = false
++    touchIdSleepPrepared = false
+     pendingSessionLock = false
+     sessionLockStabilizeTimer.stop()
+     pendingSessionLockTimer.stop()
+@@ -208,6 +305,7 @@
 
    function startFingerprint() {
      if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
@@ -109,7 +133,16 @@
      if (fingerprintPam.active || fingerprintAuthenticating) return
 
      fingerprintAuthenticating = true
-@@ -271,6 +352,8 @@
+@@ -219,7 +317,7 @@
+   function handleFingerprintFinished(result) {
+     fingerprintAuthenticating = false
+
+-    if (!lockRequested) return
++    if (!lockRequested || touchIdSleepPrepared) return
+     if (result === PamResult.Success) {
+       finishUnlock()
+     } else if (fingerprintConfigured) {
+@@ -271,6 +369,8 @@
          backgroundPath: root.backgroundPath
          backgroundVersion: root.backgroundVersion
          fingerprintConfigured: root.fingerprintConfigured
@@ -118,7 +151,7 @@
          authenticatingPassword: root.authenticatingPassword
          failureMessage: root.failureMessage
          failedAttempts: root.failedAttempts
-@@ -301,6 +384,8 @@
+@@ -301,6 +401,8 @@
        backgroundPath: root.backgroundPath
        backgroundVersion: root.backgroundVersion
        fingerprintConfigured: root.fingerprintConfigured
@@ -127,7 +160,7 @@
        authenticatingPassword: false
        failureMessage: ""
        failedAttempts: 0
-@@ -413,7 +498,7 @@
+@@ -413,7 +515,7 @@
 
    Timer {
      id: idleBlankTimer
@@ -136,11 +169,24 @@
      repeat: false
      property double armedAt: 0
      onTriggered: {
-@@ -530,6 +615,8 @@
+@@ -510,6 +612,11 @@
+   IpcHandler {
+     target: "lock"
+
++    function prepareTouchIdSleep(): string {
++      root.prepareTouchIdSleep()
++      return "prepared"
++    }
++
+     function lock(): string {
+       if (!root.passwordPamConfigured) return "missing-pam"
+       if (!root.locked && !root.beginLock()) return "failed"
+@@ -530,6 +637,9 @@
          realScreens: root.realScreenCount(),
          passwordPam: root.passwordPamConfigured,
          fingerprint: root.fingerprintConfigured,
 +        fingerprintReady: root.touchIdStatus.ready,
++        fingerprintSleepPrepared: root.touchIdSleepPrepared,
 +        fingerprintStatus: root.touchIdStatus.text,
          authenticating: root.authenticating,
          lastEvent: root.lastEvent,

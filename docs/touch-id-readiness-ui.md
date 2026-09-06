@@ -1,5 +1,77 @@
 # Touch ID readiness UX and Touch Bar investigation — 2026-09-06
 
+## 17:32 control: old ready cue persists; pre-freeze preparation added
+
+Shawn explicitly observed the premature ready cue again. Do not mark the
+previous file-watcher fix visually accepted. The journal places root
+`sleeping` publication at 17:20:15.982061, followed by user.slice freeze at
+17:20:16.010360: only **28.3 ms** later. An asynchronous watcher/redraw is not
+guaranteed in that interval; after thaw, the prior rendered surface can still
+be visible before callbacks run. This is the leading timing explanation, not
+a captured frame-by-frame proof.
+
+New implementation, following the Omarchy skill's user-owned customization
+boundary (no packaged edits):
+
+- A supplementary user service `t2-touchid-sleep-ui.service` holds a **delay**
+  inhibitor and listens for logind's `PrepareForSleep(true)`. It does not
+  replace or weaken Omarchy's existing secure-lock monitor.
+- Before user.slice freezes, it calls the cloned lock's `prepareTouchIdSleep`
+  IPC method with a one-second subprocess timeout and an 0.8-second IPC timeout.
+  The view synchronously latches non-ready, advances its scan epoch, stops
+  fingerprint retries, and aborts the old PAM fingerprint attempt. Password
+  authentication and the session lock remain intact. Late fingerprint-finished
+  callbacks cannot unlock while this preparation latch is active.
+- After the exact `prepared` reply, allow **250 ms before sleep** for rendering,
+  then release the inhibitor. Failure releases it without the grace. logind's
+  overall delay ceiling remains authoritative; nothing blocks sleep indefinitely.
+- The latch survives stale file reloads and clears only after a root-published
+  `available` transport timestamp newer than preparation. Readiness still needs
+  a fresh actual scan cue. Password unlock also clears the latch. A failed or
+  cancelled sleep without fresh recovery metadata may therefore require password;
+  this is a conservative fallback, not an authentication failure.
+
+This uses the synchronous-preparation pattern described in systemd's
+[inhibitor-lock documentation](https://systemd.io/INHIBITOR_LOCKS/). Low-level
+sleep that bypasses logind will not deliver this signal. A 250-ms render grace
+is not proof that a compositor/output which is already off has displayed a new
+frame; the next real wake still needs visual acceptance.
+
+Installed root-owned helper: `/usr/local/libexec/t2-touchid-sleep-ui.py` (0755).
+User-owned enabled unit: `~/.config/systemd/user/t2-touchid-sleep-ui.service`.
+Both sources are under `tools/research/`. The monitor uses the installed stock
+monitor's one-signal/process-exit/restart pattern, with `RestartSec=2`, a 64-MiB
+memory cap, 16-task cap, and 50% CPU quota. It blocks on D-Bus input when idle;
+observed idle memory was 6.8 MiB. No new Omarchy hook exists for this phase, so
+the supplementary user unit is used rather than modifying a stock script.
+
+During deployment, hot reload did not expose the new IPC/status field, and a
+plugin rescan temporarily left the lock IPC target absent. The desktop was
+confirmed unlocked before editing and remained unlocked. `omarchy restart shell`
+restored the live handler; status then explicitly included
+`fingerprintSleepPrepared=false`. Future agents must verify that field and not
+assume a successful file save means the new Service.qml is active. Never restart
+the shell while actually locked.
+
+Without sleeping or requesting a finger, the real IPC acknowledged preparation
+and status showed `fingerprintSleepPrepared=true`, `fingerprintReady=false`,
+and no active authentication. A healthy root recovery check subsequently
+published fresh availability, cleared the latch, and performed **no rebind**
+or biometric commands. Service activation, inhibitor registration, plugin
+validation, reverse patch dry-run, and 193 research tests (two expected skips)
+passed. This proves metadata/control flow, not wake presentation or a new scan.
+
+Rollback: while unlocked, `systemctl --user disable --now t2-touchid-sleep-ui.service`.
+If the UI latch remains from interrupted preparation, perform a healthy recovery
+check or use password unlock; do not fabricate a ready status. To restore the
+previous presentation entirely, restore this clone's Service.qml/TouchIdStatus.js
+from the previous repository patch checkpoint and restart the shell while
+unlocked. Do not remove the normal Omarchy secure-lock sleep service.
+
+The combined next test also includes finer interface-up polling; measured
+5.240-second wake and remaining delay breakdown are in
+[pre-arm latency](touch-id-prearm-latency.md). No further suspend has been issued.
+
 ## September 6 follow-up: clear stale readiness across sleep
 
 The first guarded early-recovery run reached actual sensor-ready in **5.666 s**

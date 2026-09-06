@@ -18,6 +18,13 @@ const now = 100000;
 const transport = {schema_version:1, channel:'transport',state:'available',updated_at:98};
 const scan = {schema_version:1,channel:'scan',state:'ready',updated_at:99};
 assert.equal(model.describe(transport,scan,now).ready,true);
+assert.equal(model.describe(transport,scan,now,false,0,true).ready,false);
+assert.equal(model.describe(transport,scan,now,false,0,true).waitingForTransport,true);
+assert.equal(model.recoveredAfter(transport,98),false);
+assert.equal(model.recoveredAfter(transport,97),true);
+for (const state of ['sleeping','recovering','unavailable'])
+ assert.equal(model.recoveredAfter({...transport,state,updated_at:100},99),false);
+assert.equal(model.recoveredAfter({...transport,channel:'scan',updated_at:100},99),false);
 assert.equal(model.describe(transport,scan,now,true).ready,false);
 assert.equal(model.describe(transport,scan,now,true).waitingForTransport,true);
 assert.equal(model.describe(transport,scan,now,false,99.5).ready,false);

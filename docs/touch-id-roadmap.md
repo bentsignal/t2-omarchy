@@ -2,6 +2,14 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+Latest checkpoint, 17:32 EDT: pre-arm optimization exercised successfully;
+resume-to-ready **5.240 s**, cached verification-to-ready **525.8 ms**. The
+premature ready UI cue still failed visual acceptance. A pre-freeze user-session
+delay-inhibitor/IPC latch and 50-ms interface-up polling are now deployed, with
+offline and awake non-biometric checks passed; the next combined sleep/visual
+control is pending. Details: [UI](touch-id-readiness-ui.md),
+[timing](touch-id-prearm-latency.md). No new enrollment or Touch Bar work.
+
 The goal remains usable, secure Touch ID on T2 Linux/Omarchy: Linux-native
 enrollment, reliable verification after boot/resume, and password-fallback
 integration. Working matching with a macOS-enrolled finger is an intermediate

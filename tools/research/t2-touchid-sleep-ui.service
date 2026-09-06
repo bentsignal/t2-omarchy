@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Prepare Touch ID presentation before the desktop freezes
+After=dbus.socket wayland-session-waitenv.service
+Requires=dbus.socket
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/libexec/t2-touchid-sleep-ui.py
+Restart=always
+RestartSec=2
+MemoryMax=64M
+TasksMax=16
+CPUQuota=50%
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

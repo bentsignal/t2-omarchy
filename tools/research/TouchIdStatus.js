@@ -7,7 +7,14 @@ function parse(text) {
     } catch (_) { return {}; }
 }
 
-function describe(transport, scan, now, refreshing, scanNotBefore) {
+function recoveredAfter(transport, cutoff) {
+    return transport.schema_version === 1 && transport.channel === "transport" &&
+        transport.state === "available" && Number(transport.updated_at) > cutoff;
+}
+
+function describe(transport, scan, now, refreshing, scanNotBefore, preparingSleep) {
+    if (preparingSleep)
+        return { text: "Touch ID waking up — password available", ready: false, waitingForTransport: true };
     if (refreshing)
         return { text: "Checking Touch ID — password available", ready: false, waitingForTransport: true };
     var transportAge = now - Number(transport.updated_at) * 1000;
