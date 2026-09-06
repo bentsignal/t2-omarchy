@@ -8,6 +8,15 @@ matching; do not count a UI cue or a running service as authentication. Current
 measurements start at Linux's return-from-suspend event, not the wake keypress.
 Keypress-to-visible-frame and keypress-to-unlock remain separate measurements.
 
+## 19:04 control failed; 19:09 correction awaits acceptance
+
+Transport recovered in **4.483396 s**, but the sensor never reached ready.
+Pre-sleep client disconnect was detected; double cancellation interrupted our
+cleanup and retained the fingerprint claim. This regression is reproduced and
+corrected offline, deployed, and awaiting a new supervised control. See
+[full diagnosis](touch-id-client-disconnect.md). Latest successful measured
+readiness remains 4.982 s; this control adds no successful readiness measurement.
+
 ## 18:53 implementation follow-up
 
 Client-disconnect cleanup and cancellation-safe subprocess ownership are now

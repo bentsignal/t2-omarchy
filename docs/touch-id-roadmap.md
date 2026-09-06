@@ -2,6 +2,14 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+Latest checkpoint, 19:09 EDT: the 19:04 control failed because double cancellation
+interrupted our new child cleanup and retained the claim. Transport recovered in
+4.483 s, but Touch ID never reached ready; password unlock worked. The composition
+bug is reproduced offline and corrected, deployed with tests and idle bus checks
+passed. All waiting UI stages now say “Touch ID is preparing”. Real acceptance
+of the correction is pending; latest successful readiness remains 4.982 s.
+See [failure, correction, and rollback](touch-id-client-disconnect.md).
+
 Latest implementation, 18:53 EDT: claiming-client disconnect now invokes backend
 cleanup, and probe/discovery children are owned and reaped across cancellation.
 Private-bus child/lock tests and live idle claim/disconnect checks pass. Changes

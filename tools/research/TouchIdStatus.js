@@ -14,9 +14,9 @@ function recoveredAfter(transport, cutoff) {
 
 function describe(transport, scan, now, refreshing, scanNotBefore, preparingSleep) {
     if (preparingSleep)
-        return { text: "Touch ID waking up", ready: false, waitingForTransport: true };
+        return { text: "Touch ID is preparing", ready: false, waitingForTransport: true };
     if (refreshing)
-        return { text: "Checking Touch ID", ready: false, waitingForTransport: true };
+        return { text: "Touch ID is preparing", ready: false, waitingForTransport: true };
     var transportAge = now - Number(transport.updated_at) * 1000;
     var scanAge = now - Number(scan.updated_at) * 1000;
     var validTransport = transport.schema_version === 1 && transport.channel === "transport";
@@ -24,12 +24,12 @@ function describe(transport, scan, now, refreshing, scanNotBefore, preparingSlee
     // Sleep may last hours; its pre-sleep timestamp must not enable a new PAM
     // attempt before the resume service has published recovery/availability.
     if (waiting && transportAge >= 0 && (transport.state === "sleeping" || transportAge < 90000))
-        return { text: "Touch ID waking up", ready: false, waitingForTransport: true };
+        return { text: "Touch ID is preparing", ready: false, waitingForTransport: true };
     if (!validTransport || transport.state !== "available")
         return { text: "Touch ID unavailable. Use password", ready: false, waitingForTransport: false };
     if (scan.schema_version === 1 && scan.channel === "scan" && scan.state === "ready" && scanAge >= 0 && scanAge < 25000 && Number(scan.updated_at) >= Number(transport.updated_at) && Number(scan.updated_at) >= (scanNotBefore || 0))
         return { text: "Touch and hold your finger to unlock", ready: true, waitingForTransport: false };
     if (scan.state === "unavailable")
         return { text: "Touch ID unavailable. Use password", ready: false, waitingForTransport: false };
-    return { text: "Touch ID preparing", ready: false, waitingForTransport: false };
+    return { text: "Touch ID is preparing", ready: false, waitingForTransport: false };
 }

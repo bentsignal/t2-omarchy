@@ -134,10 +134,25 @@ def cancel_verification_before_process(original):
                 return False
             task = self.verify_task
             if task is not None and not task.done():
+                # Own the active-stop sequence. The pinned implementation
+                # cancels again after awaiting backend.cancel(); that second
+                # cancellation interrupts our child's asynchronous cleanup.
+                expiry = self.claim_expiry_task
+                if expiry is not None:
+                    expiry.cancel()
+                    self.claim_expiry_task = None
                 task.cancel()
-            result = await original(self, require_running=require_running)
+                try:
+                    await self.backend.cancel()
+                finally:
+                    await asyncio.gather(task, return_exceptions=True)
+                result = None
+            else:
+                # Preserve original completed/no-action errors and cleanup.
+                result = await original(self, require_running=require_running)
             if getattr(self.backend, '_t2_child_cleanup_failed', False):
                 raise RuntimeError('fingerprint child cleanup incomplete; retain claim')
+            self.verify_task = None
             return result
     return timed_stage("verification-stop", stop)
 

@@ -15,6 +15,42 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OverlayTests(unittest.TestCase):
+    def test_stop_allows_owned_probe_cleanup_to_finish_without_second_cancel(self):
+        try:
+            import dbus_next  # noqa: F401
+        except ImportError:
+            self.skipTest('installed runtime venv required')
+        import t2_fprintd_process
+        real_reap = t2_fprintd_process.reap
+        async def slow_reap(process):
+            await asyncio.sleep(0.03)
+            await real_reap(process)
+        async def exercise():
+            namespace = runpy.run_path(str(MODULE.SOURCE), run_name='_double_cancel_integration')
+            MODULE.install_overlay(namespace)
+            backend = namespace['T2Backend'].__new__(namespace['T2Backend'])
+            backend.port, backend.port_from_cache, backend.process = 50123, True, None
+            backend.probe_command = lambda port: [sys.executable, '-c', 'import time; time.sleep(60)']
+            backend.notify_feedback = AsyncMock()
+            device = namespace['FprintDevice'](backend)
+            device.verify_task = asyncio.create_task(device._run_verification())
+            async def created():
+                while backend.process is None:
+                    await asyncio.sleep(0.001)
+                return backend.process
+            child = await asyncio.wait_for(created(), 3)
+            try:
+                await asyncio.wait_for(device._stop_verification(require_running=True), 3)
+                self.assertIsNone(device.verify_task)
+                self.assertIsNotNone(child.returncode)
+                self.assertFalse(getattr(backend, '_t2_child_cleanup_failed', False))
+            finally:
+                if child.returncode is None:
+                    child.kill()
+                await child.communicate()
+        with patch.object(MODULE, 'publish'), patch.object(t2_fprintd_process, 'reap', side_effect=slow_reap):
+            asyncio.run(exercise())
+
     def test_stop_does_not_acknowledge_failed_child_cleanup(self):
         from types import SimpleNamespace
         device = SimpleNamespace(verify_task=None, backend=SimpleNamespace(_t2_child_cleanup_failed=True))

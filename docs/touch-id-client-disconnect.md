@@ -3,6 +3,59 @@
 September 6, 2026, 18:53 EDT. Latest measured readiness remains **4.982 s**.
 These changes have not had a live sleep or fingerprint acceptance control.
 
+## 19:04 failed control; 19:09 single-cancel correction deployed
+
+The first real control of this implementation failed. The machine suspended at
+19:00:59.410168 EDT and returned at 19:04:36.230787, over three minutes later.
+The user's sleep duration was not too short. Network transport recovered at
+19:04:40.714183 (**4.483396 s** after resume), but no new verification started
+and no sensor-ready event followed. Password unlock completed at 19:05:35.495331.
+Do not report transport recovery as fingerprint readiness or successful matching.
+
+The owning client did disconnect before sleep at 19:00:58.245893. Probe
+cancellation was logged, followed by verification-stop failure at
+19:00:58.247893; cleanup retained the claim. Post-wake PAM attempts were unable
+to claim the device. The UI consequently stayed preparing after transport was
+available. This is a regression from our change, not user error.
+
+A deterministic offline regression now reproduces the composition error: our
+wrapper cancelled the verification task, the owned subprocess wrapper began
+asynchronous cleanup, then the original stop method cancelled the task again
+after its child wait. The second cancellation interrupted cleanup and set the
+sticky failure flag. Earlier separate tests of stop ordering and child ownership
+missed this interaction.
+
+The active-stop path now cancels once, retains the original backend termination
+routine, and awaits verification cleanup to completion without calling the
+original stop's second cancel. It cancels claim-expiry work and clears the
+transaction only after successful cleanup. Completed/no-action paths still use
+the original method. Serialization, generation checks and failure-claim retention
+remain. A cleanup failure now publishes scan unavailable, so a retained claim
+cannot silently present as endless preparation.
+
+The private-bus integration test now uses the actual pinned verification/probe
+path with the subprocess ownership wrapper, substituting only a harmless child
+command and feedback. It checks client-disconnect cleanup and lock release through
+the full composition. An additional deliberately slow-cleanup regression failed
+with the old code and passes with the correction.
+
+Validation: 209 research tests, six expected skips; all 32 fprintd-specific tests
+pass under the installed runtime virtualenv. First restored the prior working
+facade while unlocked to clear the stuck claim; then installed the correction
+under the operation lock and restarted fprintd. Two live idle claim/disconnect
+checks passed without scans. The shell reports fingerprint configured and the
+new unified “Touch ID is preparing” wording. The corrected active cleanup still
+needs a real sleep/scan control; last successful measured readiness remains
+4.982 s. No extra sleep or finger test was triggered during repair.
+
+Additional pre-correction backup:
+`/usr/local/libexec/t2-single-cancel-backup-20260906-190935/`. Its runtime file is
+the restored pre-owner facade, so it can roll back owner cleanup entirely. The
+older pre-owner backup below also remains available. No kernel changes were made.
+
+The following sections describe the implementation and earlier validation;
+the single-cancel sequence above supersedes the former delegated active stop.
+
 ## Missing cancellation trigger
 
 The 18:37 control had a pre-sleep UI/PAM abort but no backend verification-stop

@@ -5,6 +5,7 @@ The bus supplies the unique sender identity. This observes ownership for cleanup
 only; the pinned Claim implementation still decides whether a claim is accepted.
 """
 import asyncio
+from t2_touchid_status import publish
 
 MATCH = "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged'"
 
@@ -69,6 +70,7 @@ class OwnerTracker:
             # Retain the claim on failed cleanup. Never claim quiescence or
             # include exception text that might contain private protocol data.
             print('Touch ID abandoned verification cleanup failed; claim retained.', flush=True)
+            publish('scan', 'unavailable')
 
 
 def owner_aware_bus(namespace):

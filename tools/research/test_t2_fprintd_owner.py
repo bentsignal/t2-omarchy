@@ -11,7 +11,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from t2_fprintd_owner import OwnerTracker, owner_aware_bus
 
@@ -117,22 +117,18 @@ class OwnerTests(unittest.TestCase):
                     backend = namespace['T2Backend'].__new__(namespace['T2Backend'])
                     backend.process = None
                     backend.notify_feedback = AsyncMock()
-                    started = asyncio.Event()
                     children = []
-                    async def verify():
-                        child = await asyncio.create_subprocess_exec(
-                            'flock', '--exclusive', '--no-fork', str(lock), sys.executable,
-                            '-c', 'import time; print("ready", flush=True); time.sleep(60)',
-                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-                        children.append(child)
-                        backend.process = child
-                        try:
-                            self.assertEqual(await child.stdout.readline(), b'ready\n')
-                            started.set()
-                            await child.wait()
-                        finally:
-                            backend.process = None
-                    backend.verify = verify
+                    marker = Path(directory) / 'child-ready'
+                    backend.port, backend.port_from_cache = 50123, True
+                    backend.probe_command = lambda port: [
+                        'flock', '--exclusive', '--no-fork', str(lock), sys.executable,
+                        '-c', 'from pathlib import Path; import sys,time; Path(sys.argv[1]).write_text("ready"); time.sleep(60)',
+                        str(marker),
+                    ]
+                    async def started():
+                        while not marker.exists():
+                            await asyncio.sleep(0.001)
+                        children.append(backend.process)
                     device = namespace['FprintDevice'](backend)
                     service.export(namespace['DEVICE_PATH'], device)
                     await service.request_name(namespace['BUS_NAME'])
@@ -144,7 +140,7 @@ class OwnerTests(unittest.TestCase):
                     try:
                         await call('Claim', 's', ['root'])
                         await call('VerifyStart', 's', [namespace['ENROLLED_FINGER']])
-                        await asyncio.wait_for(started.wait(), 3)
+                        await asyncio.wait_for(started(), 3)
                         stranger.disconnect()
                         await asyncio.sleep(0.02)
                         self.assertIsNotNone(device.verify_task)
@@ -158,10 +154,13 @@ class OwnerTests(unittest.TestCase):
                         await asyncio.wait_for(stopped(), 3)
                         self.assertIsNone(device.verify_task)
                         self.assertIsNotNone(children[0].returncode)
+                        self.assertFalse(getattr(backend, "_t2_child_cleanup_failed", False))
                         backend.notify_feedback.assert_not_awaited()
                         with lock.open('r+') as stream:
                             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     finally:
+                        if device.verify_task is not None and not device.verify_task.done():
+                            await device._stop_verification(require_running=False)
                         for child in children:
                             if child.returncode is None:
                                 child.kill()
@@ -173,7 +172,8 @@ class OwnerTests(unittest.TestCase):
                             # close its socket on disconnect. Close test FDs.
                             bus._stream.close()
                             bus._sock.close()
-                asyncio.run(run())
+                with patch.object(overlay, "publish"):
+                    asyncio.run(run())
         finally:
             daemon.terminate()
             daemon.wait(timeout=3)

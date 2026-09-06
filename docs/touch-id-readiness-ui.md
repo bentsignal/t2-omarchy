@@ -1,5 +1,22 @@
 # Touch ID readiness UX and Touch Bar investigation — 2026-09-06
 
+## 19:09 unified waiting message and cleanup-failure presentation
+
+At Shawn's request, sleeping, recovering, refreshing and preparing all display
+**“Touch ID is preparing”**. Internal readiness/transport states remain distinct;
+the accepted-scan cue still controls the ready prompt. No password-available
+suffix or em dash is included. Both the repository JS model and user-owned
+clone were updated, and the shell was restarted only after confirming unlocked.
+Live IPC confirms the new wording and fingerprint configuration.
+
+The preceding sleep/wake got stuck because backend cleanup failed and retained
+its claim, despite transport recovering in 4.483 s. It was not caused by failing
+to wait 30 seconds: actual suspend lasted over three minutes. The corrected
+backend now publishes unavailable on cleanup failure so the UI can show the
+existing unavailable/password message rather than silently remaining preparing.
+See [diagnosis and correction](touch-id-client-disconnect.md). The new cleanup
+fix awaits supervised live acceptance. No further sleep or scan was started.
+
 ## 18:20 control: first wake message visually accepted
 
 Shawn confirmed that the first Touch ID message was now the waking-up message,
