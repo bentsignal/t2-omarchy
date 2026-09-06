@@ -4059,3 +4059,14 @@ with the same two expected skips. Manual transport recovery again passed without
 restarting fprintd. Automatic acceptance needs another sleep/wake test. Omarchy's
 five-second screen blanking does not suspend the machine, so Shawn may let the
 display go dark during recovery and press a key before the next finger attempt.
+
+The third cycle passed: automatic transport recovery finished about 12 seconds
+after resume, and Shawn confirmed fingerprint unlock. To address the remaining
+ambiguity, a privacy-safe status feed now drives a user-owned Omarchy lock-screen
+clone: the fingerprint icon and touch instruction require the actual accepted
+scan cue, and recovery/preparation have distinct password-fallback hints. The
+display window is 15 seconds for fingerprint-enabled locks. Watchdog observation
+polling is shorter, but a faster wake time remains unmeasured. Public Touch Bar
+renderer sources were investigated; no graphics-mode switch or external installer
+was run. See `docs/touch-id-readiness-ui.md` for implementation, tests, rollback,
+Touch Bar prerequisites, and the next supervised controls.

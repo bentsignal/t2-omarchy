@@ -1,0 +1,140 @@
+--- a/Service.qml
++++ b/Service.qml
+@@ -4,6 +4,7 @@
+ import Quickshell.Services.Pam
+ import Quickshell.Wayland
+ import qs.Commons
++import "TouchIdStatus.js" as TouchIdStatus
+ 
+ Item {
+   id: root
+@@ -22,6 +23,44 @@
+   property bool fingerprintAuthenticating: false
+   property bool passwordPamConfigured: false
+   property bool fingerprintConfigured: false
++  property var touchIdTransport: ({})
++  property var touchIdScan: ({})
++  property double touchIdNow: Date.now()
++  readonly property var touchIdStatus: TouchIdStatus.describe(touchIdTransport, touchIdScan, touchIdNow)
++  readonly property bool touchIdTransportWaiting: touchIdStatus.waitingForTransport
++
++  onTouchIdTransportWaitingChanged: {
++    // Only resume a deferred attempt when recovery finishes. Polling the text
++    // must not bypass the lock screen's existing fingerprint retry timer.
++    if (!touchIdTransportWaiting) root.startFingerprint()
++  }
++
++  FileView {
++    id: touchIdTransportFile
++    path: "/run/t2-touchid-ui/transport.json"
++    printErrors: false
++    onLoaded: root.touchIdTransport = TouchIdStatus.parse(text())
++    onLoadFailed: root.touchIdTransport = ({})
++  }
++
++  FileView {
++    id: touchIdScanFile
++    path: "/run/t2-touchid-ui/scan.json"
++    printErrors: false
++    onLoaded: root.touchIdScan = TouchIdStatus.parse(text())
++    onLoadFailed: root.touchIdScan = ({})
++  }
++
++  Timer {
++    interval: root.lockRequested || root.previewVisible ? 250 : 2000
++    running: true
++    repeat: true
++    onTriggered: {
++      root.touchIdNow = Date.now()
++      touchIdTransportFile.reload()
++      touchIdScanFile.reload()
++    }
++  }
+   property bool previewVisible: false
+   property string enteredPassword: ""
+   property string pendingPassword: ""
+@@ -208,6 +247,7 @@
+ 
+   function startFingerprint() {
+     if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
++    if (root.touchIdStatus.waitingForTransport) return
+     if (fingerprintPam.active || fingerprintAuthenticating) return
+ 
+     fingerprintAuthenticating = true
+@@ -271,6 +311,8 @@
+         backgroundPath: root.backgroundPath
+         backgroundVersion: root.backgroundVersion
+         fingerprintConfigured: root.fingerprintConfigured
++        fingerprintReady: root.touchIdStatus.ready
++        fingerprintStatusText: root.touchIdStatus.text
+         authenticatingPassword: root.authenticatingPassword
+         failureMessage: root.failureMessage
+         failedAttempts: root.failedAttempts
+@@ -301,6 +343,8 @@
+       backgroundPath: root.backgroundPath
+       backgroundVersion: root.backgroundVersion
+       fingerprintConfigured: root.fingerprintConfigured
++      fingerprintReady: root.touchIdStatus.ready
++      fingerprintStatusText: root.touchIdStatus.text
+       authenticatingPassword: false
+       failureMessage: ""
+       failedAttempts: 0
+@@ -413,7 +457,7 @@
+ 
+   Timer {
+     id: idleBlankTimer
+-    interval: 5000
++    interval: root.fingerprintConfigured ? 15000 : 5000
+     repeat: false
+     property double armedAt: 0
+     onTriggered: {
+@@ -530,6 +574,8 @@
+         realScreens: root.realScreenCount(),
+         passwordPam: root.passwordPamConfigured,
+         fingerprint: root.fingerprintConfigured,
++        fingerprintReady: root.touchIdStatus.ready,
++        fingerprintStatus: root.touchIdStatus.text,
+         authenticating: root.authenticating,
+         lastEvent: root.lastEvent,
+         lastEventAt: root.lastEventAt
+--- a/LockView.qml
++++ b/LockView.qml
+@@ -9,6 +9,8 @@
+   property string backgroundPath: ""
+   property int backgroundVersion: 0
+   property bool fingerprintConfigured: false
++  property bool fingerprintReady: false
++  property string fingerprintStatusText: ""
+   property bool authenticatingPassword: false
+   property string failureMessage: ""
+   property int failedAttempts: 0
+@@ -205,7 +207,7 @@
+         anchors.right: parent.right
+         anchors.rightMargin: inputField.borderRight + 18
+         anchors.verticalCenter: parent.verticalCenter
+-        visible: root.fingerprintConfigured
++        visible: root.fingerprintConfigured && root.fingerprintReady
+         text: "󰈷"
+         color: Color.lock.placeholder
+         font.family: Style.font.family
+@@ -214,5 +216,20 @@
+         verticalAlignment: Text.AlignVCenter
+       }
+     }
++
++    Text {
++      objectName: "touchIdReadinessHint"
++      anchors.top: inputField.bottom
++      anchors.topMargin: 18
++      anchors.horizontalCenter: inputField.horizontalCenter
++      width: Math.min(parent.width - 32, root.fieldWidth + 160)
++      visible: root.fingerprintConfigured
++      text: root.fingerprintStatusText
++      color: Color.lock.text
++      font.family: Style.font.family
++      font.pixelSize: Math.round(root.fieldFontSize * 0.65)
++      horizontalAlignment: Text.AlignHCenter
++      wrapMode: Text.WordWrap
++    }
+   }
+ }

@@ -11,6 +11,9 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 import runpy
+import asyncio
+
+from t2_touchid_status import publish
 
 SOURCE = Path("/opt/t2-touchid/src/t2-fprintd.py")
 EXPECTED_SHA256 = "1cf34436fe6ae66e98229864b256b3ef1b5a21a772cb74ed50ed98acc840c336"
@@ -20,6 +23,8 @@ def install_overlay(namespace: dict) -> None:
     original_verdict = namespace["verdict_from_result"]
     backend = namespace["T2Backend"]
     original_feedback = backend.notify_feedback
+    original_verify = backend.verify
+    original_cue = backend.notify_finger_requested
 
     def verdict(result: object) -> str:
         events = result.get("match_events") if isinstance(result, dict) else None
@@ -40,8 +45,31 @@ def install_overlay(namespace: dict) -> None:
                 flush=True,
             )
 
+    async def verify(self):
+        publish("scan", "starting")
+        try:
+            result = await original_verify(self)
+        except asyncio.CancelledError:
+            publish("scan", "idle")
+            raise
+        except Exception:
+            publish("scan", "unavailable")
+            raise
+        else:
+            publish("scan", "idle")
+            return result
+
+    async def cue(self):
+        # The pinned parser calls this only after its exact accepted-start cue.
+        # A running service or a listed enrolled finger is not readiness.
+        publish("scan", "ready")
+        await original_cue(self)
+
     # runpy's returned dictionary is not necessarily the functions' globals.
     backend.verify.__globals__["verdict_from_result"] = verdict
+    backend._t2_verdict = staticmethod(verdict)
+    backend.verify = verify
+    backend.notify_finger_requested = cue
     backend.notify_feedback = feedback
 
 
@@ -50,7 +78,11 @@ def main() -> None:
         raise RuntimeError("fprintd source changed; review the runtime overlay before use")
     namespace = runpy.run_path(str(SOURCE), run_name="_t2_fprintd_runtime")
     install_overlay(namespace)
-    namespace["main"]()
+    publish("scan", "idle")
+    try:
+        namespace["main"]()
+    finally:
+        publish("scan", "unavailable")
 
 
 if __name__ == "__main__":

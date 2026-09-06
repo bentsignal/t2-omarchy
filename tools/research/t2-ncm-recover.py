@@ -19,6 +19,8 @@ import stat
 import sys
 import time
 
+from t2_touchid_status import publish
+
 CONFIG = Path("/etc/t2-touchid.conf")
 PORT = Path("/var/lib/t2-touchid/biometric-port")
 LOCK = Path("/run/t2-touchid/operation.lock")
@@ -111,11 +113,11 @@ def wait_for_target(interface: str) -> tuple[Path, str]:
             time.sleep(0.5)
 
 
-def transport_reachable(host: str, interface: str, port: int) -> bool:
+def transport_reachable(host: str, interface: str, port: int, *, timeout: float = 2) -> bool:
     try:
         index = socket.if_nametoindex(interface)
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as connection:
-            connection.settimeout(2)
+            connection.settimeout(timeout)
             connection.connect((host, port, 0, index))
         return True
     except OSError as error:
@@ -181,8 +183,10 @@ def recover(host: str, interface: str, port: int) -> bool:
         while tx_errors(interface) <= 0:
             if time.monotonic() >= evidence_deadline:
                 raise RecoveryError("peer unreachable without TX-error evidence; no rebind attempted")
-            time.sleep(1)
-            if transport_reachable(host, interface, port):
+            # Keep observing the watchdog instead of hiding its arrival behind
+            # a full two-second connection timeout plus a one-second sleep.
+            time.sleep(0.25)
+            if transport_reachable(host, interface, port, timeout=0.25):
                 print("T2 network became reachable during watchdog grace; no rebind performed.", flush=True)
                 return False
             if validate_target(interface) != target:
@@ -204,12 +208,14 @@ def recover(host: str, interface: str, port: int) -> bool:
 def main() -> int:
     if os.geteuid() != 0:
         raise RecoveryError("root is required")
+    publish("transport", "recovering")
     endpoint = parse_endpoint(private_read(CONFIG), private_read(PORT))
     fd = lock_operation()
     try:
         recover(*endpoint)
     finally:
         os.close(fd)
+    publish("transport", "available")
     return 0
 
 
@@ -217,6 +223,7 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (RecoveryError, OSError, ValueError) as error:
+        publish("transport", "unavailable")
         # Do not log endpoint addresses or config values from exception strings.
         detail = str(error) if isinstance(error, RecoveryError) else type(error).__name__
         print(f"T2 network recovery stopped: {detail}", file=sys.stderr, flush=True)

@@ -7,7 +7,10 @@ StopWhenUnneeded=yes
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/true
+RuntimeDirectory=t2-touchid-ui
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 /usr/local/libexec/t2_touchid_status.py transport sleeping
 ExecStop=/usr/bin/systemctl --no-block start t2-ncm-recover.service
 
 [Install]

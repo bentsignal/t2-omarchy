@@ -7,6 +7,11 @@ producing false fingerprint-rejection feedback. Neither changes the external
 reference checkout. See [resume recovery](../../docs/touch-id-resume-recovery.md)
 for exact scope, deployment state, tests, and rollback.
 
+The optional `t2_touchid_status.py` metadata publisher, `TouchIdStatus.js` display
+model, and `omarchy-touchid-status.patch` support the user-owned lock-screen
+readiness hint. See [readiness UI](../../docs/touch-id-readiness-ui.md) for source
+pins, deployment, rollback, and the Touch Bar renderer investigation.
+
 `macos-objc-methods.m` is a macOS-only, read-only shared-cache inspection
 helper. It loads one framework and prints Objective-C method type encodings,
 implementations, and image-relative offsets. Optional environment selectors

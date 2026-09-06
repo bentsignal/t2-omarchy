@@ -1,5 +1,14 @@
 # Touch ID cold-boot checkpoint
 
+## Latest: automatic wake accepted; readiness UX awaiting test
+
+Shawn confirmed successful fingerprint unlock after the 13:32 EDT resume and
+automatic network recovery (~12 seconds). A new user-owned lock-screen plugin
+now distinguishes waking/preparing/actual sensor readiness, and a small polling
+latency improvement is deployed. These newer changes still need a supervised
+control. See [readiness UI checkpoint](touch-id-readiness-ui.md); native enrollment
+and Touch Bar graphics-mode work have not resumed yet.
+
 ## 2026-09-06 resume workaround installed
 
 The post-suspend CDC-NCM stall recurred. The new bounded recovery service

@@ -1,5 +1,15 @@
 # Touch ID resume recovery — 2026-09-06
 
+## Latest checkpoint
+
+The third real sleep/wake passed: Shawn unlocked with the enrolled finger after
+automatic recovery at 13:32:22 EDT, about 12 seconds after resume. The following
+historical sections preserve the preceding failures. Read
+[readiness UX and Touch Bar investigation](touch-id-readiness-ui.md) for the
+subsequent deployed status feed, user-owned lock-screen hint, latency adjustment,
+and current supervised-test boundary. Those newer UX changes need acceptance;
+the successful cycle below predates them.
+
 ## Finding and current state
 
 Normal matching failed again after sleep, while fprintd remained active. The
@@ -31,7 +41,7 @@ These are user-observed end-to-end results, not an independently captured
 fprintd trace. Normal matching after transport recovery is now accepted.
 
 The first two actual sleep/wake tests failed on distinct readiness races; the
-corrections below are deployed and need another supervised sleep/wake test. No new enrollment
+corrections below subsequently passed the third test. No new enrollment
 trial was started during this repair.
 Native enrollment remains at the status-55 overlay checkpoint described in
 `touch-id-enrollment-presence-events.md`.
