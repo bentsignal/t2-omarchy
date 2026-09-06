@@ -4037,3 +4037,8 @@ overlay no longer turns missing match results/transport exceptions into a
 fingerprint-rejection toast. Transport recovery and offline tests pass; real
 fingerprint and sleep/wake acceptance are next. No enrollment retry was started.
 See `docs/touch-id-resume-recovery.md` for the current checkpoint and rollback.
+
+Shawn then confirmed both lock-screen controls with the deployed recovery and
+facade overlay: the enrolled finger unlocked, and an unenrolled finger failed.
+The next step is one actual deep-sleep/wake cycle, inspection of the automatic
+recovery journal, and a post-wake positive control before returning to enrollment.

@@ -25,11 +25,31 @@ recovery invocation found a healthy transport and performed no rebind. A
 synthetic start/stop of the sleep hook queued another healthy no-op correctly;
 this is **not** an actual suspend/resume acceptance test.
 
-Still required: a supervised enrolled-finger positive control, an unenrolled
-negative control for the deployed facade overlay, then actual sleep/wake and
-matching acceptance. No new enrollment trial was started during this repair.
+Shawn subsequently confirmed both lock-screen controls on the deployed overlay:
+the enrolled finger unlocked successfully, and an unenrolled finger did not.
+These are user-observed end-to-end results, not an independently captured
+fprintd trace. Normal matching after transport recovery is now accepted.
+
+Still required: actual sleep/wake and matching acceptance. No new enrollment
+trial was started during this repair.
 Native enrollment remains at the status-55 overlay checkpoint described in
 `touch-id-enrollment-presence-events.md`.
+
+### Next supervised test
+
+The resume hook is enabled, fprintd is active, the previous recovery unit result
+is successful, and the selected kernel sleep mode is `deep`. Save work, enter
+actual suspend (not merely lock the screen), wait about 20 seconds, then wake.
+Allow 30 seconds for recovery before trying the enrolled finger at the lock
+screen. Use password fallback if needed and report the result. This Linux thread
+cannot perform work while the machine is suspended.
+
+On return, inspect the current-boot journal for `systemd-suspend.service`,
+`t2-touchid-resume.service`, and `t2-ncm-recover.service` before any manual
+recovery. Distinguish successful automatic rebind from a healthy no-op, a skipped
+or failed hook, and a busy operation lock. A successful scan without a recorded
+sleep interval does not prove resume acceptance. Do not start enrollment until
+this checkpoint is resolved.
 
 ## Narrow recovery design
 
@@ -132,5 +152,6 @@ PAM backup, enrollment fixture, or authentication fallback needs deletion.
   changed target refusal, bind-on-unbind-error, and no repeated rebind on failure.
 - `systemd-analyze verify` passes for both recovery units and the installed
   fprintd unit with its drop-ins.
-- Live recovery and subsequent healthy no-op pass; fingerprint and real
-  sleep/wake acceptance remain pending.
+- Live recovery and subsequent healthy no-op pass. Shawn confirms successful
+  enrolled-finger unlock and rejection of an unenrolled finger after deployment.
+  Actual sleep/wake acceptance remains pending.

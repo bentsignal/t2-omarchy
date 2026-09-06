@@ -7,8 +7,9 @@ restored transport, and read-only inspection confirmed the same single live
 identity exactly matching the archive. A sleep-target hook is now enabled;
 the matcher also distinguishes absent terminal results/transport errors from
 fingerprint rejection without changing successful-match checks. Live transport
-recovery and healthy no-op checks pass. Supervised matching and actual sleep/wake
-acceptance remain pending. See [resume recovery](touch-id-resume-recovery.md)
+recovery and healthy no-op checks pass. Shawn subsequently confirmed that the
+enrolled finger unlocked and an unenrolled finger was rejected. Actual sleep/wake
+acceptance remains pending. See [resume recovery](touch-id-resume-recovery.md)
 for evidence, deployment, limits, and rollback. This supersedes the September 5
 statement that no automatic resume workaround is installed.
 
