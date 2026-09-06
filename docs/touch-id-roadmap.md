@@ -121,6 +121,16 @@ now deployed; see [resume recovery](touch-id-resume-recovery.md) for the changed
 fault-evidence gate, tests, rollback, and pending supervised acceptance. It has
 not yet been timed across a real sleep/wake. Enrollment remains next, not dropped.
 
+Latest result, 16:31 EDT: the guarded early-recovery control reached sensor-ready
+in **5.666 seconds** after resume (previous control: 12.724 seconds). Transport
+returned in 4.307 seconds, direct-directory rediscovery took 262.5 ms, and total
+verification-to-ready was 1.126 seconds. Shawn reported successful use and a
+misleading initial ready cue; the user-owned UI now invalidates cached readiness
+on refresh/new lock and watches status-file changes. See
+[readiness notes](touch-id-readiness-ui.md) for the remaining visual acceptance
+check. Repeatability and a post-change negative control remain pending; this is
+not an instant-wake or completed-enrollment claim.
+
 ## 2. Next: Linux-native fingerprint enrollment
 
 This remains required. Users should eventually enroll and manage fingerprints

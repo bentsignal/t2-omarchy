@@ -1,5 +1,36 @@
 # Touch ID readiness UX and Touch Bar investigation — 2026-09-06
 
+## September 6 follow-up: clear stale readiness across sleep
+
+The first guarded early-recovery run reached actual sensor-ready in **5.666 s**
+after resume, down from 12.724 s. Shawn saw a misleading initial touch cue before
+the waiting message. The plugin cached both its status files and its `Date.now()`
+value in a timer that freezes with the session; it did not watch status changes.
+Also, sleeping metadata older than 90 seconds stopped deferring verification.
+The four-minute sleep in this run exposed that latter issue: a premature
+discovery attempt raced recovery, failed, and was subsequently retried after
+transport returned. No false-match decision was made.
+
+The user-owned `shawn.lock` plugin now:
+
+- Watches both status files and refreshes its clock in load callbacks.
+- Hides readiness while fresh status reads are pending, including a paired
+  refresh after a transport change or a long timer gap.
+- Requires a scan cue newer than the current lock request; previous-lock ready
+  records cannot advertise a usable sensor.
+- Keeps a sleeping transport non-ready even after a long sleep, until the
+  recovery hook publishes the next state. The password path stays available.
+
+No continuous animation loop, additional sound, packaged Omarchy edit, or PAM
+success-rule change was added. Per the Omarchy skill, the patch is applied only
+to the existing user-owned clone and persisted in
+`tools/research/omarchy-touchid-status.patch` plus `TouchIdStatus.js`.
+The clone hot-reloaded successfully while unlocked. Plugin validation, reverse
+patch dry-run, and 173 research tests (two expected skips) passed. Shared-model
+tests cover pending refresh, previous-lock timestamps, long-sleep deferral, and
+current sensor readiness. The absence of a stale cue on the very first visible
+frame still needs a supervised wake; do not claim that visual check passed yet.
+
 ## Current scope decision
 
 The active order is now documented in [implementation priorities](touch-id-roadmap.md):

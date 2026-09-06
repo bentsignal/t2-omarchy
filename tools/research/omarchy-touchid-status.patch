@@ -5,18 +5,31 @@
  import Quickshell.Wayland
  import qs.Commons
 +import "TouchIdStatus.js" as TouchIdStatus
- 
+
  Item {
    id: root
-@@ -22,6 +23,44 @@
+@@ -22,6 +23,83 @@
    property bool fingerprintAuthenticating: false
    property bool passwordPamConfigured: false
    property bool fingerprintConfigured: false
 +  property var touchIdTransport: ({})
 +  property var touchIdScan: ({})
 +  property double touchIdNow: Date.now()
-+  readonly property var touchIdStatus: TouchIdStatus.describe(touchIdTransport, touchIdScan, touchIdNow)
++  property bool touchIdTransportPending: true
++  property bool touchIdScanPending: true
++  property double touchIdScanNotBefore: 0
++  readonly property var touchIdStatus: TouchIdStatus.describe(touchIdTransport, touchIdScan, touchIdNow, touchIdTransportPending || touchIdScanPending, touchIdScanNotBefore)
 +  readonly property bool touchIdTransportWaiting: touchIdStatus.waitingForTransport
++
++  function refreshTouchIdReadiness() {
++    // Clear presentation before asynchronous reads; never reuse a ready cue
++    // from the previous lock or a cache frozen across suspend.
++    touchIdTransportPending = true
++    touchIdScanPending = true
++    touchIdNow = Date.now()
++    touchIdTransportFile.reload()
++    touchIdScanFile.reload()
++  }
 +
 +  onTouchIdTransportWaitingChanged: {
 +    // Only resume a deferred attempt when recovery finishes. Polling the text
@@ -27,17 +40,39 @@
 +  FileView {
 +    id: touchIdTransportFile
 +    path: "/run/t2-touchid-ui/transport.json"
++    watchChanges: true
 +    printErrors: false
-+    onLoaded: root.touchIdTransport = TouchIdStatus.parse(text())
-+    onLoadFailed: root.touchIdTransport = ({})
++    onFileChanged: root.refreshTouchIdReadiness()
++    onLoaded: {
++      root.touchIdNow = Date.now()
++      root.touchIdTransport = TouchIdStatus.parse(text())
++      root.touchIdTransportPending = false
++    }
++    onLoadFailed: {
++      root.touchIdTransport = ({})
++      root.touchIdTransportPending = false
++    }
 +  }
 +
 +  FileView {
 +    id: touchIdScanFile
 +    path: "/run/t2-touchid-ui/scan.json"
++    watchChanges: true
 +    printErrors: false
-+    onLoaded: root.touchIdScan = TouchIdStatus.parse(text())
-+    onLoadFailed: root.touchIdScan = ({})
++    onFileChanged: {
++      root.touchIdScanPending = true
++      root.touchIdNow = Date.now()
++      reload()
++    }
++    onLoaded: {
++      root.touchIdNow = Date.now()
++      root.touchIdScan = TouchIdStatus.parse(text())
++      root.touchIdScanPending = false
++    }
++    onLoadFailed: {
++      root.touchIdScan = ({})
++      root.touchIdScanPending = false
++    }
 +  }
 +
 +  Timer {
@@ -45,6 +80,10 @@
 +    running: true
 +    repeat: true
 +    onTriggered: {
++      if (root.lockRequested && Date.now() - root.touchIdNow > 1500) {
++        root.refreshTouchIdReadiness()
++        return
++      }
 +      root.touchIdNow = Date.now()
 +      touchIdTransportFile.reload()
 +      touchIdScanFile.reload()
@@ -53,15 +92,24 @@
    property bool previewVisible: false
    property string enteredPassword: ""
    property string pendingPassword: ""
-@@ -208,6 +247,7 @@
- 
+@@ -131,6 +209,8 @@
+       return false
+     }
+
++    touchIdScanNotBefore = Date.now() / 1000
++    refreshTouchIdReadiness()
+     resetAuthenticationState()
+     lockRequested = true
+     armBlankTimer()
+@@ -208,6 +288,7 @@
+
    function startFingerprint() {
      if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
 +    if (root.touchIdStatus.waitingForTransport) return
      if (fingerprintPam.active || fingerprintAuthenticating) return
- 
+
      fingerprintAuthenticating = true
-@@ -271,6 +311,8 @@
+@@ -271,6 +352,8 @@
          backgroundPath: root.backgroundPath
          backgroundVersion: root.backgroundVersion
          fingerprintConfigured: root.fingerprintConfigured
@@ -70,7 +118,7 @@
          authenticatingPassword: root.authenticatingPassword
          failureMessage: root.failureMessage
          failedAttempts: root.failedAttempts
-@@ -301,6 +343,8 @@
+@@ -301,6 +384,8 @@
        backgroundPath: root.backgroundPath
        backgroundVersion: root.backgroundVersion
        fingerprintConfigured: root.fingerprintConfigured
@@ -79,8 +127,8 @@
        authenticatingPassword: false
        failureMessage: ""
        failedAttempts: 0
-@@ -413,7 +457,7 @@
- 
+@@ -413,7 +498,7 @@
+
    Timer {
      id: idleBlankTimer
 -    interval: 5000
@@ -88,7 +136,7 @@
      repeat: false
      property double armedAt: 0
      onTriggered: {
-@@ -530,6 +574,8 @@
+@@ -530,6 +615,8 @@
          realScreens: root.realScreenCount(),
          passwordPam: root.passwordPamConfigured,
          fingerprint: root.fingerprintConfigured,

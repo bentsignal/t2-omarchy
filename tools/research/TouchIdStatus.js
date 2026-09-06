@@ -7,16 +7,20 @@ function parse(text) {
     } catch (_) { return {}; }
 }
 
-function describe(transport, scan, now) {
+function describe(transport, scan, now, refreshing, scanNotBefore) {
+    if (refreshing)
+        return { text: "Checking Touch ID — password available", ready: false, waitingForTransport: true };
     var transportAge = now - Number(transport.updated_at) * 1000;
     var scanAge = now - Number(scan.updated_at) * 1000;
     var validTransport = transport.schema_version === 1 && transport.channel === "transport";
     var waiting = validTransport && (transport.state === "sleeping" || transport.state === "recovering");
-    if (waiting && transportAge >= 0 && transportAge < 90000)
+    // Sleep may last hours; its pre-sleep timestamp must not enable a new PAM
+    // attempt before the resume service has published recovery/availability.
+    if (waiting && transportAge >= 0 && (transport.state === "sleeping" || transportAge < 90000))
         return { text: "Touch ID waking up — password available", ready: false, waitingForTransport: true };
     if (!validTransport || transport.state !== "available")
         return { text: "Touch ID unavailable — use password", ready: false, waitingForTransport: false };
-    if (scan.schema_version === 1 && scan.channel === "scan" && scan.state === "ready" && scanAge >= 0 && scanAge < 25000 && Number(scan.updated_at) >= Number(transport.updated_at))
+    if (scan.schema_version === 1 && scan.channel === "scan" && scan.state === "ready" && scanAge >= 0 && scanAge < 25000 && Number(scan.updated_at) >= Number(transport.updated_at) && Number(scan.updated_at) >= (scanNotBefore || 0))
         return { text: "Touch and hold your finger to unlock", ready: true, waitingForTransport: false };
     if (scan.state === "unavailable")
         return { text: "Touch ID unavailable — use password", ready: false, waitingForTransport: false };

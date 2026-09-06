@@ -2,6 +2,16 @@
 
 ## Latest checkpoint
 
+**September 6, 16:31 EDT: first guarded early-recovery control passed.** The
+kernel confirmed deep/S3 suspend. Resume completed at 16:31:42.222305; the
+single-use guard was verified, early rebind started at 16:31:42.913674 and took
+2107.9 ms, and transport returned at 16:31:46.529352. Direct-directory discovery
+then took 262.5 ms. Sensor-ready was 16:31:47.888734: **5.666 seconds after
+resume**, versus 12.724 seconds in the preceding control. Unlike those earlier
+cached runs, this run exercised both latency improvements. The user reported
+the test working faster; see readiness notes for the initial stale-cue issue.
+This is one successful control, not yet repeatability or a fresh negative test.
+
 **September 6, 16:13 EDT: earlier, resume-only recovery is deployed for testing.**
 See [the current roadmap](touch-id-roadmap.md) for priority and acceptance status.
 The sections below preserve earlier iterations, including obsolete timing and
