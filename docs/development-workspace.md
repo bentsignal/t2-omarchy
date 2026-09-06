@@ -28,7 +28,7 @@ historical evidence; translate `~/dev/<reference>` to
 
 Current work: [Touch ID roadmap](touch-id-roadmap.md). At the September 6
 workspace cleanup checkpoint, working macOS-enrolled-finger authentication is
-retained. Latest measured resume-to-ready was 8.382 seconds (previous 5.240). The
+retained. Latest measured resume-to-ready was 4.982 seconds (previous 8.382 and 5.240). The
 pre-sleep UI preparation passed Shawn’s visual check; backend cancellation
 and recovery timing need investigation after the slower control. **Do not start a sleep or finger test
 without Shawn ready.** Native Linux enrollment remains outstanding; Touch Bar

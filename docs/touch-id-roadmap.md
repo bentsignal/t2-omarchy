@@ -2,6 +2,14 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+Latest control, 18:37 EDT: readiness **4.982 s**, fingerprint unlock completed.
+Lock contention/interface-up contributed negligibly; the 2.112-s rebind and
+1.407-s post-rebind wait remain. No verification-stop call was logged, so the
+stop-order fix did not resolve pre-sleep backend quiescence. Traced queues
+reported resumed/active, but an OUT completion still stalled. Temporary tracing
+is now disabled. See [diagnostic conclusions](touch-id-resume-performance.md).
+The older checkpoints below preserve chronology; no trace is currently armed.
+
 Latest implementation, 18:28 EDT: Shawn's usability target is subsecond readiness.
 An offline-reproduced stop/rediscovery race is fixed and deployed; lock-wait and
 interface-up timing are now separate. Four kernel queue-state trace sites are

@@ -1,5 +1,20 @@
 # Bounded pre-arm latency experiment — September 6, 2026
 
+## 18:37 traced control: 4.982 seconds
+
+Latest resume-to-ready was **4.981748 seconds**, compared with 8.382277 and
+5.239607 seconds in the preceding controls. Fingerprint unlock completed.
+Operation-lock wait was 0.1 ms; interface-up took 0.5 ms. Rebind still took
+2112.1 ms, followed by 1407.4 ms until T2 reachability. Verification-to-ready
+including 307.6-ms discovery was 824.0 ms; pre-arm was 170.0 ms.
+
+No verification-stop call was logged, and the pre-sleep probe still survived.
+The driver reported cleared suspend flags and active queues but later timed out
+waiting for an OUT completion. See [traced evidence and conclusions](touch-id-resume-performance.md).
+The timing change cannot be attributed to the cancellation-order patch. All four
+temporary trace sites have been disabled again. No subsecond or repeatability
+claim is justified; negative-finger control remains pending.
+
 ## 18:20 control: visual fix passes; readiness takes 8.382 seconds
 
 This was suspend/resume, not a reboot. System suspend began September 6 at

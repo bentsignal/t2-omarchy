@@ -8,6 +8,53 @@ matching; do not count a UI cue or a running service as authentication. Current
 measurements start at Linux's return-from-suspend event, not the wake keypress.
 Keypress-to-visible-frame and keypress-to-unlock remain separate measurements.
 
+## 18:37 traced control: 4.982 seconds; transport stall remains
+
+Shawn reported that the wait still felt about the same. Linux returned from
+suspend at 18:37:03.551175 EDT; sensor-ready was 18:37:08.532923, a
+**4.981748-second** interval. Fingerprint success feedback and unlock followed;
+unlock at 18:37:10.322233 was 6.771058 seconds after resume, including touch.
+This is 3.400529 seconds faster than the 8.382277-second control, but only
+0.257859 seconds faster than the previous 5.239607-second result. It is not
+proof that the cancellation patch improved hardware performance.
+
+| Stage | Measured interval |
+|---|---:|
+| Recovery operation-lock acquisition | 0.1 ms |
+| Interface-up validation/wait | 0.5 ms |
+| Resume guard verified to rebind start | 500.9 ms |
+| Network-interface rebind | 2112.1 ms |
+| Rebind completion to reachable T2 peer | 1407.4 ms |
+| System resume to reachable T2 peer | 4143.9 ms |
+| Directory discovery | 307.6 ms |
+| Pre-arm | 170.0 ms |
+| Verification-to-ready, including discovery | 824.0 ms |
+
+UI preparation was acknowledged before freeze. No `verification-stop` entry
+was logged during this control. The old probe failed and began rediscovery
+before systemd-sleep logged return from suspend; discovery failed at
+18:37:03.822499. Therefore the stop-order patch has **not** solved pre-sleep
+quiescence: the stop method was not observed being called. Investigate the PAM
+abort/client-disconnect path and explicit backend quiescence. Do not attribute
+this control's timing improvement to that patch.
+
+All 23 traced queue-resume records showed suspend ownership `4->0`,
+`firmware_resume=1`, `ret=0`, `state=0`, and `active=1`. This rules against a
+simple uncleared suspend-owner bit in those records; it does not establish that
+firmware transferred data or delivered completions. The rebind still logged
+`[01] pause timeout waiting for 1 outputs`. Next driver investigation should
+follow the network OUT transfer/request/completion lifecycle, with exact device
+mapping and payload-free instrumentation, instead of deleting the drain wait.
+
+Kernel queue-resume messages precede the systemd return event by about 1.7 s.
+The reported 4.982 s starts at the latter event, not physical keyboard wake.
+Kernel suspend messages were delivered around resume, so do not interpret their
+wall-clock publication timestamps as the actual sleep-entry time.
+
+All four temporary dynamic-debug sites were restored to disabled and verified
+after this control. No further sleep or scan was triggered. The separate
+negative-finger control remains pending.
+
 ## What the evidence establishes
 
 The latest 8.382-second control spent 7.584 seconds reaching the T2 network peer,
