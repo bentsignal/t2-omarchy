@@ -139,6 +139,10 @@ def rebind(driver: Path, device_name: str) -> None:
             (driver / "bind").write_text(device_name)
 
 
+def tx_errors(interface: str) -> int:
+    return int((SYS / "class/net" / interface / "statistics/tx_errors").read_text())
+
+
 def recover(host: str, interface: str, port: int) -> bool:
     target = validate_target(interface)
     for attempt in range(3):
@@ -147,9 +151,21 @@ def recover(host: str, interface: str, port: int) -> bool:
             return False
         if attempt < 2:
             time.sleep(1)
-    errors = int((SYS / "class/net" / interface / "statistics/tx_errors").read_text())
-    if errors <= 0:
-        raise RecoveryError("peer unreachable without TX-error evidence; no rebind attempted")
+    if tx_errors(interface) <= 0:
+        # On the first real wake, cached EHOSTUNREACH made the three probes
+        # finish before the NIC's ~5-second TX watchdog fired. Keep checking
+        # briefly, but never remove the requirement for actual TX evidence.
+        print("T2 peer unreachable; allowing up to 12s for delayed TX-error evidence.", flush=True)
+        evidence_deadline = time.monotonic() + 12
+        while tx_errors(interface) <= 0:
+            if time.monotonic() >= evidence_deadline:
+                raise RecoveryError("peer unreachable without TX-error evidence; no rebind attempted")
+            time.sleep(1)
+            if transport_reachable(host, interface, port):
+                print("T2 network became reachable during watchdog grace; no rebind performed.", flush=True)
+                return False
+            if validate_target(interface) != target:
+                raise RecoveryError("network target changed while awaiting TX errors")
     if validate_target(interface) != target:
         raise RecoveryError("network target changed during checks")
     print("T2 link unreachable with TX errors; rebinding its CDC-NCM interface once.", flush=True)

@@ -30,10 +30,40 @@ the enrolled finger unlocked successfully, and an unenrolled finger did not.
 These are user-observed end-to-end results, not an independently captured
 fprintd trace. Normal matching after transport recovery is now accepted.
 
-Still required: actual sleep/wake and matching acceptance. No new enrollment
+The first actual sleep/wake test failed; the timing correction below is now
+deployed and needs a second supervised sleep/wake test. No new enrollment
 trial was started during this repair.
 Native enrollment remains at the status-55 overlay checkpoint described in
 `touch-id-enrollment-presence-events.md`.
+
+### First real wake: delayed watchdog race, corrected
+
+The user-requested suspend started at 12:41:36 EDT and returned at 12:43:07.
+The resume hook ran correctly. Recovery stopped at 12:43:11 because its three
+failed connection probes completed while the NIC TX-error counter was still
+zero. The first kernel CDC-NCM watchdog event arrived at **12:43:14**, reporting
+a 5375 ms TX timeout. Thus the required fault evidence arrived three seconds
+after the helper had already exited. Subsequent watchdog errors and the failed
+neighbor confirmed the stalled transport remained unrecovered.
+
+Shawn saw the fingerprint icon but no response to touches, then used password
+fallback. fprintd logged `verify-unknown-error` feedback suppression, consistent
+with the absence of a rejection toast. The daemon also logged stale VerifyStop
+and Release cleanup errors at resume; those are recorded but not treated as
+the cause of the demonstrably unreachable transport.
+
+The helper now allows up to 12 additional seconds for delayed TX evidence after
+the first three failed probes. It continues checking reachability and the exact
+target; a naturally recovered peer produces no rebind. A deadline with no TX
+evidence still fails closed. The existing 60-second unit bound and single-rebind
+limit are unchanged. Tests cover delayed error arrival, natural recovery during
+the grace window, target change, and absence of evidence through the deadline.
+
+The deployed correction recovered the current stalled link at 12:45:34, and an
+independent TCP check passed. **fprintd was not restarted** (same PID as before
+sleep), avoiding a daemon restart that could mask a second resume issue. This
+manual recovery does not establish automatic resume acceptance; another real
+sleep/wake and successful scan are required.
 
 ### Next supervised test
 
@@ -64,7 +94,9 @@ validates all of:
 - The interface is up, the endpoint is link-local IPv6, and the cached port is
   within the expected ephemeral range.
 
-It attempts three bounded TCP connections. Connection refusal means the peer
+It attempts three bounded TCP connections, then allows up to 12 additional
+seconds for delayed TX errors when the initial error counter is zero.
+Connection refusal means the peer
 is reachable but the cached service may be stale: that does **not** justify a
 rebind. Only repeated unreachability with a nonzero NIC TX-error counter permits
 one rebind. The counter is cumulative, so this is a conservative workaround
@@ -142,7 +174,7 @@ PAM backup, enrollment fixture, or authentication fallback needs deletion.
 
 ## Verification
 
-- 138 research tests pass, with two expected skips under system Python (macOS
+- 141 research tests pass, with two expected skips under system Python (macOS
   platform test and installed-runtime import test).
 - The installed runtime's own Python environment separately passes all five
   facade-overlay tests, including the real pinned module import, positive and
@@ -154,4 +186,6 @@ PAM backup, enrollment fixture, or authentication fallback needs deletion.
   fprintd unit with its drop-ins.
 - Live recovery and subsequent healthy no-op pass. Shawn confirms successful
   enrolled-finger unlock and rejection of an unenrolled finger after deployment.
-  Actual sleep/wake acceptance remains pending.
+  The first actual sleep/wake failed on delayed watchdog evidence. The corrected
+  helper restored the link manually without restarting fprintd; automatic
+  sleep/wake acceptance remains pending.

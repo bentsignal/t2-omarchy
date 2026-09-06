@@ -82,10 +82,26 @@ class RecoveryTests(unittest.TestCase):
             root = Path(tmp)
             self.fixture(root)
             (root / "class/net/enp4s0f1u1/statistics/tx_errors").write_text("0")
-            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"):
+            with patch.object(MODULE, "SYS", root), patch.object(MODULE, "validate_target"), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", side_effect=[0, 13]):
                 with self.assertRaisesRegex(MODULE.RecoveryError, "without TX-error"):
                     MODULE.recover("fe80::1", "enp4s0f1u1", 50000)
                 rebind.assert_not_called()
+
+    def test_delayed_watchdog_evidence_allows_one_rebind(self):
+        with patch.object(MODULE, "validate_target", return_value=("driver", "7-1:1.0")), patch.object(MODULE, "tx_errors", side_effect=[0, 0, 0, 1]), patch.object(MODULE, "transport_reachable", side_effect=[False] * 5 + [True]), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", return_value=0):
+            self.assertTrue(MODULE.recover("fe80::1", "test", 50000))
+            rebind.assert_called_once_with("driver", "7-1:1.0")
+
+    def test_peer_recovery_during_grace_does_not_rebind(self):
+        with patch.object(MODULE, "validate_target"), patch.object(MODULE, "tx_errors", return_value=0), patch.object(MODULE, "transport_reachable", side_effect=[False] * 3 + [True]), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", return_value=0):
+            self.assertFalse(MODULE.recover("fe80::1", "test", 50000))
+            rebind.assert_not_called()
+
+    def test_target_change_during_grace_does_not_rebind(self):
+        with patch.object(MODULE, "validate_target", side_effect=[("driver", "7-1:1.0"), ("driver", "8-1:1.0")]), patch.object(MODULE, "tx_errors", return_value=0), patch.object(MODULE, "transport_reachable", return_value=False), patch.object(MODULE, "rebind") as rebind, patch.object(MODULE.time, "sleep"), patch.object(MODULE.time, "monotonic", return_value=0):
+            with self.assertRaisesRegex(MODULE.RecoveryError, "target changed"):
+                MODULE.recover("fe80::1", "test", 50000)
+            rebind.assert_not_called()
 
     def test_connection_refused_is_reachable(self):
         for error, expected in ((ConnectionRefusedError(errno.ECONNREFUSED, "refused"), True), (TimeoutError(), False), (OSError(errno.EHOSTUNREACH, "unreachable"), False)):

@@ -4042,3 +4042,11 @@ Shawn then confirmed both lock-screen controls with the deployed recovery and
 facade overlay: the enrolled finger unlocked, and an unenrolled finger failed.
 The next step is one actual deep-sleep/wake cycle, inspection of the automatic
 recovery journal, and a post-wake positive control before returning to enrollment.
+
+That cycle ran the wake hook but failed because the three connection probes
+finished before the kernel recorded its first TX watchdog error. The helper now
+waits up to 12 additional seconds for that evidence, without removing any target
+or TX-error checks. All 141 research tests pass (two environment-specific skips),
+and the installed correction restored transport manually without restarting
+fprintd. Automatic recovery and matching need another supervised sleep/wake test;
+no new sleep is scheduled until Shawn is ready.

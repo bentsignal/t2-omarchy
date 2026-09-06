@@ -13,6 +13,12 @@ acceptance remains pending. See [resume recovery](touch-id-resume-recovery.md)
 for evidence, deployment, limits, and rollback. This supersedes the September 5
 statement that no automatic resume workaround is installed.
 
+The first real sleep/wake test then exposed a timing bug: the helper stopped
+three seconds before the kernel's first TX watchdog error. A bounded 12-second
+evidence grace is deployed; manual recovery passed without restarting fprintd.
+Another actual sleep/wake test is required. The linked recovery document records
+the exact timeline and distinguishes this from automatic acceptance.
+
 ## 2026-09-05 post-suspend transport failure
 
 Normal lock-screen verification was reported as not recognized after sleep.
