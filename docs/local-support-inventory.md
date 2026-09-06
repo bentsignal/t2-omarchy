@@ -56,5 +56,6 @@ test, service restart, sleep, or device reset was needed for the cleanup.
 
 Recovery from this reorganization is a directory move back to the old names,
 followed by `git worktree repair` on the Touch ID reference repository if its
-linked worktrees move again. The home-directory project alias remains a symlink
-to the canonical repo. Do not overwrite an existing directory while undoing.
+linked worktrees move again. The temporary home-directory project symlink was
+subsequently removed at Shawn's request; the canonical repo and all support
+material remain intact. Do not overwrite an existing directory while undoing.

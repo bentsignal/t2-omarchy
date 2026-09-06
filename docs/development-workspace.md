@@ -16,9 +16,10 @@ requirement to launch a CLI from `/home/shawn` or to open all of `~/dev`.
     research/               Apple images/extractions and private captures
 ```
 
-The old `~/t2-mbp16-audio-recovery` path is a compatibility symlink, not another
-copy. It preserves old terminal paths and historical commands. New work should
-use the canonical folder above. Old notes retain their original paths as
+The old `~/t2-mbp16-audio-recovery` compatibility symlink was removed at Shawn's
+request after verifying its target. No project data was deleted. Use the
+canonical folder above; old commands using the home-directory path need updating.
+Old notes retain their original paths as
 historical evidence; translate `~/dev/<reference>` to
 `<project>/.local/references/<reference>` and `~/dev/t2-touchid-research` to
 `<project>/.local/research` before reusing a research command.
