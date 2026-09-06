@@ -107,12 +107,29 @@ def timed_stage(label, original):
     return wrapped
 
 
+def cancel_verification_before_process(original):
+    async def stop(self, require_running):
+        # Cancel the coroutine before terminating its child. Otherwise child
+        # exit can look like a stale-cache failure and launch rediscovery while
+        # the original stop method is awaiting process.wait(). No await here:
+        # the original backend.cancel must capture self.process before the
+        # cancelled probe coroutine runs its finally block and clears it.
+        task = self.verify_task
+        if task is not None and not task.done():
+            task.cancel()
+        return await original(self, require_running=require_running)
+    return timed_stage("verification-stop", stop)
+
+
 def install_overlay(namespace: dict) -> None:
     original_verdict = namespace["verdict_from_result"]
     backend = namespace["T2Backend"]
     original_feedback = backend.notify_feedback
     original_verify = backend.verify
     original_cue = backend.notify_finger_requested
+    device = namespace.get("FprintDevice")
+    if device is not None:
+        device._stop_verification = cancel_verification_before_process(device._stop_verification)
 
     def verdict(result: object) -> str:
         events = result.get("match_events") if isinstance(result, dict) else None

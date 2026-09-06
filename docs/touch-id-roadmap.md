@@ -2,6 +2,13 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+Latest implementation, 18:28 EDT: Shawn's usability target is subsecond readiness.
+An offline-reproduced stop/rediscovery race is fixed and deployed; lock-wait and
+interface-up timing are now separate. Four kernel queue-state trace sites are
+armed for the next supervised control. No new speed improvement is measured.
+See [subsecond resume investigation](touch-id-resume-performance.md) for evidence,
+validation, next-test questions, and required trace cleanup.
+
 Latest checkpoint, 18:20 EDT: Shawn visually accepted the first waking-up
 message after the pre-freeze UI fix. Fingerprint unlock completed, but
 resume-to-ready regressed to **8.382 s** (previous 5.240 s). Old backend

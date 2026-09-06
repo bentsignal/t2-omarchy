@@ -247,7 +247,9 @@ def consume_resume_ticket(host: str, interface: str, target: tuple[Path, str]) -
 
 
 def recover(host: str, interface: str, port: int, *, after_resume: bool = False) -> bool:
+    target_started = time.perf_counter()
     target = wait_for_target(interface)
+    print(f"T2 recovery timing: interface-up elapsed_ms={(time.perf_counter() - target_started) * 1000:.1f}", flush=True)
     early = after_resume and consume_resume_ticket(host, interface, target)
     if after_resume:
         print("T2 successful-resume guard verified; checking link before early recovery." if early
@@ -310,8 +312,10 @@ def main() -> int:
         return 0
     publish("transport", "recovering")
     endpoint = parse_endpoint(private_read(CONFIG), private_read(PORT))
+    lock_started = time.perf_counter()
     fd = lock_operation()
     try:
+        print(f"T2 recovery timing: operation-lock elapsed_ms={(time.perf_counter() - lock_started) * 1000:.1f}", flush=True)
         started = time.monotonic()
         recover(*endpoint, after_resume=args.after_resume)
         print(f"T2 recovery timing: recovery elapsed_ms={(time.monotonic() - started) * 1000:.1f}", flush=True)

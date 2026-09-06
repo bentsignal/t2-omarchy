@@ -13,6 +13,76 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OverlayTests(unittest.TestCase):
+    def test_pinned_stop_race_does_not_rediscover_and_reaps_child(self):
+        try:
+            import dbus_next  # noqa: F401
+        except ImportError:
+            self.skipTest("installed runtime venv required")
+        self.assertEqual(hashlib.sha256(MODULE.SOURCE.read_bytes()).hexdigest(), MODULE.EXPECTED_SHA256)
+
+        async def exercise(fixed):
+            namespace = runpy.run_path(str(MODULE.SOURCE), run_name="_test_stop_race")
+            backend_type = namespace["T2Backend"]
+            backend = backend_type.__new__(backend_type)
+            backend.port_from_cache = True
+            backend.port = 50123
+            backend.process = None
+            backend.notify_feedback = AsyncMock()
+            terminated = asyncio.Event()
+            started = asyncio.Event()
+
+            class Process:
+                returncode = None
+
+                def terminate(self):
+                    self.returncode = -15
+                    terminated.set()
+
+                async def wait(self):
+                    await terminated.wait()
+                    # Allow a child-exit failure to race the stop coroutine,
+                    # as real asyncio subprocess notification can do.
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+
+            process = Process()
+            process.terminate = Mock(wraps=process.terminate)
+            process.wait = AsyncMock(wraps=process.wait)
+
+            async def probe(port):
+                backend.process = process
+                started.set()
+                try:
+                    await terminated.wait()
+                    raise RuntimeError("terminated child")
+                finally:
+                    backend.process = None
+
+            async def discover():
+                if backend.port is None:
+                    await asyncio.Future()
+                return backend.port
+
+            backend.discover = AsyncMock(side_effect=discover)
+            backend._run_probe = probe
+            device = namespace["FprintDevice"](backend)
+            device.verify_task = asyncio.create_task(device._run_verification())
+            await started.wait()
+            stop = type(device)._stop_verification
+            if fixed:
+                stop = MODULE.cancel_verification_before_process(stop)
+            await stop(device, require_running=True)
+            self.assertIsNone(device.verify_task)
+            self.assertIsNone(backend.process)
+            process.terminate.assert_called_once()
+            process.wait.assert_awaited_once()
+            backend.notify_feedback.assert_not_awaited()
+            return backend.discover.await_count
+
+        # The pinned original reproduces the bug entirely without device I/O.
+        self.assertEqual(asyncio.run(exercise(False)), 2)
+        self.assertEqual(asyncio.run(exercise(True)), 1)
+
     def test_prearm_timing_logs_only_allowlisted_line_and_preserves_stream(self):
         async def original(self, stream):
             result = []
