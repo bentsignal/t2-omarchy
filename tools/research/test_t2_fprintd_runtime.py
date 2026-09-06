@@ -13,6 +13,31 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OverlayTests(unittest.TestCase):
+    def test_prearm_timing_logs_only_allowlisted_line_and_preserves_stream(self):
+        async def original(self, stream):
+            result = []
+            while line := await stream.readline():
+                result.append(line)
+            return result
+        lines = [b"PRIVATE_SENTINEL\n", b"Touch ID timing: prearm elapsed_ms=101.2 early_marker=true\n",
+                 b"Touch ID timing: prearm elapsed_ms=SECRET early_marker=true\n", b"TOUCH NOW\n"]
+        stream = Mock(readline=AsyncMock(side_effect=lines + [b""]))
+        with patch("builtins.print") as output:
+            result = asyncio.run(MODULE.report_prearm_timing(original)(None, stream))
+        self.assertEqual(result, lines)
+        output.assert_called_once_with(lines[1].decode().rstrip(), flush=True)
+
+    def test_probe_substitution_preserves_lock_and_all_options(self):
+        argv = ["flock", "--exclusive", "lock", "python", MODULE.PROBE_SOURCE, "--prearm-seconds", "0.5"]
+        command = MODULE.event_driven_probe_command(lambda self, port: argv)
+        result = command(None, 50123)
+        self.assertEqual(result, argv[:4] + [MODULE.PROBE_RUNTIME] + argv[5:])
+        self.assertEqual(argv[4], MODULE.PROBE_SOURCE)
+        for bad in ([], [MODULE.PROBE_SOURCE, MODULE.PROBE_SOURCE], ["/unexpected/probe.py"]):
+            command = MODULE.event_driven_probe_command(lambda self, port: bad)
+            with self.assertRaises(RuntimeError):
+                command(None, 50123)
+
     def test_cached_endpoint_does_not_query_directory(self):
         original = AsyncMock(return_value=50123)
         backend = Mock(port=50123, port_from_cache=True)
@@ -173,6 +198,12 @@ class T2Backend:
         self.assertEqual(verdict(result), "verify-no-match")
         backend_type = namespace["T2Backend"]
         backend = backend_type.__new__(backend_type)
+        backend.project_dir = Path("/opt/t2-touchid")
+        backend.match_seconds = 20
+        argv = backend.probe_command(50123)
+        self.assertEqual(argv.count(MODULE.PROBE_RUNTIME), 1)
+        self.assertNotIn(MODULE.PROBE_SOURCE, argv)
+        self.assertEqual(argv[argv.index("--prearm-seconds") + 1], "0.5")
         backend.port, backend.port_from_cache = 50123, True
         backend._run_probe = AsyncMock(return_value=result)
         backend.notify_feedback = AsyncMock()

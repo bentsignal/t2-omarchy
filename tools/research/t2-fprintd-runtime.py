@@ -12,6 +12,7 @@ import hashlib
 from pathlib import Path
 import runpy
 import asyncio
+import re
 import sys
 import time
 
@@ -20,6 +21,33 @@ from t2_touchid_status import publish
 SOURCE = Path("/opt/t2-touchid/src/t2-fprintd.py")
 EXPECTED_SHA256 = "1cf34436fe6ae66e98229864b256b3ef1b5a21a772cb74ed50ed98acc840c336"
 DIRECT_DISCOVERY = "/usr/local/libexec/t2-biometric-discover.py"
+PROBE_SOURCE = "/opt/t2-touchid/src/bridge-xpc-probe.py"
+PROBE_RUNTIME = "/usr/local/libexec/t2-bridge-probe-runtime.py"
+
+
+def report_prearm_timing(original):
+    async def consume(self, stream):
+        class ForwardingStream:
+            async def readline(inner):
+                line = await stream.readline()
+                if re.fullmatch(
+                    rb"Touch ID timing: prearm elapsed_ms=[0-9]{1,9}\.[0-9] early_marker=(true|false)\n",
+                    line,
+                ):
+                    print(line.decode("ascii").rstrip(), flush=True)
+                # Preserve the original cue handling and bounded stderr buffer.
+                return line
+        return await original(self, ForwardingStream())
+    return consume
+
+
+def event_driven_probe_command(original):
+    def command(self, port):
+        arguments = original(self, port)
+        if arguments.count(PROBE_SOURCE) != 1:
+            raise RuntimeError("unexpected bridge probe command; refusing substitution")
+        return [PROBE_RUNTIME if value == PROBE_SOURCE else value for value in arguments]
+    return command
 
 
 async def direct_discovery_port():
@@ -135,6 +163,10 @@ def install_overlay(namespace: dict) -> None:
     backend.verify = verify
     backend.notify_finger_requested = cue
     backend.notify_feedback = feedback
+    if hasattr(backend, "probe_command"):
+        backend.probe_command = event_driven_probe_command(backend.probe_command)
+    if hasattr(backend, "_consume_probe_stderr"):
+        backend._consume_probe_stderr = report_prearm_timing(backend._consume_probe_stderr)
     if hasattr(backend, "discover"):
         backend.discover = prefer_direct_discovery(backend.discover)
     # Existing cached returns and probe retry/authentication semantics remain.

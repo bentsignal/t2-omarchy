@@ -131,6 +131,13 @@ on refresh/new lock and watches status-file changes. See
 check. Repeatability and a post-change negative control remain pending; this is
 not an instant-wake or completed-enrollment claim.
 
+Next performance pass: network address-generation/optimistic-DAD experiments
+did not improve awake link activation and were fully reverted. A pinned,
+repo-owned event-driven pre-arm wait is now deployed for the next combined
+sleep/visual control, with the previous runtime preserved for rollback. This
+targets at most about half a second, not the remaining driver stall; no new
+hardware benefit is yet measured. See [experiment details and next-test gate](touch-id-prearm-latency.md).
+
 ## 2. Next: Linux-native fingerprint enrollment
 
 This remains required. Users should eventually enroll and manage fingerprints
