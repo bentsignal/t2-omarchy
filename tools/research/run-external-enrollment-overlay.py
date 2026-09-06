@@ -24,7 +24,7 @@ import subprocess
 import sys
 
 
-SOURCE_ROOT = Path("/home/shawn/dev/t2-touchid-linux-latest")
+SOURCE_ROOT = Path(__file__).resolve().parents[2] / ".local/references/t2-touchid-linux-latest"
 EXPECTED_COMMIT = "826a86e55a9a745f50fb64672e5be32cf352cb76"
 EXPECTED_PROTOCOL_SHA256 = "2116946027fec5734e21a46d67de629899c1dd0554bc70d5ccaef276eddf9b0d"
 EXPECTED_BROKER_SHA256 = "3d24053d80ebd7482484040a488201e385cc5378f9dfd38c6401bf10acb7912d"

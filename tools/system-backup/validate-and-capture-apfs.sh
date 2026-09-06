@@ -6,7 +6,7 @@ backup_partition=/dev/sda1
 expected_serial=NAA959T1
 expected_uuid=2a922a39-ee48-4b12-8e6f-3c3a69b154a5
 backup_mount=/run/media/shawn/OMARCHY_BACKUP
-capture=/home/shawn/t2-mbp16-audio-recovery/tools/system-backup/capture-enrolled-apfs.sh
+capture=$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/capture-enrolled-apfs.sh
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run through pkexec or sudo"

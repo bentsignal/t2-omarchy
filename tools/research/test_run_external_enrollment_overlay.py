@@ -15,7 +15,7 @@ assert SPEC and SPEC.loader
 sys.modules[SPEC.name] = overlay
 SPEC.loader.exec_module(overlay)
 
-PROTOCOL = Path("/home/shawn/dev/t2-touchid-linux-latest/src/t2_enrollment_protocol.py")
+PROTOCOL = overlay.SOURCE_ROOT / "src/t2_enrollment_protocol.py"
 PROTOCOL_SPEC = importlib.util.spec_from_file_location("overlay_test_protocol", PROTOCOL)
 protocol = importlib.util.module_from_spec(PROTOCOL_SPEC)
 assert PROTOCOL_SPEC and PROTOCOL_SPEC.loader

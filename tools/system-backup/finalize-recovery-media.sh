@@ -6,7 +6,7 @@ expected_serial=NAA959T1
 backup_root=/mnt/omarchy-backup
 stamp=20260826T212118Z
 source_bundle=/home/shawn/Downloads/recovery-media/t2-mbp16-audio-recovery.bundle
-source_script=/home/shawn/t2-mbp16-audio-recovery/tools/system-backup/prepare-macos-space.sh
+source_script=$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/prepare-macos-space.sh
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run through pkexec or sudo"

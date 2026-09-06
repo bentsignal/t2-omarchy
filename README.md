@@ -11,6 +11,15 @@ All project implementation, tests, tooling, and documentation live in this
 repository. Other source checkouts are read-only references and must not be
 modified, committed to, pushed, or used as hidden project worktrees.
 
+## Open this project
+
+On this Linux machine, open **`/home/shawn/dev/t2-omarchy`** as the project folder
+in your editor or AI coding application—not your home directory. This is the
+one Git repository containing our implementation and documentation.
+
+See [workspace layout and local references](docs/development-workspace.md) for
+supporting tools, ignored research downloads, and the current work checkpoint.
+
 ## Guides
 
 - [Power management and dual boot modes](docs/power-management.md)
@@ -70,8 +79,8 @@ Prerequisites: a working T2 kernel/audio driver, internet access, `yay`, and
 interactive `sudo` access.
 
 ```bash
-git clone https://github.com/bentsignal/t2-mbp16-audio-recovery.git
-cd t2-mbp16-audio-recovery
+git clone https://github.com/bentsignal/t2-omarchy.git
+cd t2-omarchy
 ./install.sh
 ./verify.sh
 ```

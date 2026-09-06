@@ -1,4 +1,5 @@
 __pycache__/
+.local/
 *.py[cod]
 t2-static-capture/
 t2-runtime-capture/
