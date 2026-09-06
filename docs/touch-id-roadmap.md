@@ -69,6 +69,43 @@ Do not let speculative micro-optimization or an unmeasured language rewrite
 indefinitely displace enrollment. If a remaining kernel issue requires a
 separate upstream effort, document that boundary and reassess enrollment order.
 
+### Direct directory shortcut deployed (September 6)
+
+The fixed directory route evidenced in `macos-touch-id-findings.md` was tested
+read-only from Linux. Querying directory port 59602 returned the same current
+BiometricKit endpoint as the private cache in **0.160 s**, compared with
+**23.474 s** for the full scan. An installed-helper smoke test under the
+facade's security restrictions took **0.286 s**, including child startup, and
+again returned the same endpoint. These are discovery measurements, **not new
+end-to-end wake or fingerprint acceptance measurements**.
+
+`tools/research/t2-biometric-discover.py` is deployed root-owned at
+`/usr/local/libexec/t2-biometric-discover.py`. It validates root-private
+configuration, the exact T2BCE CDC-NCM interface, and the operation lock; sends
+only the RemoteXPC directory handshake; and reads the advertised service port.
+The directory hint is specific to the evidenced Intel implementation. The
+biometric service port is never hard-coded. Raw directory records are not
+logged; the returned port is consumed through a private subprocess pipe.
+
+The repo-owned fprintd overlay now tries this helper **only when its in-memory
+endpoint is absent**. Cached returns stay unchanged. A failed/invalid/unsupported
+direct lookup falls back to the original full discovery. The helper has a
+2-second exchange deadline and 0.5-second cleanup deadline; its caller enforces
+5 seconds including startup and kills/reaps a timed-out or cancelled child.
+Cancellation propagates without starting a fallback scan. The original
+single-retry rule for a failed cached probe remains unchanged; genuine negative
+matches are not retried. No identity, enrollment, calibration, or authentication
+success criteria changed. A directory response is not authentication success.
+
+Validation: 163 research tests, two expected environment skips; all 14 runtime
+overlay tests passed in the installed virtual environment, including execution
+of the pinned facade's negative-match and stale-cache retry paths with mocked
+I/O. The service restarted successfully on the unlocked desktop. No live scan
+or sleep was triggered. Next manual gates: awake positive/negative controls,
+then immediate-interaction suspend/resume controls and journal stage timings.
+The separate ~10.8-second transport recovery remains an unresolved latency
+component; this change alone cannot establish instant wake.
+
 ## 2. Next: Linux-native fingerprint enrollment
 
 This remains required. Users should eventually enroll and manage fingerprints

@@ -5,6 +5,8 @@
 Uses the normal operation lock; sends no BiometricKit enrollment/match commands.
 Run in a bounded root service using the installed runtime virtual environment.
 """
+import argparse
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -15,6 +17,9 @@ import time
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--direct", action="store_true", help="measure the evidenced directory shortcut")
+    args = parser.parse_args()
     recovery = runpy.run_path(str(Path(__file__).with_name("t2-ncm-recover.py")))
     host, interface, cached_port = recovery["parse_endpoint"](
         recovery["private_read"](recovery["CONFIG"]),
@@ -26,6 +31,11 @@ def main():
         if not recovery["transport_reachable"](host, interface, cached_port):
             raise RuntimeError("cached peer unreachable; discovery measurement not started")
         started = time.monotonic()
+        if args.direct:
+            direct = runpy.run_path(str(Path(__file__).with_name("t2-biometric-discover.py")))
+            discovered_port = asyncio.run(direct["query"](host, interface))
+            print(json.dumps({"method": "direct-directory", "discovery_seconds": round(time.monotonic() - started, 3), "matches_cached_endpoint": discovered_port == cached_port, "identifiers_redacted": True, "biometric_commands_sent": False}))
+            return
         result = subprocess.run(
             [sys.executable, "/opt/t2-touchid/src/discover-biometric-port.py"],
             env={**os.environ, "T2_TOUCHID_HOST": host, "T2_TOUCHID_INTERFACE": interface},

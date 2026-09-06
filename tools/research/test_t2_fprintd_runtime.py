@@ -5,7 +5,7 @@ import importlib.util
 from pathlib import Path
 import runpy
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 SPEC = importlib.util.spec_from_file_location("fprintd_overlay", Path(__file__).with_name("t2-fprintd-runtime.py"))
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -13,6 +13,59 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OverlayTests(unittest.TestCase):
+    def test_cached_endpoint_does_not_query_directory(self):
+        original = AsyncMock(return_value=50123)
+        backend = Mock(port=50123, port_from_cache=True)
+        with patch.object(MODULE, "direct_discovery_port", new_callable=AsyncMock) as direct:
+            self.assertEqual(asyncio.run(MODULE.prefer_direct_discovery(original)(backend)), 50123)
+        direct.assert_not_called()
+        original.assert_awaited_once_with(backend)
+        self.assertTrue(backend.port_from_cache)
+
+    def test_direct_directory_avoids_scan_and_refreshes_endpoint(self):
+        original = AsyncMock()
+        backend = Mock(port=None, port_from_cache=True)
+        with patch.object(MODULE, "direct_discovery_port", new_callable=AsyncMock, return_value=50124):
+            self.assertEqual(asyncio.run(MODULE.prefer_direct_discovery(original)(backend)), 50124)
+        original.assert_not_called()
+        self.assertEqual(backend.port, 50124)
+        self.assertFalse(backend.port_from_cache)
+
+    def test_directory_failure_falls_back_but_cancellation_does_not(self):
+        for error in (OSError(), RuntimeError(), TimeoutError(), asyncio.CancelledError()):
+            original = AsyncMock(return_value=50125)
+            backend = Mock(port=None, port_from_cache=False)
+            with patch.object(MODULE, "direct_discovery_port", new_callable=AsyncMock, side_effect=error):
+                call = MODULE.prefer_direct_discovery(original)(backend)
+                if isinstance(error, asyncio.CancelledError):
+                    with self.assertRaises(asyncio.CancelledError):
+                        asyncio.run(call)
+                    original.assert_not_called()
+                else:
+                    self.assertEqual(asyncio.run(call), 50125)
+                    original.assert_awaited_once_with(backend)
+
+    def test_direct_subprocess_validates_output(self):
+        for stdout, code, valid in ((b"50123\n", 0, True), (b"1\n", 0, False),
+                                    (b"50123", 1, False), (b"secret", 0, False),
+                                    (b"5" * 65, 0, False), (b"", 0, False)):
+            process = Mock(returncode=code, communicate=AsyncMock(return_value=(stdout, b"PRIVATE")))
+            with patch.object(MODULE.asyncio, "create_subprocess_exec", new_callable=AsyncMock, return_value=process):
+                if valid:
+                    self.assertEqual(asyncio.run(MODULE.direct_discovery_port()), 50123)
+                else:
+                    with self.assertRaises(RuntimeError):
+                        asyncio.run(MODULE.direct_discovery_port())
+
+    def test_direct_subprocess_is_reaped_on_timeout_and_cancel(self):
+        for error in (TimeoutError(), asyncio.CancelledError()):
+            process = Mock(returncode=None, communicate=AsyncMock(side_effect=error), wait=AsyncMock())
+            with patch.object(MODULE.asyncio, "create_subprocess_exec", new_callable=AsyncMock, return_value=process):
+                with self.assertRaises(type(error)):
+                    asyncio.run(MODULE.direct_discovery_port())
+            process.kill.assert_called_once()
+            process.wait.assert_awaited_once()
+
     def test_timing_preserves_return_and_arguments(self):
         original = AsyncMock(return_value={"result": "unchanged"})
         wrapped = MODULE.timed_stage("test", original)
@@ -118,6 +171,25 @@ class T2Backend:
         self.assertEqual(verdict(result), "verify-no-match")
         result["match_events"][0]["matched"] = False
         self.assertEqual(verdict(result), "verify-no-match")
+        backend_type = namespace["T2Backend"]
+        backend = backend_type.__new__(backend_type)
+        backend.port, backend.port_from_cache = 50123, True
+        backend._run_probe = AsyncMock(return_value=result)
+        backend.notify_feedback = AsyncMock()
+        with patch.object(MODULE, "publish"), patch.object(MODULE, "direct_discovery_port", new_callable=AsyncMock) as direct:
+            self.assertEqual(asyncio.run(backend.verify())[0], "verify-no-match")
+            direct.assert_not_called()
+        backend._run_probe.assert_awaited_once_with(50123)
+        # A stale cached endpoint gets exactly the original one retry, using
+        # the newly advertised endpoint; success still requires real evidence.
+        result["match_events"][0]["matched"] = True
+        result["match_events"][0]["matches_enrolled_identity"] = True
+        backend._run_probe = AsyncMock(side_effect=[RuntimeError("stale endpoint"), result])
+        with patch.object(MODULE, "publish"), patch.object(MODULE, "direct_discovery_port", new_callable=AsyncMock, return_value=50124) as direct:
+            self.assertEqual(asyncio.run(backend.verify())[0], "verify-match")
+            direct.assert_awaited_once()
+        self.assertEqual([call.args for call in backend._run_probe.await_args_list], [(50123,), (50124,)])
+        self.assertFalse(backend.port_from_cache)
         result["match_events"] = []
         with self.assertRaises(RuntimeError):
             verdict(result)

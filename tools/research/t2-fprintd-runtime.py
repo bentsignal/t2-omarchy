@@ -12,12 +12,52 @@ import hashlib
 from pathlib import Path
 import runpy
 import asyncio
+import sys
 import time
 
 from t2_touchid_status import publish
 
 SOURCE = Path("/opt/t2-touchid/src/t2-fprintd.py")
 EXPECTED_SHA256 = "1cf34436fe6ae66e98229864b256b3ef1b5a21a772cb74ed50ed98acc840c336"
+DIRECT_DISCOVERY = "/usr/local/libexec/t2-biometric-discover.py"
+
+
+async def direct_discovery_port():
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, DIRECT_DISCOVERY,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(process.communicate(), 5.0)
+        if process.returncode != 0 or len(stdout) > 64:
+            raise RuntimeError("direct directory lookup failed")
+        value = stdout.strip()
+        if not value.isdigit() or not 49152 <= int(value) <= 65535:
+            raise RuntimeError("direct directory returned invalid port")
+        return int(value)
+    finally:
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            await process.wait()
+
+
+def prefer_direct_discovery(original):
+    async def discover(self):
+        if self.port is not None:
+            return await original(self)
+        try:
+            port = await direct_discovery_port()
+        except (OSError, RuntimeError, TimeoutError):
+            print("Touch ID direct directory unavailable; using original discovery.", flush=True)
+            return await original(self)
+        self.port = port
+        self.port_from_cache = False
+        print("Touch ID endpoint obtained from direct directory.", flush=True)
+        return port
+    return discover
 
 
 def timed_stage(label, original):
@@ -95,8 +135,10 @@ def install_overlay(namespace: dict) -> None:
     backend.verify = verify
     backend.notify_finger_requested = cue
     backend.notify_feedback = feedback
-    # Time existing calls, including cached discover() returns; do not change
-    # caching, retries, packets, timeout values, or return/exception semantics.
+    if hasattr(backend, "discover"):
+        backend.discover = prefer_direct_discovery(backend.discover)
+    # Existing cached returns and probe retry/authentication semantics remain.
+    # Only a cache miss now tries the evidenced directory before a full scan.
     for name, label in (("discover", "discovery"), ("_run_probe", "probe")):
         if hasattr(backend, name):
             setattr(backend, name, timed_stage(label, getattr(backend, name)))
