@@ -1,0 +1,82 @@
+--- a/t2bce_vhci/transfer.c
++++ b/t2bce_vhci/transfer.c
+@@ -177,6 +177,18 @@
+             list_empty(&q->endp->urb_list));
+ }
+ 
++/* Diagnostic only: no DMA addresses, buffers, or protocol payloads. */
++static void bce_vhci_log_bulk_out(struct bce_vhci_transfer_queue *q,
++        struct bce_vhci_urb *urb, const char *stage)
++{
++    if (!usb_endpoint_is_bulk_out(&q->endp->desc))
++        return;
++    pr_debug_ratelimited("t2bce_vhci: bulk-out stage=%s port=%d dev=%u ep=%02x urb_state=%d pending=%d active=%u paused_by=%x stalled=%u qstate=%u\n",
++            stage, bce_vhci_transfer_queue_port(q), q->dev_addr, q->endp_addr,
++            urb ? (int)urb->state : -1, atomic_read(&q->sq_out_pending),
++            q->active, q->paused_by, q->stalled, q->state);
++}
++
+ static void bce_vhci_urb_log_control(struct bce_vhci_urb *urb, const char *stage)
+ {
+     struct bce_vhci_transfer_queue *q = urb->q;
+@@ -262,6 +274,8 @@
+     struct urb *urb;
+     spin_lock_irqsave(&q->urb_lock, flags);
+     bce_vhci_transfer_queue_log_event(q, msg, "incoming");
++    if (msg->cmd == BCE_VHCI_CMD_TRANSFER_REQUEST)
++        bce_vhci_log_bulk_out(q, NULL, "firmware-request");
+     /* Paused queues may still complete in-flight work but must not deliver new work. */
+     if (!q->active) {
+         if (bce_vhci_transfer_queue_is_ep0(q) &&
+@@ -316,6 +330,7 @@
+     while ((c = t2bce_core_next_completion(sq))) {
+         if (c->status == T2BCE_COMPLETION_ABORTED) { /* We flushed the queue */
+             bce_vhci_transfer_queue_log_completion(q, sq, c, "aborted");
++            bce_vhci_log_bulk_out(q, NULL, "completion-aborted");
+             pr_debug("t2bce_vhci: [%02x] Got an abort completion\n", q->endp_addr);
+             if (is_sq_out && atomic_dec_if_positive(&q->sq_out_pending) == 0)
+                 wake_up(&q->sq_out_wait_queue);
+@@ -324,6 +339,7 @@
+         }
+         if (list_empty(&q->endp->urb_list)) {
+             bce_vhci_transfer_queue_log_completion(q, sq, c, "empty");
++            bce_vhci_log_bulk_out(q, NULL, "completion-without-urb");
+             pr_err("t2bce_vhci: [%02x] Got a completion while no requests are pending\n", q->endp_addr);
+             if (is_sq_out && atomic_dec_if_positive(&q->sq_out_pending) == 0)
+                 wake_up(&q->sq_out_wait_queue);
+@@ -332,6 +348,7 @@
+         bce_vhci_transfer_queue_log_completion(q, sq, c, "incoming");
+         pr_debug("t2bce_vhci: [%02x] Got a transfer queue completion\n", q->endp_addr);
+         urb = list_first_entry(&q->endp->urb_list, struct urb, urb_list);
++        bce_vhci_log_bulk_out(q, urb->hcpriv, "completion-incoming");
+         bce_vhci_urb_transfer_completion(urb->hcpriv, c);
+         if (is_sq_out && atomic_dec_if_positive(&q->sq_out_pending) == 0)
+             wake_up(&q->sq_out_wait_queue);
+@@ -1046,7 +1063,9 @@
+ 
+     t2bce_core_set_next_submission_single(urb->q->sq_out, addr, size);
+     atomic_inc(&urb->q->sq_out_pending);
++    bce_vhci_log_bulk_out(urb->q, urb, "submission-before-doorbell");
+     t2bce_core_submit_to_device(urb->q->sq_out);
++    bce_vhci_log_bulk_out(urb->q, urb, "submission-after-doorbell");
+     return 0;
+ }
+ 
+@@ -1076,7 +1095,9 @@
+     }
+ 
+     atomic_inc(&urb->q->sq_out_pending);
++    bce_vhci_log_bulk_out(urb->q, urb, "submission-before-doorbell");
+     t2bce_core_submit_to_device(urb->q->sq_out);
++    bce_vhci_log_bulk_out(urb->q, urb, "submission-after-doorbell");
+     return 0;
+ }
+ 
+@@ -1253,6 +1274,7 @@
+ static void bce_vhci_urb_resume(struct bce_vhci_urb *urb)
+ {
+     int status = 0;
++    bce_vhci_log_bulk_out(urb->q, urb, "resume-urb");
+     if (urb->state == BCE_VHCI_URB_WAITING_FOR_COMPLETION) {
+         status = bce_vhci_urb_data_transfer_in(urb, NULL);
+     }

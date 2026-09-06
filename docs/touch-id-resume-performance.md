@@ -8,6 +8,14 @@ matching; do not count a UI cue or a running service as authentication. Current
 measurements start at Linux's return-from-suspend event, not the wake keypress.
 Keypress-to-visible-frame and keypress-to-unlock remain separate measurements.
 
+## 18:53 implementation follow-up
+
+Client-disconnect cleanup and cancellation-safe subprocess ownership are now
+deployed, with offline/private-bus and idle system-bus checks passed. A bulk OUT
+metadata diagnostic patch builds but is not installed. See [implementation,
+validation, and rollback](touch-id-client-disconnect.md). No new sleep or scan
+has measured a benefit; the latest readiness result remains 4.982 seconds.
+
 ## 18:37 traced control: 4.982 seconds; transport stall remains
 
 Shawn reported that the wait still felt about the same. Linux returned from

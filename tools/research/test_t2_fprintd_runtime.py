@@ -4,6 +4,8 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import runpy
+import sys
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -13,6 +15,64 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OverlayTests(unittest.TestCase):
+    def test_stop_does_not_acknowledge_failed_child_cleanup(self):
+        from types import SimpleNamespace
+        device = SimpleNamespace(verify_task=None, backend=SimpleNamespace(_t2_child_cleanup_failed=True))
+        with self.assertRaisesRegex(RuntimeError, 'cleanup incomplete'):
+            asyncio.run(MODULE.cancel_verification_before_process(AsyncMock())(device, False))
+
+    def test_direct_creation_cancellation_reaps_eventual_child(self):
+        async def exercise():
+            started, release = asyncio.Event(), asyncio.Event()
+            process = Mock(returncode=None, wait=AsyncMock())
+            async def spawn(*args, **kwargs):
+                started.set()
+                await release.wait()
+                return process
+            with patch.object(MODULE.asyncio, 'create_subprocess_exec', side_effect=spawn):
+                task = asyncio.create_task(MODULE.direct_discovery_port())
+                await started.wait()
+                task.cancel()
+                release.set()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+            process.kill.assert_called_once()
+            process.wait.assert_awaited_once()
+        asyncio.run(exercise())
+
+    def test_pinned_probe_and_discovery_cancellation_reap_owned_children(self):
+        try:
+            import dbus_next  # noqa: F401
+        except ImportError:
+            self.skipTest('installed runtime venv required')
+        self.assertEqual(hashlib.sha256(MODULE.SOURCE.read_bytes()).hexdigest(), MODULE.EXPECTED_SHA256)
+        async def exercise(stage, project):
+            namespace = runpy.run_path(str(MODULE.SOURCE), run_name='_owned_child_integration')
+            MODULE.install_overlay(namespace)
+            backend = namespace['T2Backend'].__new__(namespace['T2Backend'])
+            backend.project_dir = project
+            backend.port = None
+            backend.process = None
+            backend.probe_command = lambda port: [sys.executable, '-c', 'import time; time.sleep(60)']
+            with patch.object(MODULE, 'direct_discovery_port', AsyncMock(side_effect=RuntimeError())):
+                task = asyncio.create_task(backend.discover() if stage == 'discover' else backend._run_probe(50123))
+                async def created():
+                    while backend.process is None:
+                        await asyncio.sleep(0.001)
+                    return backend.process
+                child = await asyncio.wait_for(created(), 3)
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await asyncio.wait_for(task, 3)
+                self.assertIsNotNone(child.returncode)
+                self.assertIsNone(backend.process)
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / 'src').mkdir()
+            (project / 'src/discover-biometric-port.py').write_text('import time; time.sleep(60)\n')
+            for stage in ('discover', 'probe'):
+                asyncio.run(exercise(stage, project))
+
     def test_pinned_stop_race_does_not_rediscover_and_reaps_child(self):
         try:
             import dbus_next  # noqa: F401

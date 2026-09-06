@@ -17,6 +17,8 @@ import sys
 import time
 
 from t2_touchid_status import publish
+from t2_fprintd_owner import owner_aware_bus
+from t2_fprintd_process import own_backend_subprocesses
 
 SOURCE = Path("/opt/t2-touchid/src/t2-fprintd.py")
 EXPECTED_SHA256 = "1cf34436fe6ae66e98229864b256b3ef1b5a21a772cb74ed50ed98acc840c336"
@@ -51,10 +53,21 @@ def event_driven_probe_command(original):
 
 
 async def direct_discovery_port():
-    process = await asyncio.create_subprocess_exec(
+    startup = asyncio.create_task(asyncio.create_subprocess_exec(
         sys.executable, DIRECT_DISCOVERY,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
+    ))
+    try:
+        process = await asyncio.shield(startup)
+    except asyncio.CancelledError:
+        process = await startup
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        await process.wait()
+        raise
     try:
         stdout, _ = await asyncio.wait_for(process.communicate(), 5.0)
         if process.returncode != 0 or len(stdout) > 64:
@@ -108,16 +121,24 @@ def timed_stage(label, original):
 
 
 def cancel_verification_before_process(original):
-    async def stop(self, require_running):
+    async def stop(self, require_running, owner_check=None):
         # Cancel the coroutine before terminating its child. Otherwise child
         # exit can look like a stale-cache failure and launch rediscovery while
         # the original stop method is awaiting process.wait(). No await here:
         # the original backend.cancel must capture self.process before the
         # cancelled probe coroutine runs its finally block and clears it.
-        task = self.verify_task
-        if task is not None and not task.done():
-            task.cancel()
-        return await original(self, require_running=require_running)
+        if not hasattr(self, '_t2_stop_lock'):
+            self._t2_stop_lock = asyncio.Lock()
+        async with self._t2_stop_lock:
+            if owner_check is not None and not owner_check():
+                return False
+            task = self.verify_task
+            if task is not None and not task.done():
+                task.cancel()
+            result = await original(self, require_running=require_running)
+            if getattr(self.backend, '_t2_child_cleanup_failed', False):
+                raise RuntimeError('fingerprint child cleanup incomplete; retain claim')
+            return result
     return timed_stage("verification-stop", stop)
 
 
@@ -130,6 +151,11 @@ def install_overlay(namespace: dict) -> None:
     device = namespace.get("FprintDevice")
     if device is not None:
         device._stop_verification = cancel_verification_before_process(device._stop_verification)
+    if 'main_async' in namespace:
+        namespace['main_async'].__globals__['MessageBus'] = owner_aware_bus(namespace)
+    for name in ('discover', '_run_probe'):
+        if hasattr(backend, name):
+            setattr(backend, name, own_backend_subprocesses(getattr(backend, name)))
 
     def verdict(result: object) -> str:
         events = result.get("match_events") if isinstance(result, dict) else None

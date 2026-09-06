@@ -2,6 +2,13 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+Latest implementation, 18:53 EDT: claiming-client disconnect now invokes backend
+cleanup, and probe/discovery children are owned and reaped across cancellation.
+Private-bus child/lock tests and live idle claim/disconnect checks pass. Changes
+are deployed; real sleep/scan benefit remains unmeasured. A metadata-only bulk
+OUT diagnostic patch builds but is not installed. See [implementation and next
+control](touch-id-client-disconnect.md). Last measured readiness remains 4.982 s.
+
 Latest control, 18:37 EDT: readiness **4.982 s**, fingerprint unlock completed.
 Lock contention/interface-up contributed negligibly; the 2.112-s rebind and
 1.407-s post-rebind wait remain. No verification-stop call was logged, so the
