@@ -13,6 +13,24 @@ SPEC.loader.exec_module(MODULE)
 
 
 class OverlayTests(unittest.TestCase):
+    def test_timing_preserves_return_and_arguments(self):
+        original = AsyncMock(return_value={"result": "unchanged"})
+        wrapped = MODULE.timed_stage("test", original)
+        instance = object()
+        with patch("builtins.print"):
+            result = asyncio.run(wrapped(instance, 123, option=True))
+        self.assertEqual(result, {"result": "unchanged"})
+        original.assert_awaited_once_with(instance, 123, option=True)
+
+    def test_timing_preserves_exception_and_hides_payload(self):
+        for error in (RuntimeError("PRIVATE_SENTINEL"), asyncio.CancelledError()):
+            wrapped = MODULE.timed_stage("test", AsyncMock(side_effect=error))
+            with patch("builtins.print") as output:
+                with self.assertRaises(type(error)) as caught:
+                    asyncio.run(wrapped(object()))
+            self.assertIs(caught.exception, error)
+            self.assertNotIn("PRIVATE_SENTINEL", str(output.call_args_list))
+
     def namespace(self):
         # Isolated function globals reproduce runpy behavior without D-Bus dependencies.
         namespace = {}

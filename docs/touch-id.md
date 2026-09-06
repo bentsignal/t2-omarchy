@@ -1,5 +1,9 @@
 # Touch ID on Linux: T2 research notes
 
+For current implementation priorities and measured resume latency, see the
+[Touch ID roadmap](touch-id-roadmap.md). The early bring-up notes below are
+historical; working verification does not yet establish Linux-native enrollment.
+
 > **Current result:** the macOS boot capture in
 > [`macos-touch-id-findings.md`](macos-touch-id-findings.md) supersedes earlier
 > fixed-port and host-address candidates retained below as research history.

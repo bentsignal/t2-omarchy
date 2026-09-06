@@ -12,11 +12,31 @@ import hashlib
 from pathlib import Path
 import runpy
 import asyncio
+import time
 
 from t2_touchid_status import publish
 
 SOURCE = Path("/opt/t2-touchid/src/t2-fprintd.py")
 EXPECTED_SHA256 = "1cf34436fe6ae66e98229864b256b3ef1b5a21a772cb74ed50ed98acc840c336"
+
+
+def timed_stage(label, original):
+    async def wrapped(self, *args, **kwargs):
+        started = time.monotonic()
+        print(f"Touch ID timing: {label} begin", flush=True)
+        outcome = "done"
+        try:
+            return await original(self, *args, **kwargs)
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
+        except Exception:
+            outcome = "failed"
+            raise
+        finally:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            print(f"Touch ID timing: {label} {outcome} elapsed_ms={elapsed_ms:.1f}", flush=True)
+    return wrapped
 
 
 def install_overlay(namespace: dict) -> None:
@@ -46,6 +66,7 @@ def install_overlay(namespace: dict) -> None:
             )
 
     async def verify(self):
+        self._t2_verify_started = time.monotonic()
         publish("scan", "starting")
         try:
             result = await original_verify(self)
@@ -63,6 +84,9 @@ def install_overlay(namespace: dict) -> None:
         # The pinned parser calls this only after its exact accepted-start cue.
         # A running service or a listed enrolled finger is not readiness.
         publish("scan", "ready")
+        started = getattr(self, "_t2_verify_started", None)
+        if started is not None:
+            print(f"Touch ID timing: verify-to-ready elapsed_ms={(time.monotonic() - started) * 1000:.1f}", flush=True)
         await original_cue(self)
 
     # runpy's returned dictionary is not necessarily the functions' globals.
@@ -71,6 +95,11 @@ def install_overlay(namespace: dict) -> None:
     backend.verify = verify
     backend.notify_finger_requested = cue
     backend.notify_feedback = feedback
+    # Time existing calls, including cached discover() returns; do not change
+    # caching, retries, packets, timeout values, or return/exception semantics.
+    for name, label in (("discover", "discovery"), ("_run_probe", "probe")):
+        if hasattr(backend, name):
+            setattr(backend, name, timed_stage(label, getattr(backend, name)))
 
 
 def main() -> None:

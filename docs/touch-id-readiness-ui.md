@@ -2,6 +2,10 @@
 
 ## Current scope decision
 
+The active order is now documented in [implementation priorities](touch-id-roadmap.md):
+verification/resume performance first, Linux-native enrollment next, Touch Bar
+work deferred. That roadmap includes the measured 36-second wake-to-ready trace.
+
 Shawn accepted the lock-screen presentation and explicitly deferred Touch Bar
 work. Leave its hardware mode, native function row, drivers, and renderer alone.
 The research below is retained as a future reference, not an active installation
