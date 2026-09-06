@@ -106,6 +106,13 @@ then immediate-interaction suspend/resume controls and journal stage timings.
 The separate ~10.8-second transport recovery remains an unresolved latency
 component; this change alone cannot establish instant wake.
 
+Awake acceptance after deployment: Shawn reported successful fingerprint
+unlock on September 6. The journal at 15:43:51–15:43:53 EDT shows a cached
+discovery return (0.0 ms), **873.3 ms verification-to-ready**, and 2300.1 ms
+total probe time including touch. This validates the awake cached path, not
+the post-resume rediscovery path. Shawn authorized the next sleep/wake test;
+its result is still pending.
+
 ## 2. Next: Linux-native fingerprint enrollment
 
 This remains required. Users should eventually enroll and manage fingerprints
