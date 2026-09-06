@@ -1,5 +1,25 @@
 # Touch ID readiness UX and Touch Bar investigation — 2026-09-06
 
+## 18:20 control: first wake message visually accepted
+
+Shawn confirmed that the first Touch ID message was now the waking-up message,
+with no premature ready cue. The pre-sleep UI acknowledged preparation at
+18:12:26.190697 EDT; user.slice froze at 18:12:27.107974. This is visual
+acceptance of the pre-freeze preparation in one real suspend/resume control.
+The session unlocked at 18:20:05.512026 after fingerprint success feedback.
+
+At Shawn's request, the repo model and installed user-owned clone now say
+“Touch ID waking up”, “Checking Touch ID”, and “Touch ID preparing”, without
+the redundant password-available suffix. The unavailable message uses a period:
+“Touch ID unavailable. Use password”. Presentation logic is unchanged.
+
+Performance regressed to **8.382277 seconds resume-to-ready** in this control;
+see [timing evidence](touch-id-prearm-latency.md). The old verification probe
+failed after wake and attempted discovery during recovery despite pre-sleep
+PAM abort. The UI latch worked, but backend cancellation/operation-lock timing
+needs investigation; do not infer a confirmed cause or repeatability from this
+single trace. A separate negative-finger control remains pending.
+
 ## 17:32 control: old ready cue persists; pre-freeze preparation added
 
 Shawn explicitly observed the premature ready cue again. Do not mark the

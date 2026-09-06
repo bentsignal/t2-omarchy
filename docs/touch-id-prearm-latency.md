@@ -1,5 +1,41 @@
 # Bounded pre-arm latency experiment — September 6, 2026
 
+## 18:20 control: visual fix passes; readiness takes 8.382 seconds
+
+This was suspend/resume, not a reboot. System suspend began September 6 at
+18:12:27.110459 EDT and returned at 18:19:55.247074. Shawn confirmed the first
+visible Touch ID message correctly said waking up. The lock recorded fingerprint
+success feedback followed by unlock at 18:20:05.512026.
+
+| Event | September 6 EDT | After system resume |
+|---|---|---:|
+| System returned from suspend | 18:19:55.247074 | 0 |
+| T2 carrier connected | 18:19:55.840244 | 0.593 s |
+| Successful-resume guard verified | 18:19:57.194282 | 1.947 s |
+| Guarded rebind started | 18:19:58.745992 | 3.499 s |
+| Rebind finished | 18:20:00.822745 | 5.576 s |
+| T2 peer reachable | 18:20:02.831091 | 7.584 s |
+| Verification started | 18:20:02.843306 | 7.596 s |
+| Actual accepted scan cue | 18:20:03.629351 | 8.382 s |
+| Screen unlocked | 18:20:05.512026 | 10.265 s |
+
+Readiness was **3.143 seconds slower** than the prior 5.239607-second control.
+Rebind took 2076.7 ms; post-rebind reachability took about 2.008 seconds.
+Direct discovery took 268.8 ms, pre-arm 170.6 ms (`early_marker=true`), and
+verification-to-ready including discovery took 786.3 ms. Unlock time includes
+the user's touch and must not be reported as sensor startup time.
+
+The pre-sleep probe logged failure at 18:19:56.812951 (`elapsed_ms=40045.0`),
+then attempted direct discovery and original discovery while recovery was in
+progress. Discovery failed at 18:20:01.104173. After transport returned, a fresh
+attempt used the direct directory successfully. The UI monitor acknowledged
+preparation before freeze; the visible UI remained truthful, but aborting its
+PAM attempt did not prevent this old backend work from appearing after wake.
+Investigate cancellation and operation-lock timing before assigning causality.
+The 50-ms polling change has no demonstrated improvement in this control.
+Negative-finger testing and performance repeatability remain pending. No new
+sleep or biometric test was initiated while recording these results.
+
 ## Hardware result at 17:32 EDT and next improvement
 
 The next actual suspend/resume reached sensor readiness in **5.239607 s**,

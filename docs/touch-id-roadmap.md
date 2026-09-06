@@ -2,6 +2,16 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+Latest checkpoint, 18:20 EDT: Shawn visually accepted the first waking-up
+message after the pre-freeze UI fix. Fingerprint unlock completed, but
+resume-to-ready regressed to **8.382 s** (previous 5.240 s). Old backend
+verification/discovery continued during recovery; cancellation and lock timing
+need investigation before attributing the slowdown. Status wording is simplified
+at Shawn's request. See [UI](touch-id-readiness-ui.md) and
+[timing evidence](touch-id-prearm-latency.md). Negative control remains pending.
+
+The following checkpoints preserve earlier measurements.
+
 Latest checkpoint, 17:32 EDT: pre-arm optimization exercised successfully;
 resume-to-ready **5.240 s**, cached verification-to-ready **525.8 ms**. The
 premature ready UI cue still failed visual acceptance. A pre-freeze user-session
