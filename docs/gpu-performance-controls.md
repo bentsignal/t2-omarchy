@@ -119,6 +119,10 @@ Use the maintained hook for updates.
   browser selected Intel despite DRI_PRIME. The X11-backed browser selected AMD.
   The final launcher therefore explicitly uses X11 through Xwayland; headless
   success alone was insufficient to establish the real browser result.
+- At 17:07 EDT, the installed launcher was checked after updating it and
+  closing only the agent-created diagnostic browser instances. The launched
+  visible WebGL page reported AMD Radeon with WebGL 2 enabled. Installed
+  launcher bytes match the repository source. Shawn will check game FPS.
 - The user-owned popup was visually checked after restarting the shell;
   controls and actual AMD state were visible alongside the existing profiles.
 - Actual cable unplug/reconnect, full game performance and a fresh boot without
