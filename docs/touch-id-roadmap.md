@@ -2,6 +2,12 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+September 11 startup blocker: the next sleep test was not initiated because
+fprintd cannot start. SEP keybag loading and a separate read-only capability
+query both time out. Normal service retry failed; a supervised full shutdown
+and Linux power-on is the next recovery attempt. See [diagnostic checkpoint](touch-id-sep-startup-timeout.md).
+The single-cancel wake correction remains untested on hardware.
+
 Latest checkpoint, 19:09 EDT: the 19:04 control failed because double cancellation
 interrupted our new child cleanup and retained the claim. Transport recovered in
 4.483 s, but Touch ID never reached ready; password unlock worked. The composition

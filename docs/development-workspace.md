@@ -26,6 +26,11 @@ historical evidence; translate `~/dev/<reference>` to
 
 ## Start here
 
+September 11: fprintd is blocked by SEP mailbox startup timeouts, independently
+reproduced by a read-only capability query. See [current recovery checkpoint](touch-id-sep-startup-timeout.md)
+before starting any sleep or fingerprint test. A supervised shutdown/power-on
+is pending; no live reset was attempted.
+
 Current work: [Touch ID roadmap](touch-id-roadmap.md). At the September 6
 workspace cleanup checkpoint, working macOS-enrolled-finger authentication is
 retained. Latest measured resume-to-ready was 4.982 seconds (previous 8.382 and 5.240). The
