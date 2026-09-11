@@ -1,0 +1,22 @@
+[Unit]
+Description=AMD performance selection for T2 hybrid graphics
+ConditionKernelCommandLine=t2.graphics=hybrid
+After=t2-hybrid-low.service power-profiles-daemon.service
+Requires=t2-hybrid-low.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/libexec/t2-gpu-policy.py
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=t2-gpu
+RuntimeDirectoryMode=0755
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=full
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+UMask=0022
+
+[Install]
+WantedBy=graphical.target

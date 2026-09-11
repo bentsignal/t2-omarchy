@@ -1,5 +1,10 @@
 # Intel-primary hybrid investigation — September 10, 2026
 
+September 11 follow-up: [GPU performance controls and maintained boot entries](gpu-performance-controls.md)
+adds AMD selection to the battery popup, an AMD browser launcher, and a verified
+repair for stale manual-entry hashes after kernel updates. It supersedes the
+fixed-low-only policy and older test-entry names described below.
+
 Status: configuration **installed; first hybrid boot and internal-display
 operation verified**. External-display reconnect and suspend validation remain
 pending. Eleven offline tests, shell syntax, udev validation and systemd unit

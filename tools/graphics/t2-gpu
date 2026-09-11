@@ -1,0 +1,52 @@
+#!/usr/bin/python3
+"""User-facing AMD mode control. No privileged arbitrary command execution."""
+import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import sys
+
+
+def request(command):
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(8)
+        client.connect('/run/t2-gpu/control.sock')
+        client.sendall(command.encode())
+        data = b''
+        while not data.endswith(b'\n'):
+            piece = client.recv(4096)
+            if not piece:
+                break
+            data += piece
+        result = json.loads(data)
+    if result.get('error'):
+        raise RuntimeError(result['error'])
+    return result
+
+
+def main():
+    command = sys.argv[1] if len(sys.argv) > 1 else 'status'
+    if command == 'browser':
+        request('performance')
+        profile = Path.home() / '.local/share/t2-gpu-browser'
+        profile.mkdir(parents=True, exist_ok=True, mode=0o700)
+        environment = os.environ.copy()
+        environment['DRI_PRIME'] = 'pci-0000_03_00_0'
+        # A dedicated profile prevents forwarding this request to the Intel browser.
+        subprocess.Popen(['/usr/bin/helium-browser', '--user-data-dir=' + str(profile),
+                          '--use-gl=angle', '--use-angle=gl', '--ozone-platform=x11', '--no-first-run',
+                          *(sys.argv[2:] or ['about:blank'])], env=environment,
+                         start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    if command not in ('status', 'auto', 'performance', 'saver'):
+        raise RuntimeError('Usage: t2-gpu [status|auto|performance|saver|browser [URL]]')
+    print(json.dumps(request(command)))
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError) as error:
+        print(json.dumps({'error': str(error)}))
+        sys.exit(1)
