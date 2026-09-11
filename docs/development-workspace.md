@@ -26,6 +26,12 @@ historical evidence; translate `~/dev/<reference>` to
 
 ## Start here
 
+Latest September 11 state: the user completed shutdown and updated to kernel
+7.2.4. Its missing custom SEP module has been rebuilt and registered with DKMS.
+The original mailbox timeout still blocks fprintd. Start with
+[the current repair/diagnostic checkpoint](touch-id-sep-dkms.md); do not repeat
+an already-completed shutdown or initiate a fingerprint/sleep test yet.
+
 September 11: fprintd is blocked by SEP mailbox startup timeouts, independently
 reproduced by a read-only capability query. See [current recovery checkpoint](touch-id-sep-startup-timeout.md)
 before starting any sleep or fingerprint test. A supervised shutdown/power-on

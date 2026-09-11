@@ -1,5 +1,11 @@
 # SEP startup timeout — September 11, 2026
 
+Update after the user's shutdown: kernel 7.2.4 initially lacked the custom driver.
+The missing module is now repaired with DKMS, but the mailbox timeout persists.
+A return-code trace shows successful send followed by receive timeout. See
+[current evidence](touch-id-sep-dkms.md); the shutdown proposal below is history,
+not an outstanding untried step.
+
 The supervised sleep test was not started: fprintd was already inactive while
 awake. Its prerequisite `t2-keybag-load.service` failed with
 `T2_AKS_IOC_EXCHANGE: Connection timed out`. The loader failed during initial

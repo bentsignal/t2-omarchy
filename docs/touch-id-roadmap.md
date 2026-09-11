@@ -2,6 +2,13 @@
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
+September 11 after shutdown/update: kernel 7.2.4 was missing the custom SEP
+module. A pinned DKMS installer now builds/installs it and enables rebuilds on
+future kernel/header updates. Transport starts, but the original AKS timeout
+persists: traced mailbox send succeeds, receive times out. fprintd remains
+inactive and the icon absent. See [repair and current evidence](touch-id-sep-dkms.md).
+Do not repeat the earlier shutdown proposal as if it had not been tried.
+
 September 11 startup blocker: the next sleep test was not initiated because
 fprintd cannot start. SEP keybag loading and a separate read-only capability
 query both time out. Normal service retry failed; a supervised full shutdown
