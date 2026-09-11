@@ -24,6 +24,7 @@ supporting tools, ignored research downloads, and the current work checkpoint.
 
 - [Wi-Fi speed workaround and reboot persistence](docs/wifi-performance.md)
 - [Power management and dual boot modes](docs/power-management.md)
+- [Intel-primary hybrid graphics and measured battery improvements](docs/intel-primary-hybrid.md)
 - [Touch ID / T2 Secure Enclave research](docs/touch-id.md)
 - [Touch ID cold-boot checkpoint](docs/touch-id-cold-boot.md)
 - [Touch ID native-enrollment checkpoint](docs/touch-id-native-enrollment.md)

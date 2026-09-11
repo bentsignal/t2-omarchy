@@ -1,5 +1,12 @@
 # Power management on MacBookPro16,1
 
+September 10 follow-up: an [Intel-primary hybrid trial](intel-primary-hybrid.md)
+is installed to avoid recurring battery-mode reboots while keeping AMD available
+at low DPM. The linked community result of approximately 4 W is AMD GPU power,
+not whole-laptop consumption. The first hybrid boot and internal-display use
+are verified; external-display and suspend testing remain pending. The
+measurements and boot arrangement below describe the earlier baseline.
+
 These notes describe measurements made on a 2019 16-inch Intel/T2 MacBook Pro
 running Omarchy/Arch and `linux-t2` kernel
 `7.1.8-arch1-Watanare-T2-3-t2`. They are observations from this machine, not a

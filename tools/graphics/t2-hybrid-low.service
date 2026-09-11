@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep AMD at low DPM in the opt-in T2 Intel-primary hybrid boot
+ConditionKernelCommandLine=t2.graphics=hybrid
+After=systemd-modules-load.service sys-kernel-debug.mount
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/libexec/t2-hybrid-low.py
+TimeoutStartSec=40
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

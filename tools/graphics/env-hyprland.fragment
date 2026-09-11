@@ -1,0 +1,6 @@
+# Append to ~/.config/uwsm/env-hyprland; only affects the hybrid test boot.
+case " $(cat /proc/cmdline) " in
+  *" t2.graphics=hybrid "*)
+    export AQ_DRM_DEVICES=/dev/dri/t2-intel:/dev/dri/t2-amd
+    ;;
+esac
