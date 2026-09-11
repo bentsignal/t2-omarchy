@@ -22,6 +22,7 @@ supporting tools, ignored research downloads, and the current work checkpoint.
 
 ## Guides
 
+- [Wi-Fi speed workaround and reboot persistence](docs/wifi-performance.md)
 - [Power management and dual boot modes](docs/power-management.md)
 - [Touch ID / T2 Secure Enclave research](docs/touch-id.md)
 - [Touch ID cold-boot checkpoint](docs/touch-id-cold-boot.md)
