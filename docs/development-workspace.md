@@ -1,5 +1,10 @@
 # One project workspace
 
+Latest continuation: a read-only version-1 capability handshake is configured
+for the next supervised reboot; the running driver is unchanged. See
+[startup control and decision points](touch-id-sep-dkms.md#startup-handshake-control-prepared-september-11).
+Touch ID remains unavailable; this is not a completed repair.
+
 Open `/home/shawn/dev/t2-omarchy` in an editor or AI coding product. That folder
 is the Git root for `https://github.com/bentsignal/t2-omarchy.git`. There is no
 requirement to launch a CLI from `/home/shawn` or to open all of `~/dev`.
@@ -34,8 +39,7 @@ an already-completed shutdown or initiate a fingerprint/sleep test yet.
 
 September 11: fprintd is blocked by SEP mailbox startup timeouts, independently
 reproduced by a read-only capability query. See [current recovery checkpoint](touch-id-sep-startup-timeout.md)
-before starting any sleep or fingerprint test. A supervised shutdown/power-on
-is pending; no live reset was attempted.
+before starting any sleep or fingerprint test. That shutdown has since been completed; no live reset was attempted.
 
 Current work: [Touch ID roadmap](touch-id-roadmap.md). At the September 6
 workspace cleanup checkpoint, working macOS-enrolled-finger authentication is

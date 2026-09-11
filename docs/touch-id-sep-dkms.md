@@ -82,3 +82,40 @@ no validated live reset path. Current state: SEP transport active, keybag loader
 failed, fprintd inactive, password fallback available. The fingerprint icon is
 still absent for this reason. The September 6 single-cancel wake fix remains
 pending live acceptance, and last successful measured readiness remains 4.982 s.
+
+## Startup-handshake control prepared September 11
+
+Historical journal comparison narrows the regression: boot
+`eba19a65afd44359bdf2f5c18f9e3b9d` successfully loaded the keybag on September 10
+at 21:30:07, with kernel 7.1.8 and the same graphics/IOMMU command-line settings
+as the subsequent failing 7.1.8 boot. That successful boot suspended at 01:46
+on September 11. This is chronology, not proof that sleep caused the failure.
+The current PCI function is D0, bus mastering enabled, in an identity IOMMU
+domain; no second SEP driver is loaded.
+
+The normal driver exchange always constructs version-2 envelopes. Its existing
+optional `probe_capabilities` path instead sends one read-only version-1
+capability request before exposing the character devices, validating the
+compact version-1 reply and digest. This separates initial protocol negotiation
+from the currently failing version-2 requests. Earlier successful production
+boots also skipped this optional query, so its absence is not a proven cause.
+No environment-setup or new authentication operation has been enabled.
+
+Installed `tools/research/t2-sep-startup-diagnostic.conf` as
+`/etc/modprobe.d/t2-sep-startup-diagnostic.conf`. Verified modprobe resolves the
+DKMS module with `probe_capabilities=1` while preserving OOL/ACM and platform
+options. The running module remains unchanged; this takes effect on the next
+user-supervised reboot. No reboot has been initiated. This is a diagnostic
+control, not a claimed repair of the remaining timeout.
+
+After reboot, read the kernel's capability result and the normal prerequisite
+service results before sending another request. If the capability query passes
+and keybag loading still fails, investigate version-2/environment initialization.
+If the version-1 query itself times out, the missing version negotiation alone
+cannot explain the failure; pursue transport/firmware state. If startup works,
+verify the visible icon and obtain a supervised positive/negative fingerprint
+control before claiming recovery. Do not repeat the same startup retry.
+
+Rollback of this diagnostic is removal of only
+`/etc/modprobe.d/t2-sep-startup-diagnostic.conf`; its effect ends on a later boot.
+Never force-unload the registered module to apply or roll back this option.

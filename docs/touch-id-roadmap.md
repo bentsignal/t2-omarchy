@@ -1,5 +1,10 @@
 # Touch ID implementation priorities
 
+Latest continuation: a read-only version-1 capability handshake is configured
+for the next supervised reboot; the running driver is unchanged. See
+[startup control and decision points](touch-id-sep-dkms.md#startup-handshake-control-prepared-september-11).
+Touch ID remains unavailable; this is not a completed repair.
+
 Updated 2026-09-06 after Shawn authorized either work order.
 
 September 11 after shutdown/update: kernel 7.2.4 was missing the custom SEP
@@ -11,8 +16,7 @@ Do not repeat the earlier shutdown proposal as if it had not been tried.
 
 September 11 startup blocker: the next sleep test was not initiated because
 fprintd cannot start. SEP keybag loading and a separate read-only capability
-query both time out. Normal service retry failed; a supervised full shutdown
-and Linux power-on is the next recovery attempt. See [diagnostic checkpoint](touch-id-sep-startup-timeout.md).
+query both time out. Normal service retry and the subsequent shutdown/power-on both failed. See [diagnostic checkpoint](touch-id-sep-startup-timeout.md).
 The single-cancel wake correction remains untested on hardware.
 
 Latest checkpoint, 19:09 EDT: the 19:04 control failed because double cancellation
