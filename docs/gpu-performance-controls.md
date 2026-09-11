@@ -1,5 +1,11 @@
 # T2 GPU performance controls and maintained boot entries
 
+Latest direction: Shawn confirmed restored game performance but rejected the
+separate-browser workflow. The popup is simplified and a
+[session-wide AMD rendering trial](amd-session-rendering.md) is prepared for
+the next login. The launcher section below documents the earlier experiment;
+its button is no longer in the popup.
+
 Implemented September 11, 2026 on MacBookPro16,1, following the
 [Intel-primary hybrid measurements](intel-primary-hybrid.md).
 

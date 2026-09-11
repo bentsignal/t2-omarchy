@@ -26,6 +26,7 @@ supporting tools, ignored research downloads, and the current work checkpoint.
 - [Power management and dual boot modes](docs/power-management.md)
 - [Intel-primary hybrid graphics and measured battery improvements](docs/intel-primary-hybrid.md)
 - [GPU performance menu and automatic boot-entry maintenance](docs/gpu-performance-controls.md)
+- [Session-wide AMD rendering trial and acceptance checks](docs/amd-session-rendering.md)
 - [Touch ID / T2 Secure Enclave research](docs/touch-id.md)
 - [Touch ID cold-boot checkpoint](docs/touch-id-cold-boot.md)
 - [Touch ID native-enrollment checkpoint](docs/touch-id-native-enrollment.md)

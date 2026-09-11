@@ -8,10 +8,9 @@
             fontFamily: root.bar.fontFamily
           }
           Text {
+            visible: !!root.gpuState.error
             width: parent.width
-            text: root.gpuState.error ? "AMD control unavailable: " + root.gpuState.error
-              : "AMD: " + (root.gpuState.level === "high" ? "Performance" : "Power saver")
-                + (root.gpuState.mode === "auto" ? " (automatic)" : " (override)")
+            text: root.gpuState.error ? "AMD control unavailable: " + root.gpuState.error : ""
             wrapMode: Text.WordWrap
             color: root.bar.foreground
             font.family: root.bar.fontFamily
@@ -37,24 +36,7 @@
           }
           Text {
             width: parent.width
-            text: "Auto follows Performance on AC and saves power on battery. Overrides reset when power is connected or disconnected."
-            wrapMode: Text.WordWrap
-            color: root.bar.foreground
-            opacity: 0.7
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.bodySmall
-          }
-          Button {
-            width: parent.width
-            text: "Launch AMD browser"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            bordered: true
-            onClicked: root.setGpuMode("browser")
-          }
-          Text {
-            width: parent.width
-            text: "Opens a separate browser profile for games. Existing windows keep their current GPU."
+            text: "Auto follows the power profile on AC and saves power on battery."
             wrapMode: Text.WordWrap
             color: root.bar.foreground
             opacity: 0.7
