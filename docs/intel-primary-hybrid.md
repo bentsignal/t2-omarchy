@@ -6,6 +6,23 @@ pending. Eleven offline tests, shell syntax, udev validation and systemd unit
 checks passed. Installed system files match repository sources and are
 root-owned. The first reboot into the hybrid configuration succeeded.
 
+## Persistent default confirmed, September 10 at 21:59 EDT
+
+Shawn authorized making this configuration the normal boot choice.
+`tools/graphics/set-hybrid-default.py` completed successfully, moved the hybrid
+entry ahead of all other entries, and set `default_entry: 1`. Full boot-file
+readback matched the intended result. Existing AMD, Intel-off, and EFI recovery
+entries remain available. Backup before changing the default:
+`/var/lib/t2-hybrid-trial/default-20260911T015905Z/limine.conf`.
+
+The AMD low-DPM service remains enabled, the battery preference is saved as
+`power-saver`, and the conditional UWSM and phantom-panel settings are installed.
+No additional reboot was performed to test automatic menu selection; the same
+hybrid entry was already booted successfully by manual selection. The original
+installation section below records the earlier default before this change.
+Kernel/boot-menu regeneration after upgrades should be checked for preservation
+of this manually maintained entry, its EFI image hash, and default ordering.
+
 ## First boot and power follow-up, September 10, 21:35–21:41 EDT
 
 The user rebooted into the trial. Its service succeeded, verifying Intel mux
