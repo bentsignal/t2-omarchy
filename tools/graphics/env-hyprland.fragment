@@ -1,6 +1,8 @@
-# Append to ~/.config/uwsm/env-hyprland; only affects the hybrid test boot.
+# Append to ~/.config/uwsm/env-hyprland; only affects the hybrid boot.
 case " $(cat /proc/cmdline) " in
   *" t2.graphics=hybrid "*)
+    # Remove the AMD-first trial defaults when returning to Intel rendering.
+    unset DRI_PRIME MESA_VK_DEVICE_SELECT
     export AQ_DRM_DEVICES=/dev/dri/t2-intel:/dev/dri/t2-amd
     ;;
 esac

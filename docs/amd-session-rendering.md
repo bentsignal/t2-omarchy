@@ -1,5 +1,11 @@
 # Session-wide AMD rendering trial
 
+**Current outcome: battery acceptance failed. Intel-first rendering has been
+restored in the next-login configuration; the current session remains AMD-first
+until Shawn logs out/in.** The live controller was returned to Auto after the dock recovery checks (high
+on AC with the Performance profile).
+The seamless performance/battery requirement remains unresolved.
+
 September 11, 2026: Shawn confirmed approximately **28 FPS in the normal Intel
 browser and 60 FPS in the separate AMD browser**. The offload configuration
 restored performance but failed the usability requirement: the same normal
@@ -113,3 +119,63 @@ experimental session cannot display a usable desktop, the existing AMD boot
 entry does not include the hybrid marker, so this conditional environment
 configuration does not apply there. The GPU-disabled recovery entry also
 remains available. Do not delete either browser profile as part of rollback.
+
+
+## Battery regression and rollback preparation
+
+Shawn subsequently reported expected game performance on AC, but approximately
+40 W after unplugging and reopening the normal browser. Auto, Performance and
+Power saver appeared ineffective, with the game still reaching 60 FPS. This is
+a user observation, not a controlled idle comparison. The previous roughly
+20 W browsing behavior is the desired battery target.
+
+Read-only service logs confirm an actual cable transition selected low at
+20:14:21 (AC=False), followed by high on reconnect at 20:17:14. During diagnosis
+the machine was charging, so battery current cannot be interpreted as total
+system consumption. GPU telemetry showed 15–18 W in high. Setting Power saver
+was accepted by the controller and kernel; after eight seconds AMD still
+reported 14 W and 750 MHz memory, despite a low DPM readback. Five subsequent
+samples reported 14–15 W and 750 MHz. These are AMD sensor measurements, not
+whole-system measurements. Sustaining 60 FPS alone does not establish that a
+power limit failed; the GPU power readings establish that this configuration
+has an excessive GPU baseline for the stated battery goal.
+
+A newly enumerated Dell DP-11 output appeared at 0×0 in Hyprland while the kernel
+reported its connector connected but disabled. Repeated stream-add err 28
+messages accompanied the cable changes. Temporarily disabling DP-11 through
+Hyprland did not lower the measured GPU power. The original monitor rules were
+then restored with reload and produced no config errors. This experiment does
+not establish the cause of the pinned memory clock; rendering topology and
+driver/display state remain possible contributors.
+
+The installed env-hyprland now matches the Intel-first fragment, which explicitly
+unsets the two AMD application-selection variables from the trial. The AMD
+configuration was backed up alongside it. No session termination, GPU reset,
+unbind or reboot was performed. The rollback needs a user-initiated logout/login
+and a fresh battery measurement before calling the earlier baseline recovered.
+Normal apps will again default to Intel, so this rollback sacrifices the trial's
+automatic AMD rendering; the existing low/high menu cannot migrate their live
+graphics contexts. A complete dynamic solution remains outstanding.
+
+
+## Dock display regression: recovery still pending
+
+Shawn confirmed the dock provides both charging power and the external display,
+and that the Dell now shows no signal. This identifies the 0×0 output as an
+actual user-visible regression, not a harmless phantom. The previous fixed
+DP-10 rule no longer matched DP-11 after reconnection. The installed monitor
+rule now matches `desc:Dell Inc. DELL S2721DS 6RW0VY3` and requests 2560×1440 at
+59.95 Hz with the existing layout. The reproducible snippet is
+`tools/graphics/monitors-dell-dock.fragment.lua`. The original local file was
+backed up. Description matching follows the
+[Hyprland output-selection documentation](https://wiki.hypr.land/configuring/core/monitors/output-selection/).
+
+Reload and config validation passed, but **the external display is not yet
+restored**. Setting AMD high and requesting the conservative mode still left
+DP-11 at 0×0. Aquamarine reports failed atomic modeset tests/commits with Invalid
+argument, alongside the kernel stream-add failures. The connector-name fix
+addresses persistent configuration but does not repair the current driver state.
+The next bounded recovery step is a user-initiated dock unplug/replug, followed
+by checking actual output size, kernel connector enable state and visible signal.
+If that fails, the already-prepared Intel-first configuration needs logout/login.
+Do not claim either step succeeded before observing it.
