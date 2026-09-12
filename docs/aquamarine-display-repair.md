@@ -123,3 +123,23 @@ rather than blindly keeping or removing a pin.
 5. Record whether the intermittent black square recurs; one clean crossing or
    login does not prove it is fixed.
 6. Recheck normal-browser gaming and unplugged browsing power for regressions.
+
+
+## First login with the candidate
+
+Shawn logged out/in with the dock attached and confirmed both monitors working.
+New compositor PID 1651470 maps candidate build ID
+`f6c07bc4372a1f826599652c82c8010fdda61afe`; both Intel eDP-1 and AMD DP-11 are
+kernel-enabled. The 18:01:03 Hyprland crash belongs to outgoing PID 1183663,
+which was already verified to have the old library mapped. It does not establish
+a crash in the new build. No new greeter Hyprland crash appears in the inspected
+ten-minute coredump list, but that alone does not establish crash resolution.
+
+Shawn supplied phone photo IMG_5772.jpg showing an opaque black square across
+the lower Omarchy logo and password field on the internal display. The artifact
+persisted at this login; no claim of artifact resolution is made. Original
+attachment remains in the local T3 attachment store (not committed, including
+its surrounding reflections/metadata):
+`/home/shawn/.t3/userdata/attachments/d5966f91-73b0-4c1f-a6d7-9efb2f1018a6-af4e6c0e-c58c-4fb6-8a18-1dc5e31e60ff.jpg`.
+Next checkpoint is one physical dock disconnect/reconnect in the patched
+session, with no logout or policy changes between them.
