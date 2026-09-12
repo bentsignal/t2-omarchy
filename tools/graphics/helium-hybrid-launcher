@@ -1,0 +1,10 @@
+#!/bin/sh
+# Keep the normal Helium profile on AMD in hybrid mode, with Intel desktop rendering.
+# Do not change the selected GPU power policy or create a separate browser profile.
+case " $(cat /proc/cmdline) " in
+  *" t2.graphics=hybrid "*)
+    export DRI_PRIME=pci-0000_03_00_0
+    exec /usr/bin/helium-browser --use-gl=angle --use-angle=gl --ozone-platform=x11 "$@"
+    ;;
+  *) exec /usr/bin/helium-browser "$@" ;;
+esac

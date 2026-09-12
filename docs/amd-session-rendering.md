@@ -300,3 +300,32 @@ spike is unexplained; these values must not be represented as a proven stable
 browsing baseline. Auto reports battery/power-saver/low. Game FPS and a sustained
 browsing comparison remain the user-facing acceptance steps. No claim of
 arbitrary live Intel-to-AMD context migration is made.
+
+
+## September 12: persist the normal-browser AMD selection trial
+
+Shawn closed/reopened the browser after the one-off AMD launch and again saw
+about 28 FPS with AMD and CPU Performance selected on battery. The ordinary
+launcher was still unchanged, so reopening did not retain the test environment.
+Controller status confirmed Performance, AC=False, profile Performance and high;
+this was not a failure to request high DPM.
+
+Installed `tools/graphics/helium-hybrid-launcher` as
+`~/.local/libexec/t2-graphics/helium-browser` using
+`tools/graphics/install-normal-browser.py`. A user-owned override of
+`helium.desktop` points every Exec action at that wrapper. The normal launcher,
+URL handlers and private-window action retain the original profile. In hybrid
+mode only, the wrapper supplies DRI_PRIME AMD and the previously tested ANGLE GL
+/X11 flags. Other boot modes delegate unchanged to /usr/bin/helium-browser.
+It does not change the CPU or GPU power policy. Direct /usr/bin invocations
+bypass the override; no system binary or packaged desktop entry was modified.
+
+Shell syntax and desktop-file validation passed. The default browser remains
+helium.desktop, and Omarchy browser/webapp launch code was inspected to confirm
+it resolves the first Exec token from the user desktop entry. Main browser
+PID 3308999 was still running, so actual reopen via the corrected launcher,
+game FPS and browsing power remain pending. Do not confuse launch-path
+validation with hardware acceptance. This affects Helium only, not arbitrary
+applications. Rollback removes the user desktop override and wrapper (restore
+any backed-up previous files), then updates the desktop database and restarts
+the browser when ready. The Intel desktop configuration stays intact.
