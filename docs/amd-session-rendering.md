@@ -6,7 +6,7 @@ restored performance but failed the usability requirement: the same normal
 browser and applications must retain access to AMD without separate profiles
 or relaunching them each time the power mode changes.
 
-## What is prepared
+## Installed configuration
 
 `~/.config/uwsm/env-hyprland` now contains the repository's
 `tools/graphics/env-hyprland-amd-render.fragment`. It applies only in the hybrid
@@ -24,12 +24,10 @@ assumption; **battery consumption and actual application selection must be
 remeasured**. It is not a claim of migrating live graphics contexts between
 GPUs, and applications with explicit device selection may ignore the defaults.
 
-The change is **prepared for the next graphical login, not yet validated**.
-The running session still uses the old renderer environment. No logout or
-reboot has been performed by the agent. One initial logout/login is needed to
-start the compositor and normal browser in the new configuration. Subsequent
-low/high toggles should leave those same processes and contexts running.
-Whether this matches the prior 60 FPS result remains a live acceptance test.
+Shawn logged out and back in on September 11. **The desktop and normal browser
+now select AMD**, and a live low/high cycle preserved their processes. No reboot
+was needed for this session change. Whether the normal browser matches the prior
+60 FPS game result remains a live acceptance test.
 
 Saved original environment:
 `~/.config/uwsm/env-hyprland.intel-backup.20260911-171229`.
@@ -72,9 +70,34 @@ menu, environment configuration and DPM controller.
    to verify automatic low and plug in to check the AC policy. Record any
    increase over the previous Intel-rendered baseline.
 
-Syntax was checked for the installed environment; the running shell reloaded
-without QML errors after the popup cleanup. Hardware acceptance above is still
-pending and cannot be replaced by syntax checks.
+## Post-login verification
+
+After Shawn's logout/login:
+
+- Hyprland's environment contains all three AMD selection variables. Aquamarine
+  logs explicitly select card2 (amdgpu) as primary, with Intel secondary.
+- Both the internal eDP-1 (3072×1920, 60 Hz) and external Dell DP-10
+  (2560×1440, approximately 75 Hz) are active. Hyprland reports no config errors.
+- Opening a local WebGL check with ordinary `/usr/bin/helium-browser`, without
+  special launch flags or a separate profile, reports WebGL2 enabled and
+  `ANGLE (AMD, AMD Radeon Graphics …)`. Its GPU process opens renderD129.
+- At 20:11 EDT, the controller switched Power saver → Performance → Auto on AC.
+  Both socket status and the kernel's DPM attribute confirmed low then high.
+  Hyprland PID 2191398 and normal Helium GPU PID 2314397 stayed unchanged,
+  including their DRM device handles. Auto restored high because the AC power
+  profile was Performance. No GPU warnings appeared during this bounded test.
+
+There were earlier amdgpu `Adding stream … to context failed with err 28!`
+messages during login/output setup around 20:02. Both outputs were subsequently
+active; these warnings are recorded rather than treating the entire login as
+error-free. Process survival alone does not prove absence of WebGL context loss.
+
+Game FPS, a representative native application's renderer, actual cable-change
+behavior and matched battery draw remain unverified in this AMD-first session.
+The test was on AC with an external display, so it provides no comparable idle
+battery measurement. Syntax checks and popup reload had already passed before
+logout. Logout/login also does not validate the repaired boot-menu hash warning;
+that still needs the next actual reboot.
 
 ## Rollback
 
