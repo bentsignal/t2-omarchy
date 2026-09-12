@@ -2,7 +2,7 @@
 
 **Current outcome: battery acceptance failed. Intel-first rendering has been
 restored and verified active after Shawn logged in on September 12. The Dell
-output is active again at 2560×1440, 59.951 Hz; visual confirmation is pending.** The live controller was returned to Auto after the dock recovery checks (high
+output is active again at 2560×1440, 59.951 Hz; Shawn confirmed the Dell is displaying again.** The live controller was returned to Auto after the dock recovery checks (high
 on AC with the Performance profile).
 The seamless performance/battery requirement remains unresolved.
 
@@ -223,3 +223,27 @@ changed variable. The artifact cause remains unresolved. No driver toggles,
 package changes, resets or session restarts were performed for this diagnosis.
 Next checks: user-visible Dell output and whether T3 thread-switch artifacts
 still occur in this Intel-rendered session; battery measurement remains pending.
+
+
+## September 12: cross-display cursor mitigation
+
+Shawn confirmed the Dell works and reported no recurrence of the earlier pink
+T3 thread artifacts in the current session. Moving the pointer to the Dell
+briefly produced a large black square; crossing back and forth cleared it.
+This specifically implicates cursor presentation as a hypothesis, without
+proving its root cause or explaining the earlier login-screen square.
+
+Installed `tools/graphics/cursor-hybrid.fragment.lua` at the end of the user's
+`~/.config/hypr/looknfeel.lua`, after backing up that file. It sets
+`cursor.no_hardware_cursors = 1` only with the hybrid boot marker. Reload passed
+with no config errors. Both eDP-1 and DP-11 retain their resolutions and report
+`hardwareCursorsInUse: false`. No logout or app restart was needed.
+
+This uses the documented
+[Hyprland cursor option](https://wiki.hypr.land/configuring/core/config-options/#cursor).
+Visual acceptance still requires moving the pointer between screens; software
+cursor rendering may add work during pointer motion and its battery impact is
+unmeasured. It applies to Shawn's desktop, not the separate login greeter.
+Rollback: remove the appended cursor block from looknfeel.lua and reload.
+The display teardown crashes and original seamless GPU-switching requirement
+remain unresolved; this is a scoped cursor workaround.
