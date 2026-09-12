@@ -247,3 +247,29 @@ unmeasured. It applies to Shawn's desktop, not the separate login greeter.
 Rollback: remove the appended cursor block from looknfeel.lua and reload.
 The display teardown crashes and original seamless GPU-switching requirement
 remain unresolved; this is a scoped cursor workaround.
+
+
+## September 12: acceptable unplugged browsing baseline recovered
+
+Shawn used T3 Code and the normal browser unplugged for several minutes and
+reported about 28 W. He considers 20–30 W acceptable for that activity, with
+full AMD game performance still desired. Six subsequent samples, two seconds
+apart, read 26.38, 26.17, 25.81, 25.95, 27.00 and 26.08 W from discharging
+BAT0 current_now × voltage_now (mean 26.23 W). AMD sensor power was 4 W and
+memory clock 95 MHz in every sample. Controller status: Auto, AC=False,
+power-saver profile, requested/actual low, no error. This is an active-browsing
+sample, not a clean idle benchmark. It establishes recovery from the AMD-first
+trial's high GPU baseline in the undocked Intel-first session.
+
+Shawn requested that intermittent display artifacts be deferred, without
+treating software cursors as a proven root-cause repair. No additional display
+workaround was installed for this measurement.
+
+The outstanding requirement is game acceleration in the ordinary application
+workflow. Auto currently responds to power source/profile, not game detection;
+raising AMD clocks does not move an existing Intel WebGL context to AMD. Do not
+claim that launching a game in this Intel-rendered browser automatically uses
+AMD. A possible next controlled experiment is AMD rendering in the normal
+browser profile while retaining Intel compositor rendering, followed by
+matched browsing/game measurements. That combination is not yet installed or
+validated; the failed whole-desktop AMD trial does not establish its result.
