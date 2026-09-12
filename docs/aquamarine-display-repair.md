@@ -143,3 +143,10 @@ its surrounding reflections/metadata):
 `/home/shawn/.t3/userdata/attachments/d5966f91-73b0-4c1f-a6d7-9efb2f1018a6-af4e6c0e-c58c-4fb6-8a18-1dc5e31e60ff.jpg`.
 Next checkpoint is one physical dock disconnect/reconnect in the patched
 session, with no logout or policy changes between them.
+
+
+Shawn completed the first dock unplug/reconnect in the patched session and
+confirmed the Dell returned without logout. This is the first successful
+hardware hotplug acceptance, not yet long-term reliability evidence. The
+remaining login artifact is tracked in
+[the greeter cursor investigation](greeter-cursor-investigation.md).
