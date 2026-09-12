@@ -1,5 +1,9 @@
 # Session-wide AMD rendering trial
 
+Latest display investigation: [Aquamarine repair candidate](aquamarine-display-repair.md)
+identifies the matching upstream teardown defect and a dock cleanup fix.
+Hardware acceptance is pending.
+
 **Current outcome: battery acceptance failed. Intel-first rendering has been
 restored and verified active after Shawn logged in on September 12. The Dell
 output is active again at 2560×1440, 59.951 Hz; Shawn confirmed the Dell is displaying again.** The live controller was returned to Auto after the dock recovery checks (high

@@ -1,0 +1,35 @@
+# Local candidate for the recorded Aquamarine 0.15.0 teardown/hotplug regressions.
+pkgname=aquamarine
+pkgver=0.15.0
+pkgrel=2.1
+pkgdesc='Aquamarine with display cleanup fixes; local hardware acceptance pending'
+arch=(x86_64)
+url='https://github.com/hyprwm/aquamarine'
+license=(BSD-3-Clause)
+depends=(libgcc libstdc++ glibc hyprutils libdisplay-info libdrm libglvnd libinput mesa pixman seatd systemd-libs wayland wayland-protocols)
+makedepends=(cmake gcc hyprwayland-scanner hwdata)
+provides=('libaquamarine.so=14-64')
+options=(!debug)
+source=("aquamarine-$pkgver.tar.gz::https://codeload.github.com/hyprwm/aquamarine/tar.gz/refs/tags/v$pkgver"
+        '0001-null-connector-on-exit.patch' '0002-disconnected-output-disable.patch')
+sha256sums=('bb5323f58cd2f379cb11c39893336e49980fe2e9fb101745addd87cebde3d13d'
+            'cab738898e6ae0933f71f318728ed9597b9899df643ef693e6981c6ffa894d39'
+            '7c4379a2928c79e4fd73e73c3d20b6ba2d97e545a9be0618a9ce47050aba75c5')
+prepare() {
+  patch --fuzz=0 -d "aquamarine-$pkgver" -p1 < "$srcdir/0001-null-connector-on-exit.patch"
+  patch --fuzz=0 -d "aquamarine-$pkgver" -p1 < "$srcdir/0002-disconnected-output-disable.patch"
+}
+build() {
+  mkdir -p build
+  cmake -S "$(realpath "aquamarine-$pkgver")" -B "$(realpath build)" \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=ON
+  cmake --build build -j 4
+}
+check() {
+  # simpleWindow is an interactive backend demo, not a bounded offline test.
+  ctest --test-dir build --output-on-failure -R '^(attachments|output|commitThread)$'
+}
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 "aquamarine-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
