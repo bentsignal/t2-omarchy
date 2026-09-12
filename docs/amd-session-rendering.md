@@ -1,8 +1,8 @@
 # Session-wide AMD rendering trial
 
 **Current outcome: battery acceptance failed. Intel-first rendering has been
-restored in the next-login configuration; the current session remains AMD-first
-until Shawn logs out/in.** The live controller was returned to Auto after the dock recovery checks (high
+restored and verified active after Shawn logged in on September 12. The Dell
+output is active again at 2560×1440, 59.951 Hz; visual confirmation is pending.** The live controller was returned to Auto after the dock recovery checks (high
 on AC with the Performance profile).
 The seamless performance/battery requirement remains unresolved.
 
@@ -187,3 +187,39 @@ At 20:26 the driver again emitted stream-add err 28 failures. DP-11 remained
 not restore the display. Intel-first next-login configuration was rechecked;
 the next recovery checkpoint is a user-initiated logout/login with the dock
 attached. Display recovery and battery savings remain unverified.
+
+
+## September 12: Intel-first session active, artifacts reported
+
+Shawn logged out/in with the dock connected, reporting a transient large black
+square on the login screen and pink rectangles when switching T3 Code threads
+the previous evening. Neither artifact was captured or reproduced by the agent.
+
+The new Hyprland PID 2739454 has Intel-first AQ_DRM_DEVICES and no DRI_PRIME or
+MESA_VK_DEVICE_SELECT trial variables. Aquamarine confirms card1 primary. T3 Code
+GPU PID 2741510 opens Intel renderD128. The internal panel is active at
+3072×1920/60 Hz; Dell DP-11 is now 2560×1440/59.951 Hz at the saved position.
+Config errors are empty. This verifies output activation, not user-visible
+artifact resolution or dock hotplug reliability.
+
+The transition exposed two symbolized SIGSEGV records: the old session Hyprland
+PID 2191398 at 11:51:37, and UID 962 Hyprland PID 2739132 at 11:51:46. Both crash
+in Aquamarine CDRMBackend::flushAsyncCommitEvents, called by cancelAsyncOutput,
+SDRMConnector::disconnect, backend destructors and process exit. The evidence
+places these crashes in display-backend teardown, rather than proving a live
+rendering fault caused the reported colored rectangles. Other recorded threads
+are waiting on commit queues or GLib/IPC loops. The second process's core itself
+is inaccessible to this user; the journal-provided symbolic stack is available.
+WirePlumber SIGSEGV and an old T3 Code SIGBUS also coincide with session exit;
+no causal relationship or data loss was established. No OOM messages appeared
+in the inspected transition window; current available RAM is 8.6 GiB.
+
+Repeated amdgpu stream-add err 28 messages occur during the transition through
+11:51:48. The new session's recent compositor log tail has no ERR entries.
+Installed graphics versions: Hyprland 0.56.2-2, Aquamarine 0.15.0-2, Mesa
+26.2.2-1, linux-t2 7.2.4.arch1-1. All four were upgraded September 11 around
+09:35–09:36, before the renderer trial, so configuration changes are not the only
+changed variable. The artifact cause remains unresolved. No driver toggles,
+package changes, resets or session restarts were performed for this diagnosis.
+Next checks: user-visible Dell output and whether T3 thread-switch artifacts
+still occur in this Intel-rendered session; battery measurement remains pending.
