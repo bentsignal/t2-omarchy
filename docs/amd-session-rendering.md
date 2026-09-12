@@ -364,7 +364,10 @@ Dell disable/re-enable in the saved monitor configuration both failed to
 restore it. The original monitor file was restored in a finally block and
 config validation passed. No new stream-add errors appeared in the bounded
 check after forcing the phantom off, but this is insufficient to prove a fix.
-Normal phantom probing is being restored with the diagnostic's detect action;
+Normal phantom probing was restored successfully with the diagnostic's detect action;
 no persistent connector-force setting is being introduced. Logout/login with
 the dock connected remains the previously demonstrated recovery, not a
 solution for hotplug reliability.
+
+Shawn approved the restoration prompt. The detect action exited successfully;
+AMD eDP-2 is back to connected/disabled. The diagnostic is fully undone.
