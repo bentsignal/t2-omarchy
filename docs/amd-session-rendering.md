@@ -329,3 +329,42 @@ validation with hardware acceptance. This affects Helium only, not arbitrary
 applications. Rollback removes the user desktop override and wrapper (restore
 any backed-up previous files), then updates the desktop database and restarts
 the browser when ready. The Intel desktop configuration stays intact.
+
+
+## September 12: normal workflow accepted; dock reconnect still fails
+
+Shawn reports the corrected ordinary browser launcher runs his game well
+without manual GPU changes: around 40 W during the game, falling to roughly
+15–30 W afterward, toward the lower end. AMD mode was Auto, CPU profile
+Performance. This is user-reported practical acceptance of the browser
+performance/power behavior, not evidence of complete GPU shutdown, measured
+FPS, or automatic GPU migration for arbitrary applications.
+
+Reconnecting the dock reproduced display failure in the Intel-first session.
+At 16:38:17 the kernel repeatedly logged stream-add err 28. Hyprland retained
+a 2560×1440 Dell entry, but DRM reported card2-DP-11 connected/disabled. Auto
+was AC=True/high. This establishes that compositor resolution alone is not
+sufficient recovery evidence. A bounded compositor disable/reload did not
+restore kernel output enablement.
+
+Next hypothesis: the unused AMD eDP-2 is disabled in the compositor but still
+reported connected by DRM. The manual diagnostic
+`tools/graphics/probe-phantom-panel.py off|detect` checks model, hybrid boot,
+connector PCI/driver ownership and active Intel/inactive AMD panel before
+changing only that unused connector's kernel force state. It is not installed
+as a persistent service or boot change. `detect` restores normal probing.
+This tests a hypothesis, not a proven cause. Related first-hand T2 investigation:
+[the inactive AMD connector](https://kait2en.org/blog/the-navi-rabbit-hole.html#the-edp-2-ghost).
+The force-state interface is implemented in
+[DRM sysfs](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/drm_sysfs.c).
+
+The phantom-panel test successfully changed AMD eDP-2 to disconnected, but
+Dell DP-11 stayed connected/disabled. Reload alone and an explicit temporary
+Dell disable/re-enable in the saved monitor configuration both failed to
+restore it. The original monitor file was restored in a finally block and
+config validation passed. No new stream-add errors appeared in the bounded
+check after forcing the phantom off, but this is insufficient to prove a fix.
+Normal phantom probing is being restored with the diagnostic's detect action;
+no persistent connector-force setting is being introduced. Logout/login with
+the dock connected remains the previously demonstrated recovery, not a
+solution for hotplug reliability.
