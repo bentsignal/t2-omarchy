@@ -16,7 +16,7 @@ MODES = ('auto', 'performance', 'saver')
 def desired_level(mode, ac, profile):
     if mode not in MODES:
         raise ValueError('Unknown GPU mode')
-    return 'high' if mode == 'performance' or (mode == 'auto' and ac and profile == 'performance') else 'low'
+    return 'high' if mode == 'performance' or (mode == 'auto' and ac) else 'low'
 
 
 def power_source():
@@ -56,8 +56,6 @@ class Policy:
 
     def refresh(self, request=None):
         ac = power_source()
-        if ac != self.ac:
-            self.mode = 'auto'  # A cable transition clears the temporary override.
         self.ac = ac
         if request is not None:
             if request not in MODES:

@@ -1,10 +1,9 @@
 # T2 GPU performance controls and maintained boot entries
 
-Latest direction: Shawn confirmed restored game performance but rejected the
-separate-browser workflow. The popup is simplified and a
-[session-wide AMD rendering trial](amd-session-rendering.md) is prepared for
-the next login. The launcher section below documents the earlier experiment;
-its button is no longer in the popup.
+Current state (September 12): the AMD-first desktop trial failed battery and
+dock acceptance and was rolled back. Intel-first browsing measured 26.2 W.
+See [current evidence](amd-session-rendering.md). The separate-browser launch
+button was removed; the historical launcher section below is diagnostic only.
 
 Implemented September 11, 2026 on MacBookPro16,1, following the
 [Intel-primary hybrid measurements](intel-primary-hybrid.md).
@@ -13,19 +12,14 @@ Implemented September 11, 2026 on MacBookPro16,1, following the
 
 The user-owned `shawn.power` clone adds an **AMD graphics** section:
 
-- **Auto:** AMD uses high DPM when AC is connected and the system profile is
-  Performance. It uses low DPM on battery or with Balanced/Power saver.
-- **Performance:** explicitly requests AMD high DPM, including on battery.
-- **Power saver:** explicitly requests AMD low DPM, including on AC.
-- **Launch AMD browser:** selects AMD Performance and launches Helium with a
-  separate profile using AMD rendering. Existing Intel browser windows remain
-  on Intel. The separate profile initially has separate logins and settings.
+- **Auto:** AMD high DPM on AC, low DPM on battery, independent of CPU profile.
+- **Performance:** AMD high DPM, including on battery.
+- **Power saver:** AMD low DPM, including on AC.
 
-Changing the system profile using this popup returns AMD selection to Auto.
-Explicit GPU overrides last until another selection, an AC cable transition,
-service restart, or reboot. Unplugging AC clears a performance override and
-returns AMD to low within the controller's three-second polling interval.
-Selecting Performance again while on battery explicitly overrides that limit.
+Manual selections remain selected across cable and CPU-profile changes.
+Select Auto explicitly to resume automatic cable policy. Service restart or
+reboot currently initializes Auto; cross-reboot manual persistence is not
+implemented. CPU-profile popup actions no longer reset AMD selection.
 The CPU's existing Omarchy AC/battery profile preferences continue to apply.
 
 “Power saver” means low DPM, not electrical GPU shutdown. “Performance” enables
@@ -113,7 +107,7 @@ Use the maintained hook for updates.
 ## Validation and limits
 
 - 21 offline tests passed, including automatic AC/battery selection, manual
-  overrides, unplug reset, topology failure, stale-image refusal, recovery
+  overrides, topology failure, stale-image refusal, recovery
   preservation, snapshot preservation and boot-maintenance idempotence.
 - Initial live service startup selected high on AC + Performance. Explicit
   saver, performance and auto commands produced low, high and high readback.

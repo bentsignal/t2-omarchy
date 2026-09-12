@@ -36,7 +36,7 @@
           }
           Text {
             width: parent.width
-            text: "Auto follows the power profile on AC and saves power on battery."
+            text: "Auto: performance on AC, power saver on battery. Manual selections stay selected."
             wrapMode: Text.WordWrap
             color: root.bar.foreground
             opacity: 0.7

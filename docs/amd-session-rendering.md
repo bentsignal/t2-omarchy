@@ -273,3 +273,30 @@ AMD. A possible next controlled experiment is AMD rendering in the normal
 browser profile while retaining Intel compositor rendering, followed by
 matched browsing/game measurements. That combination is not yet installed or
 validated; the failed whole-desktop AMD trial does not establish its result.
+
+
+## September 12: revised policy and normal-profile AMD browser test
+
+Shawn clarified Auto must mean high on AC and low on battery independently of
+CPU profile; manual Performance/Power saver must survive cable transitions.
+The controller now implements that rule. CPU-profile actions in the popup no
+longer reset GPU selection. Updated controller copied to its root-owned install
+path and service restarted; installed bytes match source. Popup text/action
+updated and shell restarted. All 21 graphics tests pass, including both manual
+modes surviving repeated cable and CPU-profile changes. Actual cable testing
+of this revised policy remains pending. Service restart/reboot still initializes
+Auto; no cross-reboot manual persistence was added.
+
+After confirming no Helium main process remained, launched the user's ordinary
+profile with DRI_PRIME=pci-0000_03_00_0 and --use-gl=angle --use-angle=gl
+--ozone-platform=x11. No separate user-data-dir was used and no default launcher
+was changed. WebGL test visibly reports ANGLE AMD Radeon Graphics; GPU process
+3272930 holds AMD renderD129 (and Intel handles for presentation). The desktop
+remains Intel-first. This is a one-session experiment, not a deployed default.
+
+Six discharging samples during the test read 25.25, 22.52, 20.97, 21.04, 27.73,
+56.69 W. AMD reported 4 W throughout. Activity was not controlled and the large
+spike is unexplained; these values must not be represented as a proven stable
+browsing baseline. Auto reports battery/power-saver/low. Game FPS and a sustained
+browsing comparison remain the user-facing acceptance steps. No claim of
+arbitrary live Intel-to-AMD context migration is made.
