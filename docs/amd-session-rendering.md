@@ -179,3 +179,11 @@ The next bounded recovery step is a user-initiated dock unplug/replug, followed
 by checking actual output size, kernel connector enable state and visible signal.
 If that fails, the already-prepared Intel-first configuration needs logout/login.
 Do not claim either step succeeded before observing it.
+
+Shawn completed the requested dock unplug/replug; the display remained dark.
+At 20:26 the driver again emitted stream-add err 28 failures. DP-11 remained
+0×0 in Hyprland and connected/disabled in DRM, while AMD was confirmed high
+(Auto, AC, Performance profile). Thus reconnecting and raising GPU power did
+not restore the display. Intel-first next-login configuration was rechecked;
+the next recovery checkpoint is a user-initiated logout/login with the dock
+attached. Display recovery and battery savings remain unverified.
