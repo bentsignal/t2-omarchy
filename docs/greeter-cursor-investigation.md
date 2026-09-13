@@ -63,7 +63,19 @@ Rollback: remove `/etc/sddm.conf.d/99-t2-greeter.conf` and
 `/etc/sddm/hyprland-t2.lua`. The next greeter returns to the packaged command.
 Neither reboot nor display-manager restart is performed by the installer.
 
-Installation checkpoint: the source and complete config validate, but the
-root installation is waiting for the graphical authentication prompt. Neither
-/etc destination exists yet; do not claim the next greeter uses this change
-until the installer completes and the installed files are checked.
+Installation confirmed September 13: both root-owned /etc files were written
+on September 12 at 18:13, and the installed Lua matches repository source.
+Verification of the installed complete config passes. The latest available
+greeter startup is still 18:01 using /usr/share/sddm/hyprland.lua, before the
+installation. Thus the mitigation is installed but has not yet been observed
+in a new greeter session; no repeat authentication is needed.
+
+Shawn further correlated the earlier pink rectangle with the pointer position
+in T3's thread list and the black square with movement onto the external
+display. He suspects the square over the login password field is an invisible
+or stationary corrupted pointer. This strengthens the cursor hypothesis,
+without proving it. The supplied photo is of the Omarchy SDDM login greeter;
+the user-session lock screen and pre-login disk-unlock screen are distinct.
+Next acceptance: one convenient logout/login with the dock connected, move
+the pointer around the password area, and inspect the greeter's startup config
+on return. No reboot or additional configuration change is needed.
