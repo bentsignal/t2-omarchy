@@ -1,5 +1,15 @@
 # macOS Touch ID comparison after Linux SEP timeout
 
+## Superseded by macOS boot failure, September 13
+
+Shawn attempted the normal macOS startup twice using Option and the macOS
+startup volume. Both attempts took longer than usual, then fans surged for
+one or two seconds and the machine powered off. macOS login/Touch ID control
+was not reached. Shawn returned to Linux. Do not repeat the requested unlock
+control until the boot failure is assessed. See
+[incident evidence and experimental-driver pause](macos-boot-shutdown-2026-09-13.md).
+
+
 Prepared by the Linux thread September 13, 2026. This is a proposed supervised
 control; macOS has not yet been tested or booted as part of it. Hybrid remains
 the required Linux configuration. Do not replace it with an AMD-only setup.

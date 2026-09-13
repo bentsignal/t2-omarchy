@@ -1,11 +1,11 @@
 # Touch ID implementation priorities
 
-Latest September 13, 14:02 EDT: the second Hybrid trial loaded successfully
-and all four DMA buffers were confirmed below 4 GiB, but capability still timed
-out. Touch ID remains unavailable. No further Linux driver change is staged.
-Next proposed control: ordinary macOS Touch ID operation; see the
-[precise macOS handoff](macos-touch-id-sep-timeout-check.md) and
-[Linux trial results/rollback](touch-id-sep-startup-trial.md).
+Latest September 13, 14:35 EDT: both attempted macOS boots ended with a brief
+fan surge and power-off, so the Touch ID comparison was not reached. Linux
+boots. Further Touch ID experiments are paused; a modprobe block prevents SEP
+driver loading on the next Linux boot without unloading the current registered
+instance. Read [incident evidence and next steps](macos-boot-shutdown-2026-09-13.md).
+No cause or permanent hardware damage has been established.
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
