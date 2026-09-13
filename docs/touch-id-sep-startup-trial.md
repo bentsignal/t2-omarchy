@@ -1,5 +1,47 @@
 # SEP transport startup trial, September 13, 2026
 
+## Current result and second trial, 12:30 EDT
+
+The supervised Hybrid reboot loaded start1 (`C3E877B6001A0109956ED9C`). At
+12:22:26 its control changed from 0x7f to 0x7a, but the capability request timed
+out at 12:22:37. No authentication devices were exposed. The transport unit
+also raced the in-progress PCI probe and failed before the capability timeout;
+its later retries confirm the final absence of devices. This service race does
+not explain the driver's independent capability timeout.
+
+The read-only observer then measured control=0x7a, reset=0, start=1, inbox empty,
+and outbox not full. Interrupt totals were inbox 0, outbox 1. Thus transport
+enable alone did not restore communication. The earlier stopped-state finding
+was not sufficient to establish the cause.
+
+A source-version-gated observer extension reads only the four DMA address
+fields and registration flags from the exact pinned driver structure prefix.
+It emits booleans, never addresses or buffer contents. All four buffers were
+registered and **above 4 GiB**. The earlier successful prototype explicitly
+used a 32-bit coherent DMA mask. The production driver uses a 44-bit mask;
+the 32-bit page-frame-number wire field does not itself prove whether the
+firmware can access every encodable address. No working-production-boot DMA
+placement measurement exists, so this remains a hypothesis.
+
+Prepared and installed `0.1.0_826a86e_start2`, source version
+`509B887928226059FBC3264`. Compared directly with the installed start1 source,
+its only behavioral change is selection of a 32-bit coherent DMA mask when
+`start_transport=1`; it also logs that selection. The startup ordering and
+capability gate are unchanged to isolate the memory-placement question.
+Baseline mode retains the original mask. DKMS compile/link/modpost/BTF and
+installation passed. The loaded module remains start1, with its registered DMA
+retained. The observer unloaded after reading; no live resets or retries ran.
+
+The first patch-generation attempt found its pre-reboot /tmp scratch directory
+gone and made no source edit. A following installer invocation reinstalled the
+unchanged start1 on disk. Generation was corrected using a fresh temporary
+copy and the checked-in patch, then start2 built and replaced the on-disk file.
+
+Next: one supervised boot into the usual Hybrid profile. Verify start2, the
+32-bit DMA log, startup/capability results and prerequisite chain. If the same
+timeout remains, do not assume address placement caused it or repeat the same
+control. The historical start1 preparation below remains as evidence.
+
 Hybrid remains the target boot profile. Its running kernel is 7.2.4. The SEP
 driver loads, but the optional version-1 capability handshake and subsequent
 keybag load both time out. The September 11 and September 12 boots exercised
@@ -87,6 +129,7 @@ To roll back the trial for a subsequent boot, remove only
 
 ```
 dkms remove -m t2-sep-transport -v 0.1.0_826a86e_start1 --all
+dkms remove -m t2-sep-transport -v 0.1.0_826a86e_start2 --all
 dkms install -m t2-sep-transport -v 0.1.0_826a86e -k "$(uname -r)" --force
 ```
 

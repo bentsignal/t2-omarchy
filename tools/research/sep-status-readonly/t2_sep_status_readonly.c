@@ -4,6 +4,25 @@
 #include <linux/pci.h>
 #include <linux/io.h>
 #include <linux/dmi.h>
+#include <linux/dma-mapping.h>
+
+/* Exact prefix shared by the two pinned startup trials; checked by srcversion. */
+struct t2_sep_prefix {
+	struct pci_dev *pdev;
+	void __iomem *bar;
+	void *ool_in;
+	dma_addr_t ool_in_dma;
+	void *ool_out;
+	dma_addr_t ool_out_dma;
+	bool ool_in_registered;
+	bool ool_out_registered;
+	void *acm_ool_in;
+	dma_addr_t acm_ool_in_dma;
+	void *acm_ool_out;
+	dma_addr_t acm_ool_out_dma;
+	bool acm_ool_in_registered;
+	bool acm_ool_out_registered;
+};
 
 static int __init t2_sep_status_init(void)
 {
@@ -34,6 +53,18 @@ static int __init t2_sep_status_init(void)
 		readl(bar + 0x8028), readl(bar + 0x8040),
 		readl(bar + 0x8048));
 	pci_iounmap(pdev, bar);
+	if (pdev->dev.driver->owner && pdev->dev.driver->owner->srcversion &&
+	    (!strcmp(pdev->dev.driver->owner->srcversion, "C3E877B6001A0109956ED9C") ||
+	     !strcmp(pdev->dev.driver->owner->srcversion, "509B887928226059FBC3264"))) {
+		const struct t2_sep_prefix *sep = pci_get_drvdata(pdev);
+
+		if (sep && sep->pdev == pdev)
+			pr_info("t2_sep_status_readonly: DMA above32 aks_in=%u aks_out=%u acm_in=%u acm_out=%u registered=%u%u%u%u\n",
+				!!(sep->ool_in_dma >> 32), !!(sep->ool_out_dma >> 32),
+				!!(sep->acm_ool_in_dma >> 32), !!(sep->acm_ool_out_dma >> 32),
+				sep->ool_in_registered, sep->ool_out_registered,
+				sep->acm_ool_in_registered, sep->acm_ool_out_registered);
+	}
 	ret = 0;
 out:
 	device_unlock(&pdev->dev);

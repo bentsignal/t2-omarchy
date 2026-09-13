@@ -14,7 +14,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 project_dir=$(cd -- "$script_dir/../.." && pwd)
 reference_dir="$project_dir/.local/references/t2-touchid-linux-latest/src"
 version=0.1.0_826a86e
-if (( trial )); then version=0.1.0_826a86e_start1; fi
+if (( trial )); then version=0.1.0_826a86e_start2; fi
 kernel_release=$(uname -r)
 [[ -f /lib/modules/$kernel_release/build/Makefile ]] || { echo 'Running-kernel headers are missing.' >&2; exit 1; }
 staging=$(mktemp -d /usr/src/.t2-sep-transport.XXXXXXXX)
@@ -26,7 +26,7 @@ done
 install -o root -g root -m 0644 "$script_dir/t2-sep-transport.dkms.conf" "$staging/dkms.conf"
 if (( trial )); then
   patch --batch --fuzz=0 --directory="$staging" -p1 < "$script_dir/t2-sep-startup-trial.patch"
-  sed -i 's/0.1.0_826a86e/0.1.0_826a86e_start1/' "$staging/dkms.conf"
+  sed -i 's/0.1.0_826a86e/0.1.0_826a86e_start2/' "$staging/dkms.conf"
 fi
 destination=/usr/src/t2-sep-transport-$version
 if [[ -e $destination || -L $destination ]]; then

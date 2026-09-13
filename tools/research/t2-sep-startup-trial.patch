@@ -78,7 +78,22 @@
  static int t2_aks_probe_capabilities(struct t2_sep_transport *sep)
  {
  	struct t2_aks_header_v1 *header;
-@@ -1071,7 +1128,19 @@
+@@ -992,9 +1049,11 @@
+ 	}
+ 
+ 	ret = dma_set_mask_and_coherent(&pdev->dev,
+-					DMA_BIT_MASK(T2_SEP_DMA_BITS));
+-	if (ret)
+-		return dev_err_probe(&pdev->dev, ret, "no usable 44-bit DMA mask\n");
++					DMA_BIT_MASK(start_transport ? 32 : T2_SEP_DMA_BITS));
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "no usable selected DMA mask\n");
++	if (start_transport)
++		dev_info(&pdev->dev, "startup trial using 32-bit coherent DMA\n");
+ 	pci_set_master(pdev);
+ 
+ 	sep->ool_in = dma_alloc_coherent(&pdev->dev, T2_SEP_OOL_SIZE,
+@@ -1071,7 +1130,19 @@
  
  	dev_info(&pdev->dev,
  		 "registered 16 KiB endpoint-7 OOL input/output buffers\n");

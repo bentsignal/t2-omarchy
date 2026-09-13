@@ -1,11 +1,12 @@
 # Touch ID implementation priorities
 
-Latest September 13: Hybrid startup still fails. A read-only observation found
-SEP transport control 0x7f (the previously observed stopped state). An opt-in
-startup-enable driver trial is built and installed for the next supervised
-Hybrid reboot; the current driver remains unchanged. See
-[trial evidence, validation, and rollback](touch-id-sep-startup-trial.md).
-Touch ID remains unavailable; hardware acceptance is pending.
+Latest September 13, 12:30 EDT: Hybrid boot tested the transport-enable trial;
+it changed control to the running state but capability still timed out. A
+read-only observation found all four DMA buffers above 4 GiB. A second trial
+using the earlier prototype's 32-bit DMA constraint is built and installed for
+the next supervised Hybrid reboot. See
+[results, second trial, and rollback](touch-id-sep-startup-trial.md).
+Touch ID remains unavailable; no fingerprint acceptance has been run.
 
 Updated 2026-09-06 after Shawn authorized either work order.
 
