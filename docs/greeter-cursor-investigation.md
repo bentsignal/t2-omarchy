@@ -79,3 +79,30 @@ the user-session lock screen and pre-login disk-unlock screen are distinct.
 Next acceptance: one convenient logout/login with the dock connected, move
 the pointer around the password area, and inspect the greeter's startup config
 on return. No reboot or additional configuration change is needed.
+
+
+## September 13: user acceptance
+
+Shawn logged out/in and saw no persistent square in the login greeter or normal
+desktop use. The journal confirms the greeter actually loaded
+/etc/sddm/hyprland-t2.lua. He did see a brief black square during the larger-cursor
+frame at the transition into the desktop; he considers that transient acceptable.
+This supports the cursor-path hypothesis and mitigation effectiveness, not a
+complete repair of underlying cursor rendering. No additional changes were made.
+
+Read-only closing checks: Intel-first compositor PID 2179214, both internal
+eDP-1 and Dell DP-10 active, software cursors on both, no Hyprland config errors,
+and Aquamarine candidate 0.15.0-2.1 still installed. GPU controller and normal
+browser wrapper match repository source. Controller Auto sees AC=True and
+Performance profile, requests/reads high without error. The dock's DP connector
+number changed again; description-based matching still selects the Dell.
+No new battery benchmark was taken while AC is reported connected.
+
+Power acceptance rests on the earlier measured 26.2 W browsing sample and
+Shawn's later report of good normal-browser gaming around 40 W, falling to
+15–30 W afterward without manual intervention. That is sufficient for the
+user's practical acceptance; it is not a matched long-duration battery test
+or a claim of GPU shutdown. Further normal-use observation is preferable to
+additional speculative configuration changes. Residuals: brief login-transition
+cursor artifact, long-term dock reliability, and upstream replacement of the
+local library candidate.
