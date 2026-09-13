@@ -1,12 +1,11 @@
 # One project workspace
 
-Latest September 13, 12:30 EDT: Hybrid boot tested the transport-enable trial;
-it changed control to the running state but capability still timed out. A
-read-only observation found all four DMA buffers above 4 GiB. A second trial
-using the earlier prototype's 32-bit DMA constraint is built and installed for
-the next supervised Hybrid reboot. See
-[results, second trial, and rollback](touch-id-sep-startup-trial.md).
-Touch ID remains unavailable; no fingerprint acceptance has been run.
+Latest September 13, 14:02 EDT: the second Hybrid trial loaded successfully
+and all four DMA buffers were confirmed below 4 GiB, but capability still timed
+out. Touch ID remains unavailable. No further Linux driver change is staged.
+Next proposed control: ordinary macOS Touch ID operation; see the
+[precise macOS handoff](macos-touch-id-sep-timeout-check.md) and
+[Linux trial results/rollback](touch-id-sep-startup-trial.md).
 
 Open `/home/shawn/dev/t2-omarchy` in an editor or AI coding product. That folder
 is the Git root for `https://github.com/bentsignal/t2-omarchy.git`. There is no

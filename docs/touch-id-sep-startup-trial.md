@@ -1,5 +1,25 @@
 # SEP transport startup trial, September 13, 2026
 
+## Latest result, September 13, 14:02 EDT
+
+The supervised Hybrid boot loaded start2 (`509B887928226059FBC3264`). At
+13:51:30 it selected 32-bit coherent DMA, registered OOL, and enabled control
+0x7a. At 13:51:42 the version-1 capability query still timed out (-110).
+Authentication devices were not exposed; fprintd remains inactive.
+
+A one-shot read-only observation confirmed all four registered buffers below
+4 GiB (`above32=0,0,0,0`, registered=1111), control=0x7a, reset=0, start=1,
+inbox=0x2cc01 and outbox=0x2bb01. The observer unloaded immediately. This
+establishes that the intended trial ran and that lowering buffer addresses
+alone did not restore replies. No further live requests, resets, or driver
+changes were made after this result.
+
+Next proposed control is ordinary macOS Touch ID operation, followed by return
+to the unchanged Hybrid trial. See [macOS diagnostic handoff](macos-touch-id-sep-timeout-check.md).
+The purpose is to compare with Apple's stack and check whether a normal macOS
+visit changes the persistent state; no such effect is assumed in advance.
+
+
 ## Current result and second trial, 12:30 EDT
 
 The supervised Hybrid reboot loaded start1 (`C3E877B6001A0109956ED9C`). At
