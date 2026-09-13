@@ -1,9 +1,11 @@
 # Touch ID implementation priorities
 
-Latest continuation: a read-only version-1 capability handshake is configured
-for the next supervised reboot; the running driver is unchanged. See
-[startup control and decision points](touch-id-sep-dkms.md#startup-handshake-control-prepared-september-11).
-Touch ID remains unavailable; this is not a completed repair.
+Latest September 13: Hybrid startup still fails. A read-only observation found
+SEP transport control 0x7f (the previously observed stopped state). An opt-in
+startup-enable driver trial is built and installed for the next supervised
+Hybrid reboot; the current driver remains unchanged. See
+[trial evidence, validation, and rollback](touch-id-sep-startup-trial.md).
+Touch ID remains unavailable; hardware acceptance is pending.
 
 Updated 2026-09-06 after Shawn authorized either work order.
 

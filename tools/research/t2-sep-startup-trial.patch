@@ -1,0 +1,101 @@
+--- a/t2_sep_transport.c
++++ b/t2_sep_transport.c
+@@ -18,6 +18,8 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/hex.h>
+ #include <linux/io.h>
++#include <linux/interrupt.h>
++#include <linux/dmi.h>
+ #include <linux/ktime.h>
+ #include <linux/miscdevice.h>
+ #include <linux/mutex.h>
+@@ -109,6 +111,10 @@
+ MODULE_PARM_DESC(probe_capabilities,
+ 	"Issue one read-only AppleKeyStore capability query (default: false)");
+ 
++static bool start_transport;
++module_param(start_transport, bool, 0400);
++MODULE_PARM_DESC(start_transport, "Trial: enable stopped PCIe transport after OOL registration");
++
+ static bool register_acm;
+ module_param(register_acm, bool, 0400);
+ MODULE_PARM_DESC(register_acm,
+@@ -844,6 +850,57 @@
+ 	.compat_ioctl = compat_ptr_ioctl,
+ };
+ 
++/* Polling remains the sole FIFO reader. Interrupts carry no authentication. */
++static irqreturn_t t2_sep_start_irq(int irq, void *data)
++{
++	return IRQ_HANDLED;
++}
++
++static void t2_sep_free_vectors(void *data)
++{
++	pci_free_irq_vectors(data);
++}
++
++/* Startup only, while no misc device/client can access the registered buffers. */
++static int t2_sep_start_registered_transport(struct t2_sep_transport *sep)
++{
++	struct pci_dev *pdev = sep->pdev;
++	u32 control = readl(sep->bar + 0x8028);
++	int ret, i;
++
++	dev_info(&pdev->dev, "startup trial control=%#x reset=%#x start=%#x\n",
++		 control, readl(sep->bar + 0x8040), readl(sep->bar + 0x8048));
++	if (!dmi_match(DMI_PRODUCT_NAME, "MacBookPro16,1") ||
++	    control != 0x7f || readl(sep->bar + 0x8040) != 0 ||
++	    readl(sep->bar + 0x8048) != 0 ||
++	    !(readl(sep->bar + T2_SEP_INBOX_STATUS) & T2_SEP_INBOX_EMPTY) ||
++	    (readl(sep->bar + T2_SEP_OUTBOX_STATUS) & T2_SEP_OUTBOX_FULL))
++		return -EBUSY;
++	ret = pci_alloc_irq_vectors(pdev, 2, 2, PCI_IRQ_MSI);
++	if (ret < 0)
++		return ret;
++	if (ret != 2) {
++		pci_free_irq_vectors(pdev);
++		return -ENOSPC;
++	}
++	ret = devm_add_action_or_reset(&pdev->dev, t2_sep_free_vectors, pdev);
++	if (ret)
++		return ret;
++	for (i = 0; i < 2; i++) {
++		ret = devm_request_irq(&pdev->dev, pci_irq_vector(pdev, i),
++			 t2_sep_start_irq, 0, "t2-sep-startup", sep);
++		if (ret)
++			return ret;
++	}
++	/* Recovered Apple sequence: no stop, no asserted reset, no FIFO drain. */
++	writel(0, sep->bar + 0x8040);
++	writel(1, sep->bar + 0x8048);
++	writel(5, sep->bar + 0x8028);
++	control = readl(sep->bar + 0x8028);
++	dev_info(&pdev->dev, "startup trial enabled: control=%#x\n", control);
++	return control == 0x7a ? 0 : -EIO;
++}
++
+ static int t2_aks_probe_capabilities(struct t2_sep_transport *sep)
+ {
+ 	struct t2_aks_header_v1 *header;
+@@ -1071,7 +1128,19 @@
+ 
+ 	dev_info(&pdev->dev,
+ 		 "registered 16 KiB endpoint-7 OOL input/output buffers\n");
+-	if (probe_capabilities) {
++	if (start_transport) {
++		ret = t2_sep_start_registered_transport(sep);
++		if (ret) {
++			dev_err(&pdev->dev, "startup trial refused/failed: %d; reboot before retry\n", ret);
++			return 0; /* Pinned registered DMA; do not expose clients. */
++		}
++		ret = t2_aks_probe_capabilities(sep);
++		if (ret) {
++			dev_err(&pdev->dev, "startup trial capability failed: %d; reboot before retry\n", ret);
++			return 0;
++		}
++		sep->next_transaction = 1;
++	} else if (probe_capabilities) {
+ 		ret = t2_aks_probe_capabilities(sep);
+ 		if (ret)
+ 			dev_warn(&pdev->dev,
